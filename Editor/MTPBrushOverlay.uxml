@@ -1,0 +1,12 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../../UIElementsSchema/UIElements.xsd" editor-extension-mode="True">
+    <ui:VisualElement style="padding-left:4px; padding-right:4px;">
+        <ui:Label text="Brush" style="font-size:14px; -unity-font-style:bold; color:#E28348" />
+        <ui:SliderInt label="Size" name="Size" high-value="100" />
+        <ui:SliderInt label="Strength" name="Strength" high-value="100" />
+        <ui:SliderInt label="Density" name="Density" high-value="100" />
+        <ui:SliderInt label="Hardness" name="Hardness" high-value="100" />
+        <uie:EnumField label="Distribution" name="Distribution" />
+        <ui:Toggle label="Mix Extra Profiles" name="MixExtraProfiles" />
+        <ui:Button text="Open Painting Settings" name="OpenSettings" />
+    </ui:VisualElement>
+</ui:UXML>

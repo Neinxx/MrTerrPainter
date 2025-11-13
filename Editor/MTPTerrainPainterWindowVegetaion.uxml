@@ -1,0 +1,19 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
+    <ui:VisualElement style="flex-grow: 1;">
+        <ui:VisualElement name="VegetationProfileList" style="flex-grow: 0;" />
+    </ui:VisualElement>
+    <ui:Button text="Button" display-tooltip-when-elided="true" name="CreateCreateButton" class="mt-buttonG" />
+    <ui:VisualElement class="mt-frame">
+        <ui:VisualElement style="flex-direction: column; margin-left: 0; margin-right: 0; margin-top: 6px; margin-bottom: 6px;" />
+        <ui:VisualElement name="PrefabRange">
+            <uie:ObjectField label="CurrentPrefab" name="SelectPrefab" />
+            <ui:Slider label="权重" value="0.5" high-value="1" name="Weigth" show-input-field="true" />
+            <ui:Slider label="基础密度" value="1" high-value="10" name="BaseDensity" show-input-field="true" />
+            <ui:Slider label="最小间距" value="0" high-value="10" name="MinimumSpacing" show-input-field="true" />
+            <ui:MinMaxSlider label="缩放范围" min-value="1" max-value="5" low-limit="0" high-limit="2" name="SceleRange" />
+            <ui:MinMaxSlider label="Y旋转范围" min-value="0" max-value="360" low-limit="0" high-limit="360" name="YrotationRange" />
+            <ui:MinMaxSlider label="高度范围" min-value="1" max-value="12" low-limit="-10" high-limit="10" name="HeigthRange" />
+            <ui:MinMaxSlider label="坡度范围" min-value="10" max-value="90" low-limit="-10" high-limit="20" name="SlopeRange" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>
