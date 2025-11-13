@@ -22,7 +22,9 @@ namespace MrTerrainPainter.Editor.Tools
             if (!subscribed)
             {
                 subscribed = true;
-                EditorApplication.update += UpdateVisibility;
+                ToolManager.activeToolChanged += OnActiveToolChanged;
+                // 初始化一次
+                UpdateVisibility();
             }
             var cfg = MrTerrainPainter.Editor.Config.ConfigTools.LoadOrCreateAsset();
             var vt = cfg.brushOverlayUxml ?? AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(AssetPath);
@@ -62,7 +64,7 @@ namespace MrTerrainPainter.Editor.Tools
             return root;
         }
 
-        private void UpdateVisibility()
+        private void OnActiveToolChanged()
         {
             bool isActive = ToolManager.activeToolType == typeof(MrTerrainPainter.Editor.Tools.MTPBrushTool);
             try { displayed = isActive; } catch { }
@@ -79,6 +81,21 @@ namespace MrTerrainPainter.Editor.Tools
             {
                 ensuredWindow = false;
             }
+        }
+
+        private void UpdateVisibility()
+        {
+            OnActiveToolChanged();
+        }
+
+        public override void OnWillBeDestroyed()
+        {
+            if (subscribed)
+            {
+                ToolManager.activeToolChanged -= OnActiveToolChanged;
+                subscribed = false;
+            }
+            base.OnWillBeDestroyed();
         }
 
         private void BindSlider(VisualElement root, string name, float min, float max, System.Func<float> getter, System.Action<float> setter)

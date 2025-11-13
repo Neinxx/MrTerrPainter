@@ -37,11 +37,22 @@ namespace MrTerrainPainter.Editor.Views.Tabs
             var mappingTemplate = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Assets/MrTerrPainterV1/Editor/MTPTerrainPainterSettingsMappinger.uxml");
             if (fold != null && mappingTemplate != null)
             {
+                if (window.config.mappingEntries == null) window.config.mappingEntries = new System.Collections.Generic.List<MrTerrainPainterConfig.MappingEntry>();
+                if (window.config.mappingEntries.Count == 0 && (window.config.objectList != null || window.config.objectTypeList != null))
+                {
+                    int max = Mathf.Max(window.config.objectList != null ? window.config.objectList.Length : 0, window.config.objectTypeList != null ? window.config.objectTypeList.Length : 0);
+                    for (int i = 0; i < max; i++)
+                    {
+                        var entry = new MrTerrainPainterConfig.MappingEntry();
+                        if (window.config.objectList != null && i < window.config.objectList.Length) entry.node = window.config.objectList[i];
+                        if (window.config.objectTypeList != null && i < window.config.objectTypeList.Length) entry.type = window.config.objectTypeList[i];
+                        window.config.mappingEntries.Add(entry);
+                    }
+                }
                 void Refresh()
                 {
                     fold.Clear();
-                    int count = Mathf.Max(window.config.objectList != null ? window.config.objectList.Length : 0,
-                                          window.config.objectTypeList != null ? window.config.objectTypeList.Length : 0);
+                    int count = window.config.mappingEntries != null ? window.config.mappingEntries.Count : 0;
                     for (int i = 0; i < count; i++)
                     {
                         var rowRoot = mappingTemplate.Instantiate();
@@ -51,31 +62,25 @@ namespace MrTerrainPainter.Editor.Views.Tabs
                         {
                             of.objectType = typeof(UnityEngine.Transform);
                             of.allowSceneObjects = true;
-                            var initialGo = (window.config.objectList != null && i < window.config.objectList.Length) ? window.config.objectList[i] : null;
+                            var initialGo = window.config.mappingEntries[i].node;
                             of.SetValueWithoutNotify(initialGo != null ? initialGo.transform : null);
                             of.RegisterValueChangedCallback(e =>
                             {
-                                var list = window.config.objectList?.ToList() ?? new System.Collections.Generic.List<UnityEngine.GameObject>();
-                                while (i >= list.Count) list.Add(null);
-                                list[i] = (e.newValue as UnityEngine.Transform)?.gameObject;
-                                window.config.objectList = list.ToArray();
+                                window.config.mappingEntries[i].node = (e.newValue as UnityEngine.Transform)?.gameObject;
+                                SyncArraysFromEntries();
                                 EditorUtility.SetDirty(window.config);
                             });
                         }
                         var typeField = mapRoot.Q<EnumField>("PrefabType");
                         if (typeField != null)
                         {
-                            var initialType = (window.config.objectTypeList != null && i < window.config.objectTypeList.Length)
-                                ? window.config.objectTypeList[i]
-                                : window.config.defaultGenerationType;
+                            var initialType = window.config.mappingEntries[i].type;
                             typeField.Init(initialType);
                             typeField.SetValueWithoutNotify(initialType);
                             typeField.RegisterValueChangedCallback(e =>
                             {
-                                var types = window.config.objectTypeList?.ToList() ?? new System.Collections.Generic.List<MrTerrainPainter.Runtime.Profiles.PrefabType>();
-                                while (i >= types.Count) types.Add(window.config.defaultGenerationType);
-                                types[i] = (MrTerrainPainter.Runtime.Profiles.PrefabType)e.newValue;
-                                window.config.objectTypeList = types.ToArray();
+                                window.config.mappingEntries[i].type = (MrTerrainPainter.Runtime.Profiles.PrefabType)e.newValue;
+                                SyncArraysFromEntries();
                                 EditorUtility.SetDirty(window.config);
                             });
                         }
@@ -85,10 +90,8 @@ namespace MrTerrainPainter.Editor.Views.Tabs
                             int idx = i;
                             btnDel.clicked += () =>
                             {
-                                if (window.config.objectList != null && idx < window.config.objectList.Length)
-                                    window.config.objectList = window.config.objectList.Where((_, k) => k != idx).ToArray();
-                                if (window.config.objectTypeList != null && idx < window.config.objectTypeList.Length)
-                                    window.config.objectTypeList = window.config.objectTypeList.Where((_, k) => k != idx).ToArray();
+                                if (window.config.mappingEntries != null && idx < window.config.mappingEntries.Count) window.config.mappingEntries.RemoveAt(idx);
+                                SyncArraysFromEntries();
                                 EditorUtility.SetDirty(window.config);
                                 Refresh();
                             };
@@ -102,12 +105,10 @@ namespace MrTerrainPainter.Editor.Views.Tabs
                 {
                     btnAdd.clicked += () =>
                     {
-                        var list = window.config.objectList?.ToList() ?? new System.Collections.Generic.List<UnityEngine.GameObject>();
-                        list.Add(null);
-                        window.config.objectList = list.ToArray();
-                        var types = window.config.objectTypeList?.ToList() ?? new System.Collections.Generic.List<Runtime.Profiles.PrefabType>();
-                        types.Add(window.config.defaultGenerationType);
-                        window.config.objectTypeList = types.ToArray();
+                        var entry = new MrTerrainPainterConfig.MappingEntry();
+                        entry.type = window.config.defaultGenerationType;
+                        window.config.mappingEntries.Add(entry);
+                        SyncArraysFromEntries();
                         EditorUtility.SetDirty(window.config);
                         Refresh();
                     };
@@ -139,6 +140,13 @@ namespace MrTerrainPainter.Editor.Views.Tabs
             of.allowSceneObjects = false;
             of.SetValueWithoutNotify(getter());
             of.RegisterValueChangedCallback(e => setter(e.newValue));
+        }
+
+        private void SyncArraysFromEntries()
+        {
+            var list = window.config.mappingEntries ?? new System.Collections.Generic.List<MrTerrainPainterConfig.MappingEntry>();
+            window.config.objectList = list.Select(e => e.node).ToArray();
+            window.config.objectTypeList = list.Select(e => e.type).ToArray();
         }
     }
 }

@@ -444,127 +444,13 @@ namespace MrTerrainPainter.Editor
             return items[selectedItemIndex];
         }
 
-        private void Legacy_UpdatePropertyPanelFromSelectedItem()
-        {
-            // 交由视图刷新控件状态，窗口仅维护当前预制体引用
-            propertyPanelView?.UpdateFromSelectedItem();
-            var item = GetSelectedItem();
-            currentPrefab = item != null ? item.prefab : null;
-        }
 
 
 
-        private void Legacy_RefreshVegetationListUI()
-        {
-            if (uiVegetationList == null) return;
-            if (refreshingUI)
-            {
-                EditorApplication.delayCall += RefreshVegetationListUI;
-                return;
-            }
-            refreshingUI = true;
-            uiVegetationList.itemsSource = availableProfiles;
-            uiVegetationList.Rebuild();
-            refreshingUI = false;
-        }
 
-        private void Legacy_RefreshPreviewListUI()
-        {
-            if (uiPreviewPrefabList == null) return;
-            if (refreshingUI)
-            {
-                EditorApplication.delayCall += RefreshPreviewListUI;
-                return;
-            }
-            refreshingUI = true;
-            uiPreviewPrefabList.Clear();
-            if (currentProfile != null)
-            {
-                prefabAssignment?.CleanNullPrefabItems(currentProfile);
-            }
-            var items = GetProfileItemsSnapshot();
-            selectedItemIndex = Mathf.Clamp(selectedItemIndex, 0, Mathf.Max(0, items.Count - 1));
-            for (int i = 0; i < items.Count; i++)
-            {
-                var it = items[i];
-                var box = new VisualElement();
-                box.AddToClassList("preview-item");
-                box.pickingMode = PickingMode.Position;
-                var img = new Image();
-                img.AddToClassList("preview-item__image");
-                Texture2D tex = null;
-                if (it != null && it.prefab != null)
-                {
-                    tex = AssetPreview.GetAssetPreview(it.prefab) ?? AssetPreview.GetMiniThumbnail(it.prefab);
-                }
-                img.image = tex;
-                box.Add(img);
-                var index = i;
-                // 左键选择：使用 PointerDown 提高兼容性（不重建列表，避免递归布局）
-                box.RegisterCallback<PointerDownEvent>(evt =>
-                {
-                    if (evt.button == 0)
-                    {
-                        SetSelectedThumbIndex(index);
-                        evt.StopPropagation();
-                    }
-                });
-                // 直接在图像上也注册选择，避免子元素拦截导致无法选择
-                img.RegisterCallback<PointerDownEvent>(evt =>
-                {
-                    if (evt.button == 0)
-                    {
-                        SetSelectedThumbIndex(index);
-                        evt.StopPropagation();
-                    }
-                });
 
-                // 右键菜单（仅 box 注册，避免重复）
-                box.RegisterCallback<PointerDownEvent>(evt =>
-                {
-                    if (evt.button == 1)
-                    {
-                        var menu = new GenericMenu();
-                        menu.AddItem(new GUIContent("删除"), false, () =>
-                        {
-                            prefabAssignment?.RemoveItemAt(index);
-                            EditorApplication.delayCall += () =>
-                            {
-                                RefreshVegetationListUI();
-                                RefreshPreviewListUI();
-                            };
-                        });
-                        var enumValues = System.Enum.GetValues(typeof(MrTerrainPainter.Runtime.Profiles.PrefabType));
-                        foreach (MrTerrainPainter.Runtime.Profiles.PrefabType val in enumValues)
-                        {
-                            var tname = val.ToString();
-                            bool isCurrent = it != null && it.prefabType == val;
-                            menu.AddItem(new GUIContent($"类型/{tname}"), isCurrent, () =>
-                            {
-                                prefabAssignment?.SetItemType(currentProfile, index, val);
-                                if (currentProfile != null) EditorUtility.SetDirty(currentProfile);
-                                // 仅更新属性面板与当前缩略图标记，避免重建列表引发递归布局
-                                EditorApplication.delayCall += () =>
-                                {
-                                    SetSelectedThumbIndex(index);
-                                };
-                            });
-                        }
-                        menu.ShowAsContext();
-                        evt.StopPropagation();
-                    }
-                });
 
-                // 选中高亮：通过 USS 类切换
-                if (index == selectedItemIndex)
-                {
-                    box.AddToClassList("preview-item--selected");
-                }
 
-                uiPreviewPrefabList.Add(box);
-            }
-            refreshingUI = false;
-        }
 
 
 
@@ -591,57 +477,7 @@ namespace MrTerrainPainter.Editor
         // 用于 UI 展示的地形引用列表（Foldout 子节点 ObjectField）
         public readonly List<Terrain> terrainListUIData = new();
 
-        private void Legacy_PopulateTerrianListUI(VisualElement root)
-        {
-            if (root == null) return;
 
-            var container = root.Q<VisualElement>("TerrainList");
-            Debug.Log(container);
-            if (container != null)
-            {
-                // 控制 Foldout 显示（父级为 Foldout 时）
-                if (container is Foldout fold)
-                {
-                    Debug.Log("1");
-                    fold.style.display = terrainListUIData.Count > 0 ? DisplayStyle.Flex : DisplayStyle.None;
-                }
-                // 采用 ListView 虚拟化，仅显示约10项，其余通过滚动加载
-                container.Clear();
-                var listView = new ListView
-                {
-
-                    name = "TerrainListLV",
-                    itemsSource = terrainListUIData,
-                    selectionType = SelectionType.None,
-                    virtualizationMethod = CollectionVirtualizationMethod.FixedHeight,
-                    fixedItemHeight = 24,
-                    makeItem = () =>
-                        {
-                            var of = new ObjectField
-                            {
-                                objectType = typeof(Terrain),
-                                allowSceneObjects = true,
-                                label = string.Empty
-                            };
-                            of.style.marginBottom = 2;
-                            return of;
-                        },
-                    bindItem = (elem, i) =>
-                        {
-                            if (elem is not ObjectField of) return;
-                            var t = (i >= 0 && i < terrainListUIData.Count) ? terrainListUIData[i] : null;
-                            of.SetValueWithoutNotify(t);
-                        }
-
-                };
-                // 仅显示约10项高度（滚动查看更多）
-                listView.style.maxHeight = 10 * (listView.fixedItemHeight + 4);
-                listView.style.flexGrow = 1;
-                container.Add(listView);
-                return; // 已处理容器场景
-            }
-
-        }
 
         private void OnSceneGUI(SceneView sv)
         {
