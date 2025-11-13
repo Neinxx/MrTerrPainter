@@ -12,10 +12,11 @@ namespace MrTerrainPainter.Editor.Config
         public float defaultBrushStrength = 1f;
         public float defaultBrushDensityScale = 1f;
         public float defaultBrushHardness = 1f;
-        [Tooltip("窗口失去焦点时是否自动切换到Generate选项卡")] public bool switchToGenerateOnLostFocus = false;
+        // [Tooltip("窗口失去焦点时是否自动切换到Generate选项卡")]
+        // public bool switchToGenerateOnLostFocus = false;
 
         // 设置页相关持久化
-        public bool showPoolInHierarchy = true;
+        public bool showPoolInHierarchy = false;
 
         public string recipeGenerationPath = "Assets/MrTerrainPainter/Data";
         public Runtime.Profiles.PrefabType defaultGenerationType = Runtime.Profiles.PrefabType.Prop;
@@ -30,7 +31,9 @@ namespace MrTerrainPainter.Editor.Config
         public VisualTreeAsset vegetationProfileRowUxml;
         public VisualTreeAsset prefabIconUxml;
         public VisualTreeAsset draggableAreaUxml;
+
         public StyleSheet stylesUss;
+        public VisualTreeAsset brushOverlayUxml;
     }
 
 #if UNITY_EDITOR
@@ -80,8 +83,7 @@ namespace MrTerrainPainter.Editor.Config
             if (cfg.draggableAreaUxml == null) { reason = "DraggableAreaUXML 未设置"; return false; }
             if (string.IsNullOrEmpty(cfg.recipeGenerationPath)) { reason = "RecipeGenerationPath 为空"; return false; }
             if (!AssetDatabase.IsValidFolder(cfg.recipeGenerationPath)) { reason = "RecipeGenerationPath 不是有效的项目文件夹"; return false; }
-            if (cfg.objectList == null || cfg.objectTypeList == null) { reason = "生成映射为空"; return false; }
-            if (cfg.objectList.Length != cfg.objectTypeList.Length) { reason = "生成映射长度不一致"; return false; }
+            // 映射允许为空或长度不一致，用户后续可自行配置
             return true;
         }
 

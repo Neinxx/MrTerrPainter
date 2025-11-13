@@ -2,7 +2,7 @@
     <Style src="project://database/Assets/MrTerrPainterV1/Editor/MrTerrainPainterStyles.uss?fileID=7433441132597879392&amp;guid=1094a64c2bc4b654486d9ae7dcc8907c&amp;type=3#MrTerrainPainterStyles" />
     <ui:GroupBox style="flex-shrink: 1; flex-grow: 1;">
         <ui:VisualElement class="mt-frame" style="flex-grow: 1;">
-            <ui:Label text="MTP Settings" display-tooltip-when-elided="true" name="LOGO" style="flex-shrink: 1; flex-grow: 1; font-size: 47px; -unity-text-align: middle-center; -unity-font-style: bold; color: rgb(226, 131, 72); padding-left: 0; padding-right: 0; padding-top: 0; padding-bottom: 0;" />
+            <ui:Label text="MTP Settings" display-tooltip-when-elided="true" name="LOGO" style="flex-shrink: 1; flex-grow: 1; font-size: 22px; -unity-text-align: middle-center; -unity-font-style: bold; color: rgb(226, 131, 72); padding-left: 0; padding-right: 0; padding-top: 0; padding-bottom: 0;" />
         </ui:VisualElement>
         <ui:GroupBox class="mt-frame" style="flex-shrink: 1; flex-grow: 1;">
             <ui:VisualElement class="mt-frame" style="flex-direction: row; margin-left: 3px; margin-right: 3px; margin-top: 3px; margin-bottom: 3px; flex-grow: 1;">
@@ -30,14 +30,16 @@
                     <uie:ObjectField label="VegetationProfileUXML" name="VegetationProfileUXML" type="UnityEngine.UIElements.VisualTreeAsset, UnityEngine.UIElementsModule" />
                     <uie:ObjectField label="PrefabIconUXML" name="PrefabIconUXML" type="UnityEngine.UIElements.VisualTreeAsset, UnityEngine.UIElementsModule" />
                     <uie:ObjectField label="DraggableAreaUXML" name="DraggableAreaUXML" type="UnityEngine.UIElements.VisualTreeAsset, UnityEngine.UIElementsModule" />
+                    <uie:ObjectField label="BrushOverlayUXML" name="BrushOverlayUXML" type="UnityEngine.UIElements.VisualTreeAsset, UnityEngine.UIElementsModule" />
                 </ui:Foldout>
                 <ui:Foldout text="Usss" name="Usss" style="margin-bottom: 6px;">
                     <uie:ObjectField label="StylesUSS" name="StylesUSS" type="UnityEngine.UIElements.StyleSheet, UnityEngine.UIElementsModule" />
                 </ui:Foldout>
             </ui:VisualElement>
         </ui:GroupBox>
-        <ui:VisualElement style="align-items: center; justify-content: flex-start; flex-grow: 1; max-height: 42px; min-height: 42px; height: 42px; margin-left: 0;">
+        <ui:VisualElement style="align-items: flex-end; justify-content: space-between; flex-grow: 1; max-height: 42px; min-height: 42px; height: 42px; margin-left: 0; flex-direction: row-reverse;">
             <ui:Button text="保存配置" display-tooltip-when-elided="true" name="SaveConfiguration" class="mt-button" style="flex-shrink: 1; flex-grow: 1; width: 217px;" />
+            <ui:Button text="自动获取配置" display-tooltip-when-elided="true" name="AutoDiscoverConfiguration" class="mt-button" style="flex-shrink: 1; flex-grow: 1; width: 217px;" />
         </ui:VisualElement>
     </ui:GroupBox>
 </ui:UXML>

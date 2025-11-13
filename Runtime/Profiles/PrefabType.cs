@@ -2,8 +2,11 @@ namespace MrTerrainPainter.Runtime.Profiles
 {
     public enum PrefabType
     {
-        Prop,
         Plant,
-        Rock
+        VFX,
+        Prop,
+        Rock,
+        Building,
+        Landscape
     }
 }

@@ -38,6 +38,62 @@ namespace MrTerrainPainter.Editor.Views
             BindSliderInt("Strength", 0.1f, 10f, () => brush.strength, value => brush.strength = value);
             BindSliderInt("Density", 0f, 5f, () => brush.densityScale, value => brush.densityScale = value);
             BindSliderInt("Hardness", 0f, 1f, () => brush.hardness, value => brush.hardness = value);
+
+            BindEnumField("Distribution", () => brush.distribution, value => brush.distribution = value);
+            var curve = root.Q<CurveField>("FalloffCurve");
+            if (curve != null)
+            {
+                curve.value = brush.falloffCurve;
+                curve.RegisterValueChangedCallback(evt => { brush.falloffCurve = evt.newValue; });
+            }
+            BindSliderInt("MinSpacingJitter", 0f, 1f, () => brush.minSpacingJitter, value => brush.minSpacingJitter = value);
+            var strokeSeed = root.Q<IntegerField>("StrokeSeed");
+            if (strokeSeed != null)
+            {
+                strokeSeed.SetValueWithoutNotify(brush.strokeSeed);
+                strokeSeed.RegisterValueChangedCallback(evt => { brush.strokeSeed = evt.newValue; });
+            }
+            var maxPoints = root.Q<IntegerField>("MaxPoints");
+            if (maxPoints != null)
+            {
+                maxPoints.SetValueWithoutNotify(brush.maxPoints);
+                maxPoints.RegisterValueChangedCallback(evt => { brush.maxPoints = Mathf.Max(1, evt.newValue); });
+            }
+
+            var clusterCount = root.Q<IntegerField>("ClusterCount");
+            if (clusterCount != null)
+            {
+                clusterCount.SetValueWithoutNotify(brush.cluster.clusterCount);
+                clusterCount.RegisterValueChangedCallback(evt => { var c = brush.cluster; c.clusterCount = Mathf.Max(1, evt.newValue); brush.cluster = c; });
+            }
+            var childPerCluster = root.Q<IntegerField>("ChildPerCluster");
+            if (childPerCluster != null)
+            {
+                childPerCluster.SetValueWithoutNotify(brush.cluster.childPerCluster);
+                childPerCluster.RegisterValueChangedCallback(evt => { var c = brush.cluster; c.childPerCluster = Mathf.Max(1, evt.newValue); brush.cluster = c; });
+            }
+            BindSliderInt("ClusterRadius", 0.1f, 20f, () => brush.cluster.clusterRadius, value => { var c = brush.cluster; c.clusterRadius = value; brush.cluster = c; });
+            BindSliderInt("ChildJitter", 0f, 5f, () => brush.cluster.childJitter, value => { var c = brush.cluster; c.childJitter = value; brush.cluster = c; });
+
+            var mixItems = root.Q<Toggle>("MixItemsWeighted");
+            if (mixItems != null)
+            {
+                mixItems.SetValueWithoutNotify(brush.mixItemsWeighted);
+                mixItems.RegisterValueChangedCallback(evt => { brush.mixItemsWeighted = evt.newValue; });
+            }
+            var limitPerItem = root.Q<Toggle>("LimitPerItem");
+            if (limitPerItem != null)
+            {
+                limitPerItem.SetValueWithoutNotify(brush.limitPerItem);
+                limitPerItem.RegisterValueChangedCallback(evt => { brush.limitPerItem = evt.newValue; });
+            }
+            BindSliderInt("GlobalSpacingFactor", 0f, 1f, () => brush.globalSpacingFactor, value => brush.globalSpacingFactor = value);
+            var mixExtra = root.Q<Toggle>("MixExtraProfiles");
+            if (mixExtra != null)
+            {
+                mixExtra.SetValueWithoutNotify(brush.mixExtraProfiles);
+                mixExtra.RegisterValueChangedCallback(evt => { brush.mixExtraProfiles = evt.newValue; });
+            }
         }
 
         // --- 私有通用绑定方法 ---

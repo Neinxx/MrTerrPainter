@@ -13,6 +13,23 @@
             <ui:SliderInt picking-mode="Ignore" label="绘制强度" value="42" high-value="100" name="Strength" style="flex-shrink: 1; flex-grow: 1; max-height: 20px; min-height: 20px;" />
             <ui:SliderInt picking-mode="Ignore" label="绘制密度" value="42" high-value="100" name="Density" style="flex-shrink: 1; flex-grow: 1; max-height: 20px; min-height: 20px;" />
             <ui:SliderInt picking-mode="Ignore" label="笔刷硬度" value="42" high-value="100" name="Hardness" style="flex-shrink: 1; flex-grow: 1; min-height: 20px; max-height: 20px;" />
+            <uie:EnumField label="分布类型" name="Distribution" style="flex-shrink: 1; flex-grow: 1; max-height: 20px; min-height: 20px;" />
+            <uie:CurveField label="边缘曲线" name="FalloffCurve" style="flex-shrink: 1; flex-grow: 1;" />
+            <ui:SliderInt picking-mode="Ignore" label="间距抖动" value="0" high-value="100" name="MinSpacingJitter" style="flex-shrink: 1; flex-grow: 1; max-height: 20px; min-height: 20px;" />
+            <uie:IntegerField label="笔触种子" name="StrokeSeed" />
+            <uie:IntegerField label="最大候选" name="MaxPoints" />
+            <ui:Foldout text="簇集参数" name="ClusterSettings">
+                <uie:IntegerField label="簇数量" name="ClusterCount" />
+                <uie:IntegerField label="每簇数量" name="ChildPerCluster" />
+                <ui:SliderInt picking-mode="Ignore" label="簇半径" value="10" high-value="100" name="ClusterRadius" />
+                <ui:SliderInt picking-mode="Ignore" label="子点抖动" value="0" high-value="100" name="ChildJitter" />
+            </ui:Foldout>
+            <ui:Foldout text="条目混合与间距" name="Mixing">
+                <ui:Toggle label="按权重混合条目" name="MixItemsWeighted" />
+                <ui:Toggle label="限制每条目最大数量" name="LimitPerItem" />
+                <ui:SliderInt picking-mode="Ignore" label="全局间距因子" value="0" high-value="100" name="GlobalSpacingFactor" />
+                <ui:Toggle label="混合额外Profile" name="MixExtraProfiles" />
+            </ui:Foldout>
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

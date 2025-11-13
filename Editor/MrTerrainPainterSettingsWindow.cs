@@ -12,7 +12,7 @@ namespace MrTerrainPainter.Editor
     public class MrTerrainPainterSettingsWindow : EditorWindow
     {
         private VisualTreeAsset settingsUxml;
-        private MrTerrainPainter.Editor.Config.MrTerrainPainterConfig config;
+        private MrTerrainPainterConfig config;
 
         private readonly List<Mapping> mappings = new List<Mapping>();
 
@@ -33,6 +33,7 @@ namespace MrTerrainPainter.Editor
         {
             settingsUxml = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Assets/MrTerrPainterV1/Editor/MrTerrainPainterSettings.uxml");
             config = ConfigTools.LoadOrCreateAsset();
+            EnsureConfigDefaults();
         }
 
         public void CreateGUI()
@@ -90,7 +91,7 @@ namespace MrTerrainPainter.Editor
                     of.allowSceneObjects = true;
                     // 初始值：从配置加载
                     var initialGo = (config.objectList != null && index < config.objectList.Length) ? config.objectList[index] : null;
-                    var initialTf = initialGo != null ? initialGo.transform : null;
+                    var initialTf = initialGo?.transform;
                     of.SetValueWithoutNotify(initialTf);
                     of.RegisterValueChangedCallback(e =>
                     {
@@ -98,7 +99,7 @@ namespace MrTerrainPainter.Editor
                         // 同步到配置
                         var list = config.objectList?.ToList() ?? new List<GameObject>();
                         while (index >= list.Count) list.Add(null);
-                        list[index] = map.node != null ? map.node.gameObject : null;
+                        list[index] = map.node?.gameObject;
                         config.objectList = list.ToArray();
                         EditorUtility.SetDirty(config);
                     });
@@ -241,6 +242,8 @@ namespace MrTerrainPainter.Editor
                 ofPaint.RegisterValueChangedCallback(e => { config.paintUxml = e.newValue as VisualTreeAsset; EditorUtility.SetDirty(config); });
             }
 
+
+
             var ofGen = root.Q<ObjectField>("GenerateUXML");
             if (ofGen != null)
             {
@@ -286,6 +289,15 @@ namespace MrTerrainPainter.Editor
                 ofStyles.RegisterValueChangedCallback(e => { config.stylesUss = e.newValue as StyleSheet; EditorUtility.SetDirty(config); });
             }
 
+            var ofOverlay = root.Q<ObjectField>("BrushOverlayUXML");
+            if (ofOverlay != null)
+            {
+                ofOverlay.objectType = typeof(VisualTreeAsset);
+                ofOverlay.allowSceneObjects = false;
+                ofOverlay.SetValueWithoutNotify(config.brushOverlayUxml);
+                ofOverlay.RegisterValueChangedCallback(e => { config.brushOverlayUxml = e.newValue as VisualTreeAsset; EditorUtility.SetDirty(config); });
+            }
+
             var btnSave = root.Q<Button>("SaveConfiguration");
             if (btnSave != null)
             {
@@ -301,6 +313,38 @@ namespace MrTerrainPainter.Editor
                     Close();
                 };
             }
+
+            var btnAuto = root.Q<Button>("AutoDiscoverConfiguration");
+            if (btnAuto != null)
+            {
+                btnAuto.clicked += () =>
+                {
+                    AutoDiscoverAssets();
+                    EditorUtility.DisplayDialog("完成", "已自动获取并填充配置字段，请检查并保存。", "确定");
+                };
+            }
+        }
+
+        private void EnsureConfigDefaults()
+        {
+            if (config == null) return;
+            if (config.objectList == null) config.objectList = new GameObject[0];
+            if (config.objectTypeList == null) config.objectTypeList = new Runtime.Profiles.PrefabType[0];
+            if (string.IsNullOrEmpty(config.recipeGenerationPath)) config.recipeGenerationPath = "Assets/MrTerrainPainter/Data";
+        }
+
+        private void AutoDiscoverAssets()
+        {
+            config.startUxml = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Assets/MrTerrPainterV1/Editor/MrTerrainPainterWindowStart.uxml") ?? config.startUxml;
+            config.controlUxml = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Assets/MrTerrPainterV1/Editor/MrTerrainPainterWindowControl.uxml") ?? config.controlUxml;
+            config.generateUxml = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Assets/MrTerrPainterV1/Editor/MrTerrainPainterWindowGeneratePage.uxml") ?? config.generateUxml;
+            config.paintUxml = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Assets/MrTerrPainterV1/Editor/MrTerrainPainterWindowPaintPage.uxml") ?? config.paintUxml;
+            config.vegetationProfileRowUxml = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Assets/MrTerrPainterV1/Editor/MrTerrainPainterWindowVegetationProfile.uxml") ?? config.vegetationProfileRowUxml;
+            config.prefabIconUxml = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Assets/MrTerrPainterV1/Editor/MrTerrainPainterWindowVegetationProfilePrefabIcon.uxml") ?? config.prefabIconUxml;
+            config.draggableAreaUxml = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Assets/MrTerrPainterV1/Editor/MrTerrainPainterWindowVegetationProfileDraggableArea.uxml") ?? config.draggableAreaUxml;
+            config.stylesUss = AssetDatabase.LoadAssetAtPath<StyleSheet>("Assets/MrTerrainPainter/Editor/MrTerrainPainterStyles.uss") ?? config.stylesUss;
+            config.brushOverlayUxml = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Assets/MrTerrPainterV1/Editor/MTPBrushOverlay.uxml") ?? config.brushOverlayUxml;
+            EditorUtility.SetDirty(config);
         }
     }
 }

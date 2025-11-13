@@ -11,6 +11,7 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.UIElements;
 using UnityEditor.UIElements;
+using MrTerrainPainter.Editor.Utils;
 
 namespace MrTerrainPainter.Editor
 {
@@ -106,6 +107,12 @@ namespace MrTerrainPainter.Editor
             }
             var win = GetWindow<MrTerrainPainterWindow>(false, "Mr Terrain Painter");
             win.Show();
+        }
+
+        [MenuItem("Tools/MTP Settings")]
+        public static void OpenSettingsMenu()
+        {
+            MrTerrainPainterSettingsWindow.Open();
         }
 
         // 重新扫描并刷新 VegetationProfile 列表与相关 UI
@@ -614,90 +621,149 @@ namespace MrTerrainPainter.Editor
 
         private void OnSceneGUI(SceneView sv)
         {
+            if (UnityEditor.EditorTools.ToolManager.activeToolType == typeof(Tools.MTPBrushTool)) return;
             EnsureRandom();
-
-            Event e = Event.current;
-            // 捕获场景视图事件，避免选择干扰绘制/擦除/区域生成
+            var e = Event.current;
             if (mode == Mode.Paint || (mode == Mode.Generate && e.shift))
             {
-                HandleUtility.AddDefaultControl(GUIUtility.GetControlID(FocusType.Passive));
+                if (e.type == EventType.Layout)
+                {
+                    HandleUtility.AddDefaultControl(GUIUtility.GetControlID(FocusType.Passive));
+                }
             }
 
-            Ray ray = HandleUtility.GUIPointToWorldRay(e.mousePosition);
-            if (Physics.Raycast(ray, out var hit, 10000f))
-            {
-                var pos = hit.point;
-                // 仅在绘画模式显示笔刷预览
-                if (mode == Mode.Paint)
-                {
-                    BrushPainter.DrawPreview(pos, brush);
-                }
+            var ray = HandleUtility.GUIPointToWorldRay(e.mousePosition);
+            Terrain hitTerrain = null;
+            Vector3 hitPos = Vector3.zero;
+            Vector3 hitNormal = Vector3.up;
+            bool hasHit = TryGetTerrainHit(ray, out hitTerrain, out hitPos, out hitNormal);
 
-                if (e.type == EventType.MouseDown || e.type == EventType.MouseDrag)
+            if (e.type == EventType.Repaint)
+            {
+                if (hasHit && mode == Mode.Paint)
                 {
-                    if (mode == Mode.Generate)
+                    BrushPainter.DrawPreview(hitPos, hitNormal, brush);
+                }
+            }
+
+            if (e.type == EventType.MouseDown || e.type == EventType.MouseDrag)
+            {
+                if (!hasHit) return;
+                if (mode == Mode.Generate)
+                {
+                    if (e.shift)
                     {
-                        // 支持在场景中使用笔刷范围进行区域生成（按住 Shift）
-                        if (e.shift)
+                        if (selectedTerrains.Count > 0 && currentProfile != null)
                         {
-                            if (selectedTerrains.Count > 0 && currentProfile != null)
+                            var filter = BuildFilterSettings();
+                            var ov = BuildPlacementOverrides();
+                            VegetationGenerator.GenerateInBrushArea(selectedTerrains, currentProfile, hitPos, brush.size, filter, ov);
+                            for (int i = 0; i < extraProfiles.Count; i++)
                             {
-                                var filter = BuildFilterSettings();
-                                var ov = BuildPlacementOverrides();
-                                VegetationGenerator.GenerateInBrushArea(selectedTerrains, currentProfile, pos, brush.size, filter, ov);
-                                for (int i = 0; i < extraProfiles.Count; i++)
-                                {
-                                    var p = extraProfiles[i];
-                                    if (p == null || p.IsEmpty()) continue;
-                                    VegetationGenerator.GenerateInBrushArea(selectedTerrains, p, pos, brush.size, filter, ov);
-                                }
-                                MarkSceneDirty();
+                                var p = extraProfiles[i];
+                                if (p == null || p.IsEmpty()) continue;
+                                VegetationGenerator.GenerateInBrushArea(selectedTerrains, p, hitPos, brush.size, filter, ov);
                             }
-                            // 允许中键拖动摄像机：不吞掉鼠标中键事件
-                            if (e.button != 2) e.Use();
-                            return;
+                            MarkSceneDirty();
                         }
-                    }
-                    else if (mode == Mode.Paint)
-                    {
-                        // 选择第一个有效地形作为画布；若命中对象附近有地形，更优。
-                        var terrain = hit.collider.GetComponent<Terrain>();
-                        if (terrain == null)
-                        {
-                            // 尝试用选中列表中的靠近点的地形
-                            terrain = NearestTerrain(pos);
-                        }
-                        if (terrain != null)
-                        {
-                            // 仅左键绘制，右键擦除
-                            if (e.button == 1)
-                            {
-                                BrushPainter.Erase(terrain, pos, brush, eraseAll: true);
-                                MarkSceneDirty();
-                            }
-                            else if (e.button == 0)
-                            {
-                                VegetationPainterOnTerrain(terrain, pos);
-                            }
-                        }
-                        // 允许中键拖动摄像机：不吞掉鼠标中键事件
                         if (e.button != 2) e.Use();
                         return;
                     }
                 }
+                else if (mode == Mode.Paint)
+                {
+                    var terrain = hitTerrain != null ? hitTerrain : NearestTerrain(hitPos);
+                    if (terrain != null)
+                    {
+                        if (e.button == 1)
+                        {
+                            BrushPainter.Erase(terrain, hitPos, brush, eraseAll: true);
+                            MarkSceneDirty();
+                        }
+                        else if (e.button == 0)
+                        {
+                            VegetationPainterOnTerrain(terrain, hitPos);
+                        }
+                    }
+                    if (e.button != 2) e.Use();
+                    return;
+                }
             }
+        }
+
+        private bool TryGetTerrainHit(Ray ray, out Terrain terrain, out Vector3 pos, out Vector3 normal)
+        {
+            terrain = null;
+            pos = Vector3.zero;
+            normal = Vector3.up;
+            float bestT = float.MaxValue;
+            foreach (var t in Terrain.activeTerrains)
+            {
+                if (t == null) continue;
+                var col = t.GetComponent<TerrainCollider>();
+                if (col != null)
+                {
+                    if (col.Raycast(ray, out var hit, 10000f))
+                    {
+                        if (hit.distance < bestT)
+                        {
+                            bestT = hit.distance;
+                            terrain = t;
+                            pos = hit.point;
+                            if (TerrainUtils.TryGetHeightAndNormal(terrain, pos, out var h, out var n))
+                            {
+                                pos.y = h;
+                                normal = n;
+                            }
+                        }
+                    }
+                    continue;
+                }
+                float dy = ray.direction.y;
+                if (Mathf.Abs(dy) < 1e-5f) continue;
+                float planeY = t.transform.position.y;
+                float tt = (planeY - ray.origin.y) / dy;
+                if (tt <= 0f || tt >= bestT) continue;
+                var p = ray.origin + ray.direction * tt;
+                var size = t.terrainData.size;
+                var tp = t.transform.position;
+                if (p.x < tp.x || p.x > tp.x + size.x || p.z < tp.z || p.z > tp.z + size.z) continue;
+                if (TerrainUtils.TryGetHeightAndNormal(t, p, out var hh, out var nn))
+                {
+                    bestT = tt;
+                    terrain = t;
+                    pos = new Vector3(p.x, hh, p.z);
+                    normal = nn;
+                }
+            }
+            return terrain != null;
         }
 
         private void VegetationPainterOnTerrain(Terrain terrain, Vector3 center)
         {
             if (terrain == null || currentProfile == null || currentProfile.IsEmpty()) return; // 提前返回
             var ov = BuildPlacementOverrides();
-            BrushPainter.Paint(terrain, currentProfile, center, brush, rnd, ov);
-            for (int i = 0; i < extraProfiles.Count; i++)
+            if (brush.mixExtraProfiles)
             {
-                var p = extraProfiles[i];
-                if (p == null || p.IsEmpty()) continue;
-                BrushPainter.Paint(terrain, p, center, brush, rnd, ov);
+                var list = new List<Runtime.Profiles.VegetationProfile>();
+                list.Add(currentProfile);
+                for (int i = 0; i < extraProfiles.Count; i++)
+                {
+                    var p = extraProfiles[i];
+                    if (p == null || p.IsEmpty()) continue;
+                    list.Add(p);
+                }
+                BrushPainter.PaintMixed(terrain, list, center, brush, rnd, ov);
+            }
+            else
+            {
+                BrushPainter.Paint(terrain, currentProfile, center, brush, rnd, ov);
+                for (int i = 0; i < extraProfiles.Count; i++)
+                {
+                    var p = extraProfiles[i];
+                    if (p == null || p.IsEmpty()) continue;
+                    BrushPainter.Paint(terrain, p, center, brush, rnd, ov);
+                }
             }
             MarkSceneDirty();
         }
@@ -748,23 +814,23 @@ namespace MrTerrainPainter.Editor
 
         private void OnLostFocus()
         {
-            if (config != null && config.switchToGenerateOnLostFocus)
-            {
-                // 若控制页尚未构建，先构建
-                if (contralRoot == null)
-                {
-                    BuildContralSection();
-                }
-                // 切换到 Generate 标签并高亮，但允许手动继续绘制
-                //  LoadGenerateTab();
-                LoadPaintingTab();
-                var btnPainting = contralRoot?.Q<Button>("Painting");
-                var btnGenerate = contralRoot?.Q<Button>("Generate");
-                if (btnPainting != null && btnGenerate != null)
-                {
-                    SetTabActive(btnGenerate, btnPainting);
-                }
-            }
+            // if (config != null && config.switchToGenerateOnLostFocus)
+            // {
+            //     // 若控制页尚未构建，先构建
+            //     if (contralRoot == null)
+            //     {
+            //         BuildContralSection();
+            //     }
+            //     // 切换到 Generate 标签并高亮，但允许手动继续绘制
+            //     //  LoadGenerateTab();
+            //     LoadPaintingTab();
+            //     var btnPainting = contralRoot?.Q<Button>("Painting");
+            //     var btnGenerate = contralRoot?.Q<Button>("Generate");
+            //     if (btnPainting != null && btnGenerate != null)
+            //     {
+            //         SetTabActive(btnGenerate, btnPainting);
+            //     }
+            // }
         }
 
         private void MarkSceneDirty()

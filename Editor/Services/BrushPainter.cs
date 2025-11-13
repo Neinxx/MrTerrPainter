@@ -13,11 +13,21 @@ namespace MrTerrainPainter.Editor.Services
     public class BrushSettings
     {
         public BrushShape shape = BrushShape.Circle;
-        public float size = 5f; // 半径或半边长
-        public float strength = 1f; // 强度影响每次绘制数量
-        public float densityScale = 1f; // 与配方密度叠乘
-        public float hardness = 1f; // 0-1，影响边缘衰减
+        public float size = 5f;
+        public float strength = 1f;
+        public float densityScale = 1f;
+        public float hardness = 1f;
         public bool preview = true;
+        public AnimationCurve falloffCurve = AnimationCurve.Linear(0f, 1f, 1f, 0f);
+        public float minSpacingJitter = 0f;
+        public DistributionType distribution = DistributionType.Uniform;
+        public int strokeSeed = 0;
+        public int maxPoints = 1000;
+        public ClusterSettings cluster = new ClusterSettings { clusterCount = 10, childPerCluster = 5, clusterRadius = 2f, childJitter = 0.2f };
+        public bool mixItemsWeighted = true;
+        public bool limitPerItem = true;
+        public float globalSpacingFactor = 0f;
+        public bool mixExtraProfiles = false;
     }
 
     public static class BrushPainter
@@ -71,6 +81,33 @@ namespace MrTerrainPainter.Editor.Services
             }
         }
 
+        public static void DrawPreview(Vector3 center, Vector3 normal, BrushSettings bs)
+        {
+            if (bs == null || !bs.preview) return;
+            Handles.zTest = UnityEngine.Rendering.CompareFunction.LessEqual;
+            Handles.color = new Color(0.2f, 0.7f, 1f, 0.9f);
+            if (bs.shape == BrushShape.Circle)
+            {
+                const int segments = 64;
+                var pts = new Vector3[segments + 1];
+                for (int i = 0; i <= segments; i++)
+                {
+                    float a = (i / (float)segments) * Mathf.PI * 2f;
+                    var dir = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a));
+                    var tangent = Vector3.Normalize(Vector3.Cross(normal, Vector3.right));
+                    var bitangent = Vector3.Normalize(Vector3.Cross(normal, tangent));
+                    var v = center + (tangent * dir.x + bitangent * dir.z) * bs.size;
+                    pts[i] = v;
+                }
+                Handles.DrawAAPolyLine(4f, pts);
+            }
+            else
+            {
+                Vector3 half = new Vector3(bs.size, 0f, bs.size);
+                Handles.DrawWireCube(center, half * 2f);
+            }
+        }
+
         public static void Paint(Terrain terrain, VegetationProfile profile, Vector3 center, BrushSettings bs, System.Random rnd, VegetationGenerator.PlacementOverrides? ov = null)
         {
             if (terrain == null || profile == null || profile.IsEmpty()) return; // 提前返回
@@ -78,7 +115,6 @@ namespace MrTerrainPainter.Editor.Services
             if (td == null) return; // 提前返回
 
             float radius = bs.size;
-            // 绘制模式与生成模式统一：严格使用设置页映射的父节点，不再回退至地形容器
             var missingTypesLogged = new HashSet<Runtime.Profiles.PrefabType>();
 
             var items = profile.Items;
@@ -91,41 +127,168 @@ namespace MrTerrainPainter.Editor.Services
                 if (count <= 0) continue;
 
                 float spacing = Mathf.Max(item.minSpacing, 0.01f);
-                var grid = new Grid(spacing);
-
-                for (int i = 0; i < count; i++)
+                float jitter = Mathf.Max(bs.minSpacingJitter, 0f);
+                int seed = bs.strokeSeed != 0 ? bs.strokeSeed : profile.randomSeed;
+                var centerXZ = new Vector2(center.x, center.z);
+                List<Vector2> candidates = null;
+                switch (bs.distribution)
                 {
-                    Vector3 p = RandomPointInBrush(center, radius, bs.shape, rnd);
+                    case DistributionType.PoissonDisk:
+                        candidates = BrushEngine.SamplePoisson(centerXZ, radius, bs.shape, Mathf.Min(count, bs.maxPoints), spacing, jitter, seed + it);
+                        break;
+                    case DistributionType.Cluster:
+                        candidates = BrushEngine.SampleCluster(centerXZ, radius, bs.shape, bs.cluster, spacing, seed + it);
+                        break;
+                    case DistributionType.JitteredGrid:
+                        candidates = BrushEngine.SampleJittered(centerXZ, radius, bs.shape, spacing, jitter, rnd);
+                        break;
+                    default:
+                        candidates = BrushEngine.SampleUniform(centerXZ, radius, bs.shape, Mathf.Min(count, bs.maxPoints), rnd);
+                        break;
+                }
+                var grid = new Grid(spacing);
+                int placed = 0;
+                for (int ci = 0; ci < candidates.Count && placed < count; ci++)
+                {
+                    var c = candidates[ci];
+                    Vector3 p = new Vector3(c.x, center.y, c.y);
                     if (!TerrainUtils.IsWithinTerrainBounds(terrain, p)) continue;
                     if (!TerrainUtils.TryGetHeightAndNormal(terrain, p, out float h, out Vector3 n)) continue;
                     p.y = h;
                     float slope = TerrainUtils.ComputeSlope(n);
-
-                    // 边缘硬度衰减
                     float d = Vector2.Distance(new Vector2(p.x, p.z), new Vector2(center.x, center.z));
                     float t = Mathf.Clamp01(d / radius);
-                    float edgeFalloff = 1f - t; // 中心为1，边缘为0
-                    float acceptance = Mathf.Lerp(1f, edgeFalloff, Mathf.Clamp01(bs.hardness));
+                    float edge = 1f - t;
+                    float acceptance = bs.falloffCurve != null ? bs.falloffCurve.Evaluate(1f - t) : Mathf.Lerp(1f, edge, Mathf.Clamp01(bs.hardness));
                     if (rnd.NextDouble() > acceptance) continue;
-
                     if (!MatchTerrain(item, h - terrain.transform.position.y, slope, ov)) continue;
-
-                    // 条目级最小间距约束（XZ平面）
                     var p2 = new Vector2(p.x - terrain.transform.position.x, p.z - terrain.transform.position.z);
+                    if (bs.globalSpacingFactor > 0f)
+                    {
+                        float gspace = spacing * bs.globalSpacingFactor;
+                        if (gspace > 0f && grid.HasNearby(p2, gspace)) continue;
+                    }
                     if (grid.HasNearby(p2, spacing)) continue;
                     grid.Add(p2);
-
                     var targetParent = VegetationGenerator.ResolveTargetParent(terrain, item);
                     if (targetParent == null)
                     {
                         if (!missingTypesLogged.Contains(item.prefabType))
                         {
                             missingTypesLogged.Add(item.prefabType);
-                            Debug.LogError($"未找到类型 {item.prefabType} 的父节点映射，请在设置窗口绑定对应的 Object + PrefabType。");
+                            Debug.LogError("未找到类型 " + item.prefabType + " 的父节点映射，请在设置窗口绑定对应的 Object + PrefabType。");
                         }
-                        continue; // 无父节点：报错并跳过实例创建
+                        continue;
                     }
                     CreateInstance(item, p, n, terrain, it, targetParent, rnd, ov);
+                    placed++;
+                }
+            }
+        }
+
+        public static void PaintMixed(Terrain terrain, IReadOnlyList<VegetationProfile> profiles, Vector3 center, BrushSettings bs, System.Random rnd, VegetationGenerator.PlacementOverrides? ov = null)
+        {
+            if (terrain == null || profiles == null || profiles.Count == 0) return;
+            var td = terrain.terrainData;
+            if (td == null) return;
+            var allItems = new List<VegetationItem>();
+            for (int pi = 0; pi < profiles.Count; pi++)
+            {
+                var p = profiles[pi];
+                if (p == null || p.IsEmpty()) continue;
+                allItems.AddRange(p.Items.Where(it => it != null && it.IsValid()));
+            }
+            if (allItems.Count == 0) return;
+            int seed = bs.strokeSeed != 0 ? bs.strokeSeed : profiles[0].randomSeed;
+            float radius = bs.size;
+            var centerXZ = new Vector2(center.x, center.z);
+            int totalDesired = 0;
+            var perItemLimit = new Dictionary<int, int>();
+            for (int i = 0; i < allItems.Count; i++)
+            {
+                var it = allItems[i];
+                int c = Mathf.Clamp(Mathf.RoundToInt(it.baseDensity * bs.densityScale * bs.strength * 10f), 0, 500);
+                perItemLimit[i] = c;
+                totalDesired += c;
+            }
+            int candidateCount = Mathf.Min(bs.maxPoints, Mathf.Max(1, totalDesired));
+            List<Vector2> candidates;
+            switch (bs.distribution)
+            {
+                case DistributionType.PoissonDisk:
+                {
+                    float minSpacing = allItems.Count > 0 ? Mathf.Min(allItems.Min(it => Mathf.Max(it.minSpacing, 0.01f)), bs.size) : 0.5f;
+                    candidates = BrushEngine.SamplePoisson(centerXZ, radius, bs.shape, candidateCount, minSpacing, bs.minSpacingJitter, seed);
+                    break;
+                }
+                case DistributionType.Cluster:
+                    candidates = BrushEngine.SampleCluster(centerXZ, radius, bs.shape, bs.cluster, 0.01f, seed);
+                    break;
+                case DistributionType.JitteredGrid:
+                    candidates = BrushEngine.SampleJittered(centerXZ, radius, bs.shape, 1f, bs.minSpacingJitter, rnd);
+                    break;
+                default:
+                    candidates = BrushEngine.SampleUniform(centerXZ, radius, bs.shape, candidateCount, rnd);
+                    break;
+            }
+            var missingTypesLogged = new HashSet<Runtime.Profiles.PrefabType>();
+            var itemGrids = new Dictionary<int, Grid>();
+            Grid globalGrid = null;
+            float globalFactor = Mathf.Max(0f, bs.globalSpacingFactor);
+            if (globalFactor > 0f) globalGrid = new Grid(globalFactor);
+            var weighted = BuildWeightedList(allItems);
+            for (int ci = 0; ci < candidates.Count; ci++)
+            {
+                var c = candidates[ci];
+                Vector3 p = new Vector3(c.x, center.y, c.y);
+                if (!TerrainUtils.IsWithinTerrainBounds(terrain, p)) continue;
+                if (!TerrainUtils.TryGetHeightAndNormal(terrain, p, out float h, out Vector3 n)) continue;
+                p.y = h;
+                float slope = TerrainUtils.ComputeSlope(n);
+                float d = Vector2.Distance(new Vector2(p.x, p.z), new Vector2(center.x, center.z));
+                float t = Mathf.Clamp01(d / radius);
+                float acceptance = bs.falloffCurve != null ? bs.falloffCurve.Evaluate(1f - t) : 1f;
+                if (rnd.NextDouble() > acceptance) continue;
+                int tries = 3;
+                while (tries-- > 0)
+                {
+                    if (weighted.Count == 0) break;
+                    int pick = rnd.Next(0, weighted.Count);
+                    var item = weighted[pick];
+                    int idx = allItems.IndexOf(item);
+                    if (idx < 0) break;
+                    if (bs.limitPerItem && perItemLimit.TryGetValue(idx, out var remain) && remain <= 0)
+                    {
+                        continue;
+                    }
+                    var p2 = new Vector2(p.x - terrain.transform.position.x, p.z - terrain.transform.position.z);
+                    if (globalGrid != null && globalFactor > 0f)
+                    {
+                        float gspace = Mathf.Max(item.minSpacing, 0.01f) * globalFactor;
+                        if (gspace > 0f && globalGrid.HasNearby(p2, gspace)) { continue; }
+                    }
+                    if (!itemGrids.TryGetValue(idx, out var grid))
+                    {
+                        grid = new Grid(Mathf.Max(item.minSpacing, 0.01f));
+                        itemGrids[idx] = grid;
+                    }
+                    if (grid.HasNearby(p2, Mathf.Max(item.minSpacing, 0.01f))) { continue; }
+                    if (!MatchTerrain(item, h - terrain.transform.position.y, slope, ov)) { continue; }
+                    var targetParent = VegetationGenerator.ResolveTargetParent(terrain, item);
+                    if (targetParent == null)
+                    {
+                        if (!missingTypesLogged.Contains(item.prefabType)) missingTypesLogged.Add(item.prefabType);
+                        continue;
+                    }
+                    CreateInstance(item, p, n, terrain, idx, targetParent, rnd, ov);
+                    grid.Add(p2);
+                    if (globalGrid != null && globalFactor > 0f)
+                    {
+                        float gspace = Mathf.Max(item.minSpacing, 0.01f) * globalFactor;
+                        if (gspace > 0f) globalGrid.Add(p2);
+                    }
+                    if (bs.limitPerItem && perItemLimit.ContainsKey(idx)) perItemLimit[idx] = Mathf.Max(0, perItemLimit[idx] - 1);
+                    break;
                 }
             }
         }

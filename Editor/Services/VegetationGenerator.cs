@@ -227,13 +227,14 @@ namespace MrTerrainPainter.Editor.Services
 
                     Vector3 sample = new Vector3(worldPos.x + fx, worldPos.y, worldPos.z + fz);
 
-                    // 噪声驱动的密度控制（严格按灰度作为接受概率）
                     bool noiseEnabled = filter != null && filter.noise != null && filter.noise.enabled;
                     float noiseAcceptance = 1f;
                     if (noiseEnabled)
                     {
                         float nv = FractalNoise(new Vector2(sample.x, sample.z), filter.noise);
-                        noiseAcceptance = filter.noise.invert ? (1f - nv) : nv;
+                        if (filter.noise.invert) nv = 1f - nv;
+                        if (nv < Mathf.Clamp01(filter.noise.threshold)) continue;
+                        noiseAcceptance = nv;
                         if (rnd.NextDouble() > noiseAcceptance) continue;
                     }
 

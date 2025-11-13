@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.UIElements;
 using MrTerrainPainter.Editor.Views;
 using static MrTerrainPainter.Editor.Services.VegetationGenerator;
+using UnityEditor.UIElements;
 
 namespace MrTerrainPainter.Editor
 {
@@ -12,8 +13,6 @@ namespace MrTerrainPainter.Editor
     {
         private void BuildContralSection()
         {
-            // 若地形列表为空，则不构建控制页（隐藏依赖地形的功能）
-            if (terrainListUIData == null || terrainListUIData.Count == 0) return; // 提前返回
             if (contralRoot != null) return; // 已加载则提前返回
             contralRoot = InstantiatePage(uxmlContral);
             pageContainer.Add(contralRoot);
@@ -23,7 +22,6 @@ namespace MrTerrainPainter.Editor
             contralTabContent = contralRoot.Q<VisualElement>("TabContent");
             if (contralTabContent == null)
             {
-                // 兜底容器
                 contralTabContent = new VisualElement();
                 contralRoot.Add(contralTabContent);
             }
@@ -59,6 +57,7 @@ namespace MrTerrainPainter.Editor
             if (contralRoot == null) return;
             var btnPainting = contralRoot.Q<Button>("Painting");
             var btnGenerate = contralRoot.Q<Button>("Generate");
+            var btnSettings = contralRoot.Q<Button>("Settings");
             if (btnPainting != null)
                 btnPainting.clicked += () =>
                 {
@@ -88,6 +87,13 @@ namespace MrTerrainPainter.Editor
                     SetTabActive(btnGenerate, btnPainting);
                     contralTabContent?.Clear();
                     LoadGenerateTab();
+                };
+            if (btnSettings != null)
+                btnSettings.clicked += () =>
+                {
+                    SetTabActive(btnSettings, btnPainting);
+                    contralTabContent?.Clear();
+                    LoadSettingsTab();
                 };
 
             // CreateNewVegetation 按钮
@@ -121,6 +127,27 @@ namespace MrTerrainPainter.Editor
                 BuildContralSection = null
             });
 
+        }
+
+        public void OpenPaintingSettings()
+        {
+            if (contralRoot == null)
+            {
+                BuildContralSection();
+            }
+            if (contralRoot != null)
+            {
+                var btnPainting = contralRoot.Q<Button>("Painting");
+                var btnGenerate = contralRoot.Q<Button>("Generate");
+                if (btnPainting != null && btnGenerate != null) SetTabActive(btnPainting, btnGenerate);
+                if (contralTabContent == null)
+                {
+                    contralTabContent = new VisualElement();
+                    contralRoot.Add(contralTabContent);
+                }
+                contralTabContent.Clear();
+                LoadPaintingTab();
+            }
         }
 
         private void SetTabActive(Button active, Button inactive)
@@ -160,7 +187,137 @@ namespace MrTerrainPainter.Editor
             // 绑定生成与清除按钮事件
             BindGenerateActions(genParam);
 
+            // 绑定地形列表与Scan/Add/Clear到Generate页
+            var startActions = new StartActionsView(genParam);
+            startActions.BindAll(new StartActionsView.StartActionsCallbacks
+            {
+                ScanSceneTerrains = () => terrainController.ScanSceneTerrains(terrainListUIData, scannedTerrainNames),
+                ClearTerrainUIList = () => terrainController.ClearTerrainUIList(terrainListUIData),
+                GetSelectionObjects = () => Selection.gameObjects,
+                ClearTerrainLists = () => terrainController.ClearTerrainLists(selectedTerrains, terrainListUIData, scannedTerrainNames),
+                AddTerrainToLists = t => terrainController.AddTerrainToLists(t, selectedTerrains, terrainListUIData, scannedTerrainNames),
+                RefreshStartListUI = () => { },
+                RefreshContralListUI = () =>
+                {
+                    var genTerrainListView = new TerrainListView(genParam);
+                    genTerrainListView.Refresh(terrainListUIData);
+                },
+                BuildContralSection = null
+            });
+
             mode = Mode.Generate;
+        }
+
+        private void LoadSettingsTab()
+        {
+            var root = contralTabContent;
+            if (root == null) return;
+            var settingsUxml = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Assets/MrTerrPainterV1/Editor/MrTerrainPainterSettings.uxml");
+            root.Clear();
+            VisualElement page = settingsUxml != null ? settingsUxml.Instantiate() : new VisualElement();
+            root.Add(page);
+
+            var tfRecipePath = page.Q<TextField>("RecipeGenerationPath");
+            if (tfRecipePath != null)
+            {
+                tfRecipePath.SetValueWithoutNotify(config.recipeGenerationPath);
+                tfRecipePath.RegisterValueChangedCallback(e => { config.recipeGenerationPath = e.newValue; EditorUtility.SetDirty(config); });
+            }
+            var toggleShowPool = page.Q<Toggle>("ShowPool");
+            if (toggleShowPool != null)
+            {
+                toggleShowPool.SetValueWithoutNotify(VegetationPool.ShowInHierarchy);
+                toggleShowPool.RegisterValueChangedCallback(e =>
+                {
+                    VegetationPool.ShowInHierarchy = e.newValue;
+                    config.showPoolInHierarchy = e.newValue;
+                    EditorUtility.SetDirty(config);
+                });
+            }
+
+            var fold = page.Q<Foldout>("MappingList");
+            var templateRow = fold != null ? fold.Q<VisualElement>("Mapping") : null;
+            if (fold != null && templateRow != null)
+            {
+                int existingCount = Mathf.Max(config.objectList != null ? config.objectList.Length : 0,
+                                              config.objectTypeList != null ? config.objectTypeList.Length : 0);
+                if (existingCount <= 0) existingCount = 1;
+                for (int i = 0; i < existingCount; i++)
+                {
+                    var row = i == 0 ? templateRow : (settingsUxml != null ? settingsUxml.Instantiate().Q<VisualElement>("Mapping") : null);
+                    if (row == null) continue;
+                    if (i != 0) { row.RemoveFromHierarchy(); fold.Add(row); }
+                    var of = row.Q<ObjectField>("ObjectField");
+                    if (of != null)
+                    {
+                        of.objectType = typeof(Transform);
+                        of.allowSceneObjects = true;
+                        var initialGo = (config.objectList != null && i < config.objectList.Length) ? config.objectList[i] : null;
+                        var initialTf = initialGo != null ? initialGo.transform : null;
+                        of.SetValueWithoutNotify(initialTf);
+                        of.RegisterValueChangedCallback(e =>
+                        {
+                            var list = config.objectList?.ToList() ?? new System.Collections.Generic.List<GameObject>();
+                            while (i >= list.Count) list.Add(null);
+                            list[i] = (e.newValue as Transform)?.gameObject;
+                            config.objectList = list.ToArray();
+                            EditorUtility.SetDirty(config);
+                        });
+                    }
+                    var typeField = row.Q<EnumField>("PrefabType");
+                    if (typeField != null)
+                    {
+                        var initialType = (config.objectTypeList != null && i < config.objectTypeList.Length)
+                            ? config.objectTypeList[i]
+                            : config.defaultGenerationType;
+                        typeField.Init(initialType);
+                        typeField.SetValueWithoutNotify(initialType);
+                        typeField.RegisterValueChangedCallback(e =>
+                        {
+                            var types = config.objectTypeList?.ToList() ?? new System.Collections.Generic.List<Runtime.Profiles.PrefabType>();
+                            while (i >= types.Count) types.Add(config.defaultGenerationType);
+                            types[i] = (Runtime.Profiles.PrefabType)e.newValue;
+                            config.objectTypeList = types.ToArray();
+                            EditorUtility.SetDirty(config);
+                        });
+                    }
+                }
+                var btnAdd = page.Q<Button>("Add");
+                var btnDelete = page.Q<Button>("Delete");
+                if (btnAdd != null)
+                {
+                    btnAdd.clicked += () =>
+                    {
+                        var tree = settingsUxml != null ? settingsUxml.Instantiate() : null;
+                        var row = tree != null ? tree.Q<VisualElement>("Mapping") : null;
+                        if (row == null) return;
+                        row.RemoveFromHierarchy();
+                        fold.Add(row);
+                        var list = config.objectList?.ToList() ?? new System.Collections.Generic.List<GameObject>();
+                        list.Add(null);
+                        config.objectList = list.ToArray();
+                        var types = config.objectTypeList?.ToList() ?? new System.Collections.Generic.List<Runtime.Profiles.PrefabType>();
+                        types.Add(config.defaultGenerationType);
+                        config.objectTypeList = types.ToArray();
+                        EditorUtility.SetDirty(config);
+                    };
+                }
+                if (btnDelete != null)
+                {
+                    btnDelete.clicked += () =>
+                    {
+                        var rows = fold.Query<VisualElement>("Mapping").ToList();
+                        if (rows.Count == 0) return;
+                        var last = rows[rows.Count - 1];
+                        fold.Remove(last);
+                        if (config.objectList != null && config.objectList.Length > 0)
+                            config.objectList = config.objectList.Take(config.objectList.Length - 1).ToArray();
+                        if (config.objectTypeList != null && config.objectTypeList.Length > 0)
+                            config.objectTypeList = config.objectTypeList.Take(config.objectTypeList.Length - 1).ToArray();
+                        EditorUtility.SetDirty(config);
+                    };
+                }
+            }
         }
 
         /// <summary>

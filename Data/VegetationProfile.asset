@@ -15,7 +15,7 @@ MonoBehaviour:
   items:
   - prefab: {fileID: 8851015596058497697, guid: c1ae2fa300555364093d8ff1630a1756,
       type: 3}
-    weight: 0.636
+    weight: 0.117
     prefabType: 2
     uniformScaleRange: {x: 1.2954776, y: 4.210847}
     yRotationRange: {x: 0, y: 360}
@@ -26,14 +26,25 @@ MonoBehaviour:
     alignToTerrainNormal: 1
   - prefab: {fileID: 4767550665493517415, guid: dfe64c7344248ab43aeb5cfdf74831ac,
       type: 3}
-    weight: 0.855
-    prefabType: 0
-    uniformScaleRange: {x: 1.8836858, y: 3.9003022}
+    weight: 0.015
+    prefabType: 2
+    uniformScaleRange: {x: 1.420723, y: 3.4373393}
     yRotationRange: {x: 0, y: 30}
     heightRange: {x: 0, y: 1000}
     slopeRange: {x: 0, y: 90}
-    baseDensity: 3.22
-    minSpacing: 5.98
+    baseDensity: 0.29
+    minSpacing: 8.94
+    alignToTerrainNormal: 1
+  - prefab: {fileID: 5177702211549093989, guid: 3ca2a6659fde875498f107a4299d52a1,
+      type: 3}
+    weight: 0.047
+    prefabType: 0
+    uniformScaleRange: {x: 0.537037, y: 2.7592592}
+    yRotationRange: {x: 0, y: 30}
+    heightRange: {x: 0, y: 1000}
+    slopeRange: {x: 0, y: 90}
+    baseDensity: 6.79
+    minSpacing: 9.56
     alignToTerrainNormal: 1
   initialized: 1
   randomSeed: 12345

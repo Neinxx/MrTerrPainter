@@ -4,9 +4,10 @@
         <ui:VisualElement name="TabBar" style="flex-direction: row; justify-content: space-between; align-items: center;">
             <ui:Button text="Painting" display-tooltip-when-elided="true" name="Painting" style="flex-shrink: 1; flex-grow: 1;" />
             <ui:Button text="Generate" display-tooltip-when-elided="true" name="Generate" style="flex-shrink: 1; flex-grow: 1;" />
+            <ui:Button text="Settings" display-tooltip-when-elided="true" name="Settings" style="flex-shrink: 1; flex-grow: 1;" />
         </ui:VisualElement>
         <!-- TerrainList 容器：供 TerrainListView 绑定与刷新（与 Start 页保持一致） -->
-        <ui:VisualElement class="mt-frame">
+        <ui:VisualElement class="mt-frame" style="display:none;">
             <ui:Foldout text="TerrainList" name="TerrainList" />
         </ui:VisualElement>
         <ui:VisualElement style="flex-grow: 1;">
