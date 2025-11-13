@@ -48,7 +48,7 @@ namespace MrTerrainPainter.Editor.Views
             }
             else
             {
-                Debug.Log("检查Uxml元素拼写");
+                return;
             }
         }
 

@@ -9,7 +9,7 @@ namespace MrTerrainPainter.Editor.Tools
         {
             get
             {
-                if (_brush == null) _brush = new BrushSettings();
+                _brush ??= new BrushSettings();
                 return _brush;
             }
         }

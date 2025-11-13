@@ -294,27 +294,6 @@ namespace MrTerrainPainter.Editor.Services
             return Mathf.Clamp01(sum / norm);
         }
 
-        // 贴图过滤已移除
-
-        private static List<VegetationItem> BuildWeightedList(IReadOnlyList<VegetationItem> items)
-        {
-            var list = new List<VegetationItem>();
-            if (items == null || items.Count == 0) return list; // 提前返回
-            foreach (var it in items)
-            {
-                if (it == null || !it.IsValid()) continue;
-                int count = Mathf.Clamp(Mathf.RoundToInt(it.weight * 10f), 1, 100);
-                for (int i = 0; i < count; i++) list.Add(it);
-            }
-            return list;
-        }
-
-        private static int PickIndex(List<VegetationItem> weighted, System.Random rnd)
-        {
-            if (weighted == null || weighted.Count == 0) return -1; // 提前返回
-            return rnd.Next(0, weighted.Count);
-        }
-
         private static bool MatchTerrain(VegetationItem item, float heightLocal, float slope, PlacementOverrides? ov)
         {
             if (item == null) return false;
@@ -325,18 +304,8 @@ namespace MrTerrainPainter.Editor.Services
             return true;
         }
 
-        private static Transform GetOrCreateContainer(Terrain terrain)
-        {
-            var name = $"Vegetation_{terrain.name}";
-            var t = terrain.transform.Find(name);
-            if (t != null) return t;
-            var go = new GameObject(name);
-            go.transform.SetParent(terrain.transform, false);
-            go.transform.localPosition = Vector3.zero;
-            return go.transform;
-        }
-
         // —— 父节点解析：仅使用设置页的 Object + PrefabType 映射（不回退地形容器） ——
+
         public static Transform ResolveTargetParent(Terrain terrain, VegetationItem item)
         {
             if (terrain == null || item == null) return null; // 提前返回
@@ -349,11 +318,12 @@ namespace MrTerrainPainter.Editor.Services
                      c.objectList.Length > 0);
             if (config != null && config.objectTypeList != null && config.objectList != null)
             {
-                int typeCount = config.objectTypeList.Length;
-                int objCount = config.objectList.Length;
-                // 从后往前匹配：优先采用用户最近添加的映射
-                for (int i = Mathf.Min(typeCount, objCount) - 1; i >= 0; i--)
+                int maxCount = Mathf.Max(config.objectTypeList.Length, config.objectList.Length);
+                for (int i = maxCount - 1; i >= 0; i--)
                 {
+                    var hasType = i < config.objectTypeList.Length;
+                    var hasObj = i < config.objectList.Length;
+                    if (!hasType || !hasObj) continue;
                     if (config.objectTypeList[i] != item.prefabType) continue;
                     var go = config.objectList[i];
                     if (go == null) continue;
@@ -365,12 +335,7 @@ namespace MrTerrainPainter.Editor.Services
             return null;
         }
 
-        private static float SampleRange(Vector2 range, System.Random rnd)
-        {
-            return Mathf.Lerp(range.x, range.y, (float)rnd.NextDouble());
-        }
-
-        private static void CreateInstance(MrTerrainPainter.Runtime.Profiles.VegetationItem item, Vector3 pos, Vector3 normal, Terrain terrain, int itemIndex, Transform parent, System.Random rnd, PlacementOverrides? ov)
+        private static void CreateInstance(VegetationItem item, Vector3 pos, Vector3 normal, Terrain terrain, int itemIndex, Transform parent, System.Random rnd, PlacementOverrides? ov)
         {
             if (item.prefab == null) return; // 提前返回
             // 优先复用对象池，避免大量实例化导致卡顿

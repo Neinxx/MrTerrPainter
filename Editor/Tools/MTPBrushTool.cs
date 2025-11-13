@@ -13,6 +13,14 @@ namespace MrTerrainPainter.Editor.Tools
         private System.Random rnd;
         private Vector3 lastPos;
         private Vector3 lastNormal = Vector3.up;
+        public override void OnActivated()
+        {
+            var win = Resources.FindObjectsOfTypeAll<MrTerrainPainterWindow>().FirstOrDefault();
+            if (win == null)
+            {
+                MrTerrainPainterWindow.Open();
+            }
+        }
 
         public override void OnToolGUI(EditorWindow window)
         {

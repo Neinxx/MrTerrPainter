@@ -20,7 +20,7 @@ namespace MrTerrainPainter.Editor
         private enum Page { Start, Contral, Generate, Paint }
         private enum Mode { Generate, Paint, Erase }
 
-        private readonly List<Terrain> selectedTerrains = new();
+        public readonly List<Terrain> selectedTerrains = new();
         private VegetationProfile currentProfile;
         private Mode mode = Mode.Generate;
 
@@ -43,13 +43,13 @@ namespace MrTerrainPainter.Editor
         // 预制体缩略图多选集合（当前 Profile 范围内）
         private readonly HashSet<int> selectedThumbIndices = new();
 
-        private MrTerrainPainterConfig config;
+        public MrTerrainPainterConfig config;
 
         // 模块化：控制器与状态
         private EditorState editorState;
         private IRefreshController refreshController;
         private IPrefabPickerController prefabPicker;
-        private TerrainController terrainController;
+        public TerrainController terrainController;
         private PrefabAssignmentController prefabAssignment;
         // 视图：Contral 页列表视图
         private ContralView contralView;
@@ -67,6 +67,7 @@ namespace MrTerrainPainter.Editor
         private VisualTreeAsset uxmlContral;
         private VisualTreeAsset uxmlGenerate;
         private VisualTreeAsset uxmlPaint;
+        private VisualTreeAsset uxmlVegetationShared;
         private VisualTreeAsset uxmlVegetationProfileRow; // VegetationProfile 列表行模板（UXML）
         private VisualTreeAsset uxmlVegetationProfilePrefabIcon; // 预制体缩略图图标（UXML）
         private VisualTreeAsset uxmlVegetationProfileDraggableArea; // 可拖拽新建区域（UXML）
@@ -76,6 +77,8 @@ namespace MrTerrainPainter.Editor
 
         private VisualElement contralTabContent;
         private Page page = Page.Start;
+        private bool refreshingUI;
+        private bool contralBindingsInitialized;
 
         // Contral 页面命名控件绑定
 
@@ -99,21 +102,11 @@ namespace MrTerrainPainter.Editor
         public static void Open()
         {
             var cfg = ConfigTools.LoadOrCreateAsset();
-            if (!ConfigTools.IsComplete(cfg, out var reason))
-            {
-                MrTerrainPainterSettingsWindow.Open();
-                EditorUtility.DisplayDialog("配置不完整", reason + "\n请在设置窗口补齐配置。", "确定");
-                return;
-            }
             var win = GetWindow<MrTerrainPainterWindow>(false, "Mr Terrain Painter");
             win.Show();
         }
 
-        [MenuItem("Tools/MTP Settings")]
-        public static void OpenSettingsMenu()
-        {
-            MrTerrainPainterSettingsWindow.Open();
-        }
+
 
         // 重新扫描并刷新 VegetationProfile 列表与相关 UI
         private void ReloadAvailableProfiles()
@@ -184,6 +177,7 @@ namespace MrTerrainPainter.Editor
             uxmlContral = config.controlUxml;
             uxmlGenerate = config.generateUxml;
             uxmlPaint = config.paintUxml;
+            uxmlVegetationShared = config.vegetationSharedUxml;
             uxmlVegetationProfileRow = config.vegetationProfileRowUxml;
             uxmlVegetationProfilePrefabIcon = config.prefabIconUxml;
             uxmlVegetationProfileDraggableArea = config.draggableAreaUxml;
@@ -361,20 +355,28 @@ namespace MrTerrainPainter.Editor
         }
 
         // —— Profile SO 资产操作 ——
-        private const string DataFolderPath = "Assets/MrTerrainPainter/Data";
+        private string DataFolderPath => !string.IsNullOrEmpty(config?.recipeGenerationPath)
+            ? config.recipeGenerationPath
+            : "Assets/MrTerrainPainter/Data";
 
         private void EnsureDataFolderExists()
         {
-            // 确保 Assets/MrTerrainPainter/Data 目录存在
-            if (!AssetDatabase.IsValidFolder(DataFolderPath))
+            var path = DataFolderPath.Replace("\\", "/");
+            if (AssetDatabase.IsValidFolder(path)) return;
+            var segments = path.Split('/');
+            if (segments.Length < 2) return;
+            string current = segments[0];
+            for (int i = 1; i < segments.Length; i++)
             {
-                if (!AssetDatabase.IsValidFolder("Assets/MrTerrainPainter"))
+                string next = segments[i];
+                string combined = current + "/" + next;
+                if (!AssetDatabase.IsValidFolder(combined))
                 {
-                    AssetDatabase.CreateFolder("Assets", "MrTerrainPainter");
+                    AssetDatabase.CreateFolder(current, next);
                 }
-                AssetDatabase.CreateFolder("Assets/MrTerrainPainter", "Data");
-                AssetDatabase.Refresh();
+                current = combined;
             }
+            AssetDatabase.Refresh();
         }
 
         private void CreateNewVegetationProfileAsset()
@@ -442,7 +444,7 @@ namespace MrTerrainPainter.Editor
             return items[selectedItemIndex];
         }
 
-        private void UpdatePropertyPanelFromSelectedItem()
+        private void Legacy_UpdatePropertyPanelFromSelectedItem()
         {
             // 交由视图刷新控件状态，窗口仅维护当前预制体引用
             propertyPanelView?.UpdateFromSelectedItem();
@@ -450,33 +452,44 @@ namespace MrTerrainPainter.Editor
             currentPrefab = item != null ? item.prefab : null;
         }
 
-        private void RefreshVegetationListUI()
+
+
+        private void Legacy_RefreshVegetationListUI()
         {
             if (uiVegetationList == null) return;
-            // 刷新 VegetationProfile 列表
+            if (refreshingUI)
+            {
+                EditorApplication.delayCall += RefreshVegetationListUI;
+                return;
+            }
+            refreshingUI = true;
             uiVegetationList.itemsSource = availableProfiles;
             uiVegetationList.Rebuild();
+            refreshingUI = false;
         }
 
-        private void RefreshPreviewListUI()
+        private void Legacy_RefreshPreviewListUI()
         {
             if (uiPreviewPrefabList == null) return;
+            if (refreshingUI)
+            {
+                EditorApplication.delayCall += RefreshPreviewListUI;
+                return;
+            }
+            refreshingUI = true;
             uiPreviewPrefabList.Clear();
-            // 自动清理当前 Profile 中的空项（委派到控制器）
             if (currentProfile != null)
             {
                 prefabAssignment?.CleanNullPrefabItems(currentProfile);
             }
             var items = GetProfileItemsSnapshot();
-            // 保证选中索引有效，避免高亮失效
             selectedItemIndex = Mathf.Clamp(selectedItemIndex, 0, Mathf.Max(0, items.Count - 1));
             for (int i = 0; i < items.Count; i++)
             {
                 var it = items[i];
                 var box = new VisualElement();
                 box.AddToClassList("preview-item");
-                box.pickingMode = PickingMode.Position; // 保证父容器可接收点击
-
+                box.pickingMode = PickingMode.Position;
                 var img = new Image();
                 img.AddToClassList("preview-item__image");
                 Texture2D tex = null;
@@ -486,19 +499,13 @@ namespace MrTerrainPainter.Editor
                 }
                 img.image = tex;
                 box.Add(img);
-
                 var index = i;
-                // 左键选择：使用 PointerDown 提高兼容性
+                // 左键选择：使用 PointerDown 提高兼容性（不重建列表，避免递归布局）
                 box.RegisterCallback<PointerDownEvent>(evt =>
                 {
                     if (evt.button == 0)
                     {
-                        selectedItemIndex = index;
-                        currentPrefab = it.prefab;
-                        UpdatePropertyPanelFromSelectedItem();
-                        RefreshVegetationListUI();
-                        RefreshPreviewListUI();
-                        uiPreviewPrefabList.MarkDirtyRepaint();
+                        SetSelectedThumbIndex(index);
                         evt.StopPropagation();
                     }
                 });
@@ -507,12 +514,7 @@ namespace MrTerrainPainter.Editor
                 {
                     if (evt.button == 0)
                     {
-                        selectedItemIndex = index;
-                        currentPrefab = it.prefab;
-                        UpdatePropertyPanelFromSelectedItem();
-                        RefreshVegetationListUI();
-                        RefreshPreviewListUI();
-                        uiPreviewPrefabList.MarkDirtyRepaint();
+                        SetSelectedThumbIndex(index);
                         evt.StopPropagation();
                     }
                 });
@@ -526,7 +528,28 @@ namespace MrTerrainPainter.Editor
                         menu.AddItem(new GUIContent("删除"), false, () =>
                         {
                             prefabAssignment?.RemoveItemAt(index);
+                            EditorApplication.delayCall += () =>
+                            {
+                                RefreshVegetationListUI();
+                                RefreshPreviewListUI();
+                            };
                         });
+                        var enumValues = System.Enum.GetValues(typeof(MrTerrainPainter.Runtime.Profiles.PrefabType));
+                        foreach (MrTerrainPainter.Runtime.Profiles.PrefabType val in enumValues)
+                        {
+                            var tname = val.ToString();
+                            bool isCurrent = it != null && it.prefabType == val;
+                            menu.AddItem(new GUIContent($"类型/{tname}"), isCurrent, () =>
+                            {
+                                prefabAssignment?.SetItemType(currentProfile, index, val);
+                                if (currentProfile != null) EditorUtility.SetDirty(currentProfile);
+                                // 仅更新属性面板与当前缩略图标记，避免重建列表引发递归布局
+                                EditorApplication.delayCall += () =>
+                                {
+                                    SetSelectedThumbIndex(index);
+                                };
+                            });
+                        }
                         menu.ShowAsContext();
                         evt.StopPropagation();
                     }
@@ -540,6 +563,7 @@ namespace MrTerrainPainter.Editor
 
                 uiPreviewPrefabList.Add(box);
             }
+            refreshingUI = false;
         }
 
 
@@ -563,11 +587,11 @@ namespace MrTerrainPainter.Editor
             }
         }
 
-        private readonly List<string> scannedTerrainNames = new();
+        public readonly List<string> scannedTerrainNames = new();
         // 用于 UI 展示的地形引用列表（Foldout 子节点 ObjectField）
-        private readonly List<Terrain> terrainListUIData = new();
+        public readonly List<Terrain> terrainListUIData = new();
 
-        private void PopulateTerrianListUI(VisualElement root)
+        private void Legacy_PopulateTerrianListUI(VisualElement root)
         {
             if (root == null) return;
 

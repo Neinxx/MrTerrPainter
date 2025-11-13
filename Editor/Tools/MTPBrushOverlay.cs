@@ -1,22 +1,29 @@
 using System.Linq;
 using MrTerrainPainter.Editor.Services;
-using System.Linq;
 using UnityEditor;
 using UnityEditor.Overlays;
 using UnityEngine;
 using UnityEngine.UIElements;
+using UnityEditor.EditorTools;
 
 namespace MrTerrainPainter.Editor.Tools
 {
     [Overlay(typeof(SceneView), "MTP Brush")]
     public class MTPBrushOverlay : Overlay
     {
+        private bool subscribed;
+        private bool ensuredWindow;
         private const string AssetPath = "Assets/MrTerrPainterV1/Editor/MTPBrushOverlay.uxml";
 
 
 
         public override VisualElement CreatePanelContent()
         {
+            if (!subscribed)
+            {
+                subscribed = true;
+                EditorApplication.update += UpdateVisibility;
+            }
             var cfg = MrTerrainPainter.Editor.Config.ConfigTools.LoadOrCreateAsset();
             var vt = cfg.brushOverlayUxml ?? AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(AssetPath);
             var root = vt != null ? vt.Instantiate() : new VisualElement();
@@ -53,6 +60,25 @@ namespace MrTerrainPainter.Editor.Tools
                 };
             }
             return root;
+        }
+
+        private void UpdateVisibility()
+        {
+            bool isActive = ToolManager.activeToolType == typeof(MrTerrainPainter.Editor.Tools.MTPBrushTool);
+            try { displayed = isActive; } catch { }
+            if (isActive && !ensuredWindow)
+            {
+                ensuredWindow = true;
+                var win = Resources.FindObjectsOfTypeAll<MrTerrainPainterWindow>().FirstOrDefault();
+                if (win == null)
+                {
+                    MrTerrainPainterWindow.Open();
+                }
+            }
+            if (!isActive)
+            {
+                ensuredWindow = false;
+            }
         }
 
         private void BindSlider(VisualElement root, string name, float min, float max, System.Func<float> getter, System.Action<float> setter)
