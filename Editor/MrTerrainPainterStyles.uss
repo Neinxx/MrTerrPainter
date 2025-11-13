@@ -1,0 +1,229 @@
+.thumb-item--selected {
+    border-width: 1px;
+    border-color: rgb(76, 76, 76);
+    translate: 0 -8px;
+    transform-origin: bottom;
+    transition-duration: 100ms;
+}
+
+.thumb-item {
+    border-width: 1px;
+    border-color: rgb(76, 76, 76);
+}
+
+.thumb-item:hover {
+    border-width: 1px;
+    border-color: rgb(76, 76, 76);
+    border-left-width: 2px;
+    border-right-width: 2px;
+    border-top-width: 2px;
+    border-bottom-width: 2px;
+    background-color: rgb(255, 255, 255);
+    border-left-color: rgb(255, 207, 107);
+    border-right-color: rgb(255, 207, 107);
+    border-top-color: rgb(255, 207, 107);
+    border-bottom-color: rgb(255, 207, 107);
+    scale: 1 1;
+    transition-duration: 100ms;
+    transform-origin: bottom;
+    transition-timing-function: ease-in-circ;
+    translate: 0 -6px;
+}
+
+.thumb-item--empty {
+    border-color: rgb(110, 110, 110);
+    background-color: rgba(90, 90, 90, 0.06);
+    margin-left: 3px;
+    margin-right: 3px;
+    margin-top: 3px;
+    margin-bottom: 3px;
+}
+
+.thumb-item__placeholder {
+    color: rgb(160, 160, 160);
+    -unity-font-style: bold;
+    font-size: 14px;
+}
+
+.mt-tabbar {
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: center;
+    padding-left: 8px;
+    padding-right: 8px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    border-bottom-width: 1px;
+    border-bottom-color: rgb(80, 80, 80);
+}
+
+.mt-tabbutton {
+    min-height: 24px;
+    margin-right: 8px;
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: rgb(90, 90, 90);
+    background-color: rgba(40, 40, 40, 0.6);
+    color: rgb(220, 220, 220);
+}
+
+.mt-tabbutton--active {
+    border-color: rgb(64, 128, 230);
+    background-color: rgba(64, 128, 230, 0.25);
+}
+
+.mt-frame {
+    padding-left: 8px;
+    padding-right: 8px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    border-width: 1px;
+    border-color: rgb(80, 80, 80);
+    border-radius: 6px;
+    background-color: rgba(30, 30, 30, 0.19);
+    margin-top: 6px;
+    margin-bottom: 6px;
+    border-left-width: 0;
+    border-right-width: 0;
+    border-top-width: 0;
+    border-bottom-width: 0;
+}
+
+.mt-button {
+    min-height: 24px;
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: rgb(90, 90, 90);
+    background-color: rgba(45, 45, 45, 0.8);
+    color: rgb(230, 230, 230);
+}
+
+.mt-button:hover {
+    border-color: rgb(120, 180, 255);
+    background-color: rgba(60, 90, 120, 0.25);
+}
+
+.mt-buttonG {
+    min-height: 24px;
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: rgb(90, 90, 90);
+    background-color: rgba(45, 45, 45, 0.8);
+    color: rgb(230, 230, 230);
+}
+
+.mt-buttonG:hover {
+    border-color: rgb(120, 180, 255);
+    background-color: rgba(78, 120, 60, 0.25);
+    border-left-color: rgb(120, 200, 77);
+    border-right-color: rgb(120, 200, 77);
+    border-top-color: rgb(120, 200, 77);
+    border-bottom-color: rgb(120, 200, 77);
+}
+
+.profile-row {
+    border-radius: 4px;
+    background-color: rgba(0, 0, 0, 0.05);
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+    margin-left: 6px;
+    margin-right: 3px;
+    margin-top: 3px;
+    margin-bottom: 3px;
+}
+
+.profile-row--selected {
+    border-width: 1px;
+    border-color: rgb(64, 128, 230);
+    background-color: rgba(255, 255, 255, 0.02);
+    border-top-color: rgba(64, 128, 230, 0);
+    border-bottom-color: rgba(64, 128, 230, 0);
+    padding-left: 0;
+    padding-right: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    height: auto;
+    border-left-width: 0;
+    border-right-width: 0;
+    margin-left: 6px;
+    margin-right: 3px;
+    margin-top: 3px;
+    margin-bottom: 3px;
+    border-right-color: rgba(64, 128, 230, 0);
+    border-top-width: 0;
+    border-bottom-width: 0;
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+
+.profile-row--checked {
+    border-width: 1px;
+    border-color: rgb(120, 200, 77);
+    background-color: rgba(78, 120, 60, 0.12);
+    margin-left: 6px;
+    margin-right: 3px;
+    margin-top: 3px;
+    margin-bottom: 3px;
+    border-left-width: 3px;
+    border-right-width: 0;
+    border-top-width: 0;
+    border-bottom-width: 0;
+    border-right-color: rgba(120, 200, 77, 0);
+    border-top-color: rgba(120, 200, 77, 0);
+    border-bottom-color: rgba(120, 200, 77, 0);
+}
+
+.mt-button--activeG {
+    border-color: rgb(120, 200, 77);
+    background-color: rgba(78, 120, 60, 0.25);
+}
+
+.mt-buttonR {
+    min-height: 24px;
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: rgb(90, 90, 90);
+    background-color: rgba(45, 45, 45, 0.8);
+    color: rgb(230, 230, 230);
+}
+
+.mt-buttonR:hover {
+    border-color: rgb(120, 180, 255);
+    background-color: rgba(120, 60, 62, 0.25);
+    border-left-color: rgb(200, 77, 106);
+    border-right-color: rgb(200, 77, 106);
+    border-top-color: rgb(200, 77, 106);
+    border-bottom-color: rgb(200, 77, 106);
+}
+
+.mt-button:active {
+    opacity: 0.85;
+}
+
+.mt-buttonG:active {
+    opacity: 0.85;
+}
+
+.mt-buttonR:active {
+    opacity: 0.85;
+}

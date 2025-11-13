@@ -1,0 +1,778 @@
+using System.Collections.Generic;
+using System.Linq;
+using MrTerrainPainter.Editor.Config;
+using MrTerrainPainter.Editor.Services;
+using MrTerrainPainter.Editor.Controllers;
+using MrTerrainPainter.Editor.State;
+using MrTerrainPainter.Editor.Views;
+using MrTerrainPainter.Runtime.Profiles;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using UnityEngine.UIElements;
+using UnityEditor.UIElements;
+
+namespace MrTerrainPainter.Editor
+{
+    public partial class MrTerrainPainterWindow : EditorWindow
+    {
+        private enum Page { Start, Contral, Generate, Paint }
+        private enum Mode { Generate, Paint, Erase }
+
+        private readonly List<Terrain> selectedTerrains = new();
+        private VegetationProfile currentProfile;
+        private Mode mode = Mode.Generate;
+
+        private readonly BrushSettings brush = new();
+        private System.Random rnd;
+        private readonly VegetationGenerator.NoiseSettings noise = new();
+
+        // 窗口级自定义范围（覆盖 Profile SO 范围）
+        private Vector2 customScaleRange = new(1f, 1f);
+        // 弱化默认旋转效果：窗口级默认旋转范围 0..30 度
+        private Vector2 customYRotationRange = new(0f, 30f);
+        private Vector2 customHeightRange = new(0f, 1000f);
+        private Vector2 customSlopeRange = new(0f, 90f);
+
+        // 多配方支持（用于批量生成）
+        private readonly List<VegetationProfile> extraProfiles = new();
+
+        // 配方条目 UI 状态
+        private int selectedItemIndex = -1;
+        // 预制体缩略图多选集合（当前 Profile 范围内）
+        private readonly HashSet<int> selectedThumbIndices = new();
+
+        private MrTerrainPainterConfig config;
+
+        // 模块化：控制器与状态
+        private EditorState editorState;
+        private IRefreshController refreshController;
+        private IPrefabPickerController prefabPicker;
+        private TerrainController terrainController;
+        private PrefabAssignmentController prefabAssignment;
+        // 视图：Contral 页列表视图
+        private ContralView contralView;
+        // 视图：Contral 页属性面板视图
+        private PropertyPanelView propertyPanelView;
+        // 视图：地形列表（Start/Contral 页）
+        private TerrainListView startTerrainListView;
+        private TerrainListView contralTerrainListView;
+        // 视图：Paint/Generate 页模块化视图
+        private BrushView brushView;
+        private GenerateFilterView generateFilterView;
+
+        // UI Toolkit: 资源与实例
+        private VisualTreeAsset uxmlStart;
+        private VisualTreeAsset uxmlContral;
+        private VisualTreeAsset uxmlGenerate;
+        private VisualTreeAsset uxmlPaint;
+        private VisualTreeAsset uxmlVegetationProfileRow; // VegetationProfile 列表行模板（UXML）
+        private VisualTreeAsset uxmlVegetationProfilePrefabIcon; // 预制体缩略图图标（UXML）
+        private VisualTreeAsset uxmlVegetationProfileDraggableArea; // 可拖拽新建区域（UXML）
+        private VisualElement pageContainer;
+        private VisualElement startRoot;
+        private VisualElement contralRoot;
+
+        private VisualElement contralTabContent;
+        private Page page = Page.Start;
+
+        // Contral 页面命名控件绑定
+
+        private readonly ObjectField uiSelectPrefab;
+        private readonly Slider uiWeigth;
+        private readonly MinMaxSlider uiSceleRange;
+        private readonly MinMaxSlider uiYrotationRange;
+        private readonly MinMaxSlider uiHeigthRange;
+        private readonly MinMaxSlider uiSlopeRange;
+        private readonly Slider uiBaseDensity;
+        private readonly Slider uiMinimumSpacing;
+        private ListView uiVegetationList;
+        private VisualElement uiPreviewPrefabList;
+        private float vegetationListContentWidth = 600f; // 列表内容区域宽度缓存，用于行高估算
+        private GameObject currentPrefab; // 当前选中的预制体（用于交互与显示）
+
+        // PrefabRange SO 选择与操作
+        // 移除 PrefabRangeSO 相关控件与状态（改回使用 PrefabRange 节点下的属性控件）
+
+        [MenuItem("Tools/Mr Terrain Painter Main")]
+        public static void Open()
+        {
+            var cfg = ConfigTools.LoadOrCreateAsset();
+            if (!ConfigTools.IsComplete(cfg, out var reason))
+            {
+                MrTerrainPainterSettingsWindow.Open();
+                EditorUtility.DisplayDialog("配置不完整", reason + "\n请在设置窗口补齐配置。", "确定");
+                return;
+            }
+            var win = GetWindow<MrTerrainPainterWindow>(false, "Mr Terrain Painter");
+            win.Show();
+        }
+
+        // 重新扫描并刷新 VegetationProfile 列表与相关 UI
+        private void ReloadAvailableProfiles()
+        {
+            // 重新扫描并确保 Profile 列表与当前选择有效
+            availableProfiles?.Clear();
+            var guids = AssetDatabase.FindAssets("t:VegetationProfile");
+            for (int gi = 0; gi < guids.Length; gi++)
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guids[gi]);
+                var asset = AssetDatabase.LoadAssetAtPath<VegetationProfile>(path);
+                if (asset != null) availableProfiles.Add(asset);
+            }
+            // 当前 Profile 如已被删除或为空，回退到首个有效项
+            if (currentProfile == null || !availableProfiles.Contains(currentProfile))
+            {
+                currentProfile = availableProfiles.Count > 0 ? availableProfiles[0] : null;
+            }
+            // 清理批量生成列表中的无效引用，避免后续生成报错
+            if (extraProfiles != null)
+            {
+                for (int i = extraProfiles.Count - 1; i >= 0; i--)
+                {
+                    if (extraProfiles[i] == null) extraProfiles.RemoveAt(i);
+                }
+            }
+            // 刷新 ListView 展示
+            if (uiVegetationList != null)
+            {
+                uiVegetationList.itemsSource = availableProfiles;
+                uiVegetationList.Rebuild();
+            }
+            // 同步其他关联 UI
+            selectedThumbIndices.Clear(); // 切换/刷新后清空多选
+            RefreshVegetationListUI();
+            RefreshPreviewListUI();
+            UpdatePropertyPanelFromSelectedItem();
+        }
+
+        private void OnProjectChangedRefreshProfiles()
+        {
+            ReloadAvailableProfiles();
+        }
+
+        private void OnEnable()
+        {
+            // 先注销，防止重复注册
+            SceneView.duringSceneGui -= OnSceneGUI;
+            SceneView.duringSceneGui += OnSceneGUI;
+
+            EditorApplication.projectChanged -= OnProjectChangedRefreshProfiles;
+            EditorApplication.projectChanged += OnProjectChangedRefreshProfiles;
+            if (config == null)
+            {
+                config = ConfigTools.LoadOrCreateAsset();
+            }
+            brush.size = config.defaultBrushSize;
+            brush.strength = config.defaultBrushStrength;
+            brush.densityScale = config.defaultBrushDensityScale;
+            brush.hardness = config.defaultBrushHardness;
+            brush.preview = config.showPreview;
+
+            // 应用配置到运行时状态
+            VegetationPool.ShowInHierarchy = config.showPoolInHierarchy;
+            // 移除旧设置页的对象列表同步逻辑（独立窗口管理，不在主窗口维护）
+
+            uxmlStart = config.startUxml;
+            uxmlContral = config.controlUxml;
+            uxmlGenerate = config.generateUxml;
+            uxmlPaint = config.paintUxml;
+            uxmlVegetationProfileRow = config.vegetationProfileRowUxml;
+            uxmlVegetationProfilePrefabIcon = config.prefabIconUxml;
+            uxmlVegetationProfileDraggableArea = config.draggableAreaUxml;
+
+            // 预加载 Profile 列表，确保后续页面构建有数据来源
+            ReloadAvailableProfiles();
+
+            // 初始化模块化状态与控制器
+            editorState ??= new EditorState();
+            refreshController = new RefreshController(
+                editorState,
+                RefreshVegetationListUI,
+                RefreshPreviewListUI,
+                UpdatePropertyPanelFromSelectedItem
+            );
+            // 预制体赋值控制器：集中处理新增/赋值/删除等业务逻辑
+            prefabAssignment = new PrefabAssignmentController(
+                refreshController,
+                () => currentProfile,
+                () => selectedItemIndex,
+                i => selectedItemIndex = i,
+                selectedThumbIndices
+            );
+            // 对象选择器桥接到控制器
+            prefabPicker = new PrefabPickerController(
+                (profile, prefab) => prefabAssignment.AddPrefabAsNewItem(profile, prefab),
+                (profile, index, prefab) => prefabAssignment.AssignPrefabToItem(profile, index, prefab)
+            );
+            terrainController = new TerrainController();
+
+            // 构建UI Toolkit界面
+            CreateGUI();
+        }
+
+        private void OnDisable()
+        {
+            SceneView.duringSceneGui -= OnSceneGUI;
+            EditorApplication.projectChanged -= OnProjectChangedRefreshProfiles;
+        }
+
+        private void OnDestroy()
+        {
+            SceneView.duringSceneGui -= OnSceneGUI;
+            EditorApplication.projectChanged -= OnProjectChangedRefreshProfiles;
+        }
+
+        private void CreateGUI()
+        {
+            var root = rootVisualElement;
+            var styleSheet = config != null ? config.stylesUss : null;
+            if (styleSheet == null)
+            {
+                root.Add(new Label("样式未配置：请在 Settings 中设置 StylesUSS"));
+                return;
+            }
+            root.styleSheets.Add(styleSheet);
+
+            root.style.paddingLeft = 6;
+            root.style.paddingRight = 6;
+            root.style.paddingTop = 4;
+            root.style.paddingBottom = 4;
+            root.Clear();
+
+            pageContainer = new ScrollView();
+            pageContainer.style.flexGrow = 1;
+            root.Add(pageContainer);
+
+            // 默认首页：Start
+            startRoot = InstantiatePage(uxmlStart);
+            pageContainer.Add(startRoot);
+            startRoot.AddToClassList("mt-frame");
+            SetupStartPageEvents();
+        }
+
+        private VisualElement InstantiatePage(VisualTreeAsset vta)
+        {
+            if (vta == null)
+            {
+                var fallback = new VisualElement();
+                fallback.Add(new Label("未找到UXML文件"));
+                return fallback;
+            }
+            return vta.Instantiate();
+        }
+
+
+
+
+
+
+        public void GeneratePrefabsAtNodeByTypePublic(Transform parentNode, Runtime.Profiles.PrefabType type)
+        {
+            if (parentNode == null || currentProfile == null) return; // 提前返回
+            var items = currentProfile.Items.Where(i => i != null && i.prefab != null && i.prefabType == type).ToList();
+            if (items.Count == 0) return; // 提前返回
+            Undo.IncrementCurrentGroup();
+            var group = Undo.GetCurrentGroup();
+            foreach (var (item, idx) in items.Select((v, i) => (v, i)))
+            {
+                var go = (GameObject)PrefabUtility.InstantiatePrefab(item.prefab);
+                if (go == null) continue;
+                Undo.RegisterCreatedObjectUndo(go, "Generate Prefab");
+                Undo.SetTransformParent(go.transform, parentNode, "Generate Prefab");
+                go.transform.localPosition = Vector3.zero;
+            }
+            Undo.CollapseUndoOperations(group);
+        }
+
+        public VegetationProfile GetCurrentProfile() => currentProfile;
+
+
+
+
+
+
+
+
+
+
+
+        /* ---------- 行模板 ---------- */
+        private const float ThumbSize = 64;
+        private const float ThumbGap = 8;
+
+
+
+        // Prefab 选择器：新增条目用
+        private void OpenPrefabPickerForNewItem(VegetationProfile profile)
+        {
+            if (profile == null) return; // 提前返回
+            prefabPicker?.OpenForNew(profile);
+        }
+
+        /* ---------- 纯工具 ---------- */
+        private int ThumbRows(int count)
+        {
+            int perRow = Mathf.Max(1, Mathf.FloorToInt(vegetationListContentWidth / (ThumbSize + ThumbGap)));
+            return Mathf.CeilToInt(count / (float)perRow);
+        }
+
+
+
+
+
+
+        // 刷新所有相关 UI，减少重复调用
+
+        private void RefreshAllUI()
+        {
+            if (refreshController != null)
+            {
+                refreshController.RefreshAllUI();
+                return;
+            }
+            RefreshVegetationListUI();
+            RefreshPreviewListUI();
+            UpdatePropertyPanelFromSelectedItem();
+        }
+
+        private void OpenPrefabPickerForItem(VegetationProfile profile, int index)
+        {
+            if (profile == null || index < 0 || index >= profile.Items.Count) return; // 提前返回
+            prefabPicker?.OpenForItem(profile, index);
+        }
+
+        // 在 EditorWindow 的 IMGUI 循环中处理对象选择器事件
+        private void OnGUI()
+        {
+            var cmd = Event.current.commandName;
+            // 仅在关闭时处理，避免 Updated 与 Closed 双重触发造成重复添加
+            if (cmd == "ObjectSelectorClosed")
+            {
+                prefabPicker?.HandleObjectPickerClosed();
+            }
+        }
+
+        // —— Profile SO 资产操作 ——
+        private const string DataFolderPath = "Assets/MrTerrainPainter/Data";
+
+        private void EnsureDataFolderExists()
+        {
+            // 确保 Assets/MrTerrainPainter/Data 目录存在
+            if (!AssetDatabase.IsValidFolder(DataFolderPath))
+            {
+                if (!AssetDatabase.IsValidFolder("Assets/MrTerrainPainter"))
+                {
+                    AssetDatabase.CreateFolder("Assets", "MrTerrainPainter");
+                }
+                AssetDatabase.CreateFolder("Assets/MrTerrainPainter", "Data");
+                AssetDatabase.Refresh();
+            }
+        }
+
+        private void CreateNewVegetationProfileAsset()
+        {
+            EnsureDataFolderExists();
+            var profile = CreateInstance<VegetationProfile>();
+            profile.name = "VegetationProfile";
+            var path = AssetDatabase.GenerateUniqueAssetPath($"{DataFolderPath}/VegetationProfile.asset");
+            AssetDatabase.CreateAsset(profile, path);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            currentProfile = profile;
+        }
+
+        private void DeleteVegetationProfileAsset(VegetationProfile profile)
+        {
+            if (profile == null) return; // 提前返回
+            // 删除确认对话框
+            bool confirm = EditorUtility.DisplayDialog("确认删除Profile",
+                $"确定删除 Profile: {profile.name} ？此操作不可撤销。",
+                "删除", "取消");
+            if (!confirm) return; // 提前返回
+            var path = AssetDatabase.GetAssetPath(profile);
+            if (string.IsNullOrEmpty(path)) return; // 提前返回
+            AssetDatabase.DeleteAsset(path);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            // 清理批量生成列表中的引用，防止后续生成访问到已删除的 SO
+            if (extraProfiles != null)
+            {
+                for (int i = extraProfiles.Count - 1; i >= 0; i--)
+                {
+                    if (extraProfiles[i] == null || extraProfiles[i] == profile)
+                        extraProfiles.RemoveAt(i);
+                }
+            }
+            if (currentProfile == profile)
+            {
+                currentProfile = null;
+                if (availableProfiles.Count > 0) currentProfile = availableProfiles[0];
+            }
+        }
+
+        private void SetListSelectionToCurrentProfile()
+        {
+            // 移除 SO 项高亮：不再设置选中索引，始终清空选择
+            if (uiVegetationList == null) return; // 提前返回
+            // 清空选择以避免 ListView 默认选中样式（蓝色高亮）
+            uiVegetationList.selectedIndex = -1;
+            uiVegetationList.ClearSelection();
+        }
+
+        private List<VegetationItem> GetProfileItemsSnapshot()
+        {
+            if (currentProfile == null) return new List<VegetationItem>();
+            return new List<VegetationItem>(currentProfile.Items);
+        }
+
+        private VegetationItem GetSelectedItem()
+        {
+            if (currentProfile == null) return null;
+            var items = currentProfile.Items;
+            if (items.Count == 0) return null;          // 空列表
+            if (selectedItemIndex < 0 || selectedItemIndex >= items.Count) return null;
+            return items[selectedItemIndex];
+        }
+
+        private void UpdatePropertyPanelFromSelectedItem()
+        {
+            // 交由视图刷新控件状态，窗口仅维护当前预制体引用
+            propertyPanelView?.UpdateFromSelectedItem();
+            var item = GetSelectedItem();
+            currentPrefab = item != null ? item.prefab : null;
+        }
+
+        private void RefreshVegetationListUI()
+        {
+            if (uiVegetationList == null) return;
+            // 刷新 VegetationProfile 列表
+            uiVegetationList.itemsSource = availableProfiles;
+            uiVegetationList.Rebuild();
+        }
+
+        private void RefreshPreviewListUI()
+        {
+            if (uiPreviewPrefabList == null) return;
+            uiPreviewPrefabList.Clear();
+            // 自动清理当前 Profile 中的空项（委派到控制器）
+            if (currentProfile != null)
+            {
+                prefabAssignment?.CleanNullPrefabItems(currentProfile);
+            }
+            var items = GetProfileItemsSnapshot();
+            // 保证选中索引有效，避免高亮失效
+            selectedItemIndex = Mathf.Clamp(selectedItemIndex, 0, Mathf.Max(0, items.Count - 1));
+            for (int i = 0; i < items.Count; i++)
+            {
+                var it = items[i];
+                var box = new VisualElement();
+                box.AddToClassList("preview-item");
+                box.pickingMode = PickingMode.Position; // 保证父容器可接收点击
+
+                var img = new Image();
+                img.AddToClassList("preview-item__image");
+                Texture2D tex = null;
+                if (it != null && it.prefab != null)
+                {
+                    tex = AssetPreview.GetAssetPreview(it.prefab) ?? AssetPreview.GetMiniThumbnail(it.prefab);
+                }
+                img.image = tex;
+                box.Add(img);
+
+                var index = i;
+                // 左键选择：使用 PointerDown 提高兼容性
+                box.RegisterCallback<PointerDownEvent>(evt =>
+                {
+                    if (evt.button == 0)
+                    {
+                        selectedItemIndex = index;
+                        currentPrefab = it.prefab;
+                        UpdatePropertyPanelFromSelectedItem();
+                        RefreshVegetationListUI();
+                        RefreshPreviewListUI();
+                        uiPreviewPrefabList.MarkDirtyRepaint();
+                        evt.StopPropagation();
+                    }
+                });
+                // 直接在图像上也注册选择，避免子元素拦截导致无法选择
+                img.RegisterCallback<PointerDownEvent>(evt =>
+                {
+                    if (evt.button == 0)
+                    {
+                        selectedItemIndex = index;
+                        currentPrefab = it.prefab;
+                        UpdatePropertyPanelFromSelectedItem();
+                        RefreshVegetationListUI();
+                        RefreshPreviewListUI();
+                        uiPreviewPrefabList.MarkDirtyRepaint();
+                        evt.StopPropagation();
+                    }
+                });
+
+                // 右键菜单（仅 box 注册，避免重复）
+                box.RegisterCallback<PointerDownEvent>(evt =>
+                {
+                    if (evt.button == 1)
+                    {
+                        var menu = new GenericMenu();
+                        menu.AddItem(new GUIContent("删除"), false, () =>
+                        {
+                            prefabAssignment?.RemoveItemAt(index);
+                        });
+                        menu.ShowAsContext();
+                        evt.StopPropagation();
+                    }
+                });
+
+                // 选中高亮：通过 USS 类切换
+                if (index == selectedItemIndex)
+                {
+                    box.AddToClassList("preview-item--selected");
+                }
+
+                uiPreviewPrefabList.Add(box);
+            }
+        }
+
+
+
+        private class ThumbsDragHandlers
+        {
+            public EventCallback<DragUpdatedEvent> onUpdate;
+            public EventCallback<DragPerformEvent> onPerform;
+        }
+
+        private void ScanSceneTerrains()
+        {
+            // 使用 Unity API 扫描场景地形
+            scannedTerrainNames.Clear();
+            terrainListUIData.Clear();
+            foreach (var t in Terrain.activeTerrains)
+            {
+                if (t == null) continue;
+                scannedTerrainNames.Add(t.name);
+                terrainListUIData.Add(t);
+            }
+        }
+
+        private readonly List<string> scannedTerrainNames = new();
+        // 用于 UI 展示的地形引用列表（Foldout 子节点 ObjectField）
+        private readonly List<Terrain> terrainListUIData = new();
+
+        private void PopulateTerrianListUI(VisualElement root)
+        {
+            if (root == null) return;
+
+            var container = root.Q<VisualElement>("TerrainList");
+            Debug.Log(container);
+            if (container != null)
+            {
+                // 控制 Foldout 显示（父级为 Foldout 时）
+                if (container is Foldout fold)
+                {
+                    Debug.Log("1");
+                    fold.style.display = terrainListUIData.Count > 0 ? DisplayStyle.Flex : DisplayStyle.None;
+                }
+                // 采用 ListView 虚拟化，仅显示约10项，其余通过滚动加载
+                container.Clear();
+                var listView = new ListView
+                {
+
+                    name = "TerrainListLV",
+                    itemsSource = terrainListUIData,
+                    selectionType = SelectionType.None,
+                    virtualizationMethod = CollectionVirtualizationMethod.FixedHeight,
+                    fixedItemHeight = 24,
+                    makeItem = () =>
+                        {
+                            var of = new ObjectField
+                            {
+                                objectType = typeof(Terrain),
+                                allowSceneObjects = true,
+                                label = string.Empty
+                            };
+                            of.style.marginBottom = 2;
+                            return of;
+                        },
+                    bindItem = (elem, i) =>
+                        {
+                            if (elem is not ObjectField of) return;
+                            var t = (i >= 0 && i < terrainListUIData.Count) ? terrainListUIData[i] : null;
+                            of.SetValueWithoutNotify(t);
+                        }
+
+                };
+                // 仅显示约10项高度（滚动查看更多）
+                listView.style.maxHeight = 10 * (listView.fixedItemHeight + 4);
+                listView.style.flexGrow = 1;
+                container.Add(listView);
+                return; // 已处理容器场景
+            }
+
+        }
+
+        private void OnSceneGUI(SceneView sv)
+        {
+            EnsureRandom();
+
+            Event e = Event.current;
+            // 捕获场景视图事件，避免选择干扰绘制/擦除/区域生成
+            if (mode == Mode.Paint || (mode == Mode.Generate && e.shift))
+            {
+                HandleUtility.AddDefaultControl(GUIUtility.GetControlID(FocusType.Passive));
+            }
+
+            Ray ray = HandleUtility.GUIPointToWorldRay(e.mousePosition);
+            if (Physics.Raycast(ray, out var hit, 10000f))
+            {
+                var pos = hit.point;
+                // 仅在绘画模式显示笔刷预览
+                if (mode == Mode.Paint)
+                {
+                    BrushPainter.DrawPreview(pos, brush);
+                }
+
+                if (e.type == EventType.MouseDown || e.type == EventType.MouseDrag)
+                {
+                    if (mode == Mode.Generate)
+                    {
+                        // 支持在场景中使用笔刷范围进行区域生成（按住 Shift）
+                        if (e.shift)
+                        {
+                            if (selectedTerrains.Count > 0 && currentProfile != null)
+                            {
+                                var filter = BuildFilterSettings();
+                                var ov = BuildPlacementOverrides();
+                                VegetationGenerator.GenerateInBrushArea(selectedTerrains, currentProfile, pos, brush.size, filter, ov);
+                                for (int i = 0; i < extraProfiles.Count; i++)
+                                {
+                                    var p = extraProfiles[i];
+                                    if (p == null || p.IsEmpty()) continue;
+                                    VegetationGenerator.GenerateInBrushArea(selectedTerrains, p, pos, brush.size, filter, ov);
+                                }
+                                MarkSceneDirty();
+                            }
+                            // 允许中键拖动摄像机：不吞掉鼠标中键事件
+                            if (e.button != 2) e.Use();
+                            return;
+                        }
+                    }
+                    else if (mode == Mode.Paint)
+                    {
+                        // 选择第一个有效地形作为画布；若命中对象附近有地形，更优。
+                        var terrain = hit.collider.GetComponent<Terrain>();
+                        if (terrain == null)
+                        {
+                            // 尝试用选中列表中的靠近点的地形
+                            terrain = NearestTerrain(pos);
+                        }
+                        if (terrain != null)
+                        {
+                            // 仅左键绘制，右键擦除
+                            if (e.button == 1)
+                            {
+                                BrushPainter.Erase(terrain, pos, brush, eraseAll: true);
+                                MarkSceneDirty();
+                            }
+                            else if (e.button == 0)
+                            {
+                                VegetationPainterOnTerrain(terrain, pos);
+                            }
+                        }
+                        // 允许中键拖动摄像机：不吞掉鼠标中键事件
+                        if (e.button != 2) e.Use();
+                        return;
+                    }
+                }
+            }
+        }
+
+        private void VegetationPainterOnTerrain(Terrain terrain, Vector3 center)
+        {
+            if (terrain == null || currentProfile == null || currentProfile.IsEmpty()) return; // 提前返回
+            var ov = BuildPlacementOverrides();
+            BrushPainter.Paint(terrain, currentProfile, center, brush, rnd, ov);
+            for (int i = 0; i < extraProfiles.Count; i++)
+            {
+                var p = extraProfiles[i];
+                if (p == null || p.IsEmpty()) continue;
+                BrushPainter.Paint(terrain, p, center, brush, rnd, ov);
+            }
+            MarkSceneDirty();
+        }
+
+        private Terrain NearestTerrain(Vector3 pos)
+        {
+            Terrain best = null;
+            float bestDist = float.MaxValue;
+            for (int i = 0; i < selectedTerrains.Count; i++)
+            {
+                var t = selectedTerrains[i];
+                if (t == null) continue;
+                float d = Vector3.SqrMagnitude(pos - t.transform.position);
+                if (d < bestDist) { bestDist = d; best = t; }
+            }
+            return best;
+        }
+
+        private void EnsureRandom()
+        {
+            if (rnd == null)
+            {
+                int seed = currentProfile != null ? currentProfile.randomSeed : 12345;
+                rnd = new System.Random(seed);
+            }
+        }
+
+        private VegetationGenerator.FilterSettings BuildFilterSettings()
+        {
+            var filter = new VegetationGenerator.FilterSettings();
+            filter.noise = noise ?? new VegetationGenerator.NoiseSettings();
+            return filter;
+        }
+
+        private VegetationGenerator.PlacementOverrides BuildPlacementOverrides()
+        {
+            return new VegetationGenerator.PlacementOverrides
+            {
+                scaleRange = customScaleRange,
+                yRotationRange = customYRotationRange,
+                heightRange = customHeightRange,
+                slopeRange = customSlopeRange
+            };
+        }
+
+
+
+
+        private void OnLostFocus()
+        {
+            if (config != null && config.switchToGenerateOnLostFocus)
+            {
+                // 若控制页尚未构建，先构建
+                if (contralRoot == null)
+                {
+                    BuildContralSection();
+                }
+                // 切换到 Generate 标签并高亮，但允许手动继续绘制
+                //  LoadGenerateTab();
+                LoadPaintingTab();
+                var btnPainting = contralRoot?.Q<Button>("Painting");
+                var btnGenerate = contralRoot?.Q<Button>("Generate");
+                if (btnPainting != null && btnGenerate != null)
+                {
+                    SetTabActive(btnGenerate, btnPainting);
+                }
+            }
+        }
+
+        private void MarkSceneDirty()
+        {
+            if (!Application.isPlaying)
+            {
+                EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+            }
+        }
+    }
+}
