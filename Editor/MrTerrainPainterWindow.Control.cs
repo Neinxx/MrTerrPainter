@@ -174,10 +174,10 @@ namespace MrTerrainPainter.Editor
             contralTabContent.Add(scroll);
             var paintParam = paintRoot.Q<VisualElement>("PaintParameter") ?? paintRoot;
             BindBrushControls(paintParam);
+            ReloadAvailableProfiles();
             contralBindingsInitialized = false;
             BindContralNamedControls();
-            // Painting 激活时默认进入绘制模式
-            mode = Mode.Paint;
+            // Painting 标签仅展示设置，不控制绘制模式。绘制模式由工具栏的 MTPBrushTool 决定。
         }
 
         private void LoadGenerateTab()
@@ -368,6 +368,7 @@ namespace MrTerrainPainter.Editor
             scroll.Add(genRoot);
 
             contralTabContent.Add(scroll);
+            ReloadAvailableProfiles();
             contralBindingsInitialized = false;
             BindContralNamedControls();
         }
@@ -555,8 +556,37 @@ namespace MrTerrainPainter.Editor
             var prefabRange = contralRoot.Q<VisualElement>("PrefabRange");
             var queryRoot = prefabRange ?? contralRoot;
             uiPreviewPrefabList = contralRoot.Q<VisualElement>("PreviewPrefabList");
+            // 尝试查找 VegetationProfile 列表控件
+            uiVegetationList = contralRoot.Q<ListView>("VegetationProfileList") ?? contralRoot.Q<ListView>();
             // 构建并挂载 VegetationProfile 列表（统一 Profile 切换入口）
             SetupVegetationProfileList();
+            // 如果列表仍为空，回退构建一个简单的列表以确保显示
+            if (uiVegetationList == null)
+            {
+                var container = contralRoot.Q<VisualElement>("VegetationList") ?? queryRoot;
+                if (container != null)
+                {
+                    var lv = new ListView
+                    {
+                        name = "VegetationProfileList",
+                        itemsSource = availableProfiles,
+                        selectionType = SelectionType.Single,
+                        virtualizationMethod = CollectionVirtualizationMethod.FixedHeight,
+                        fixedItemHeight = 20,
+                        makeItem = () => new Label(),
+                        bindItem = (elem, i) =>
+                        {
+                            if (elem is Label lab)
+                            {
+                                var p = (i >= 0 && i < availableProfiles.Count) ? availableProfiles[i] : null;
+                                lab.text = p != null ? p.name : "<None>";
+                            }
+                        }
+                    };
+                    container.Add(lv);
+                    uiVegetationList = lv;
+                }
+            }
             // 属性面板视图绑定（依赖注入回调，降低耦合）
             propertyPanelView = new PropertyPanelView(queryRoot);
             propertyPanelView.Bind(new PropertyPanelView.PropertyPanelCallbacks
@@ -577,6 +607,10 @@ namespace MrTerrainPainter.Editor
             {
                 HandlePreviewDragEvents(uiPreviewPrefabList);
                 RefreshPreviewListUI();
+            }
+            if (uiVegetationList != null)
+            {
+                RefreshVegetationListUI();
             }
             contralBindingsInitialized = true;
         }
@@ -801,6 +835,7 @@ namespace MrTerrainPainter.Editor
                 {
                     fold.style.display = terrainListUIData.Count > 0 ? DisplayStyle.Flex : DisplayStyle.None;
                 }
+                container.style.flexGrow = 0;
                 container.Clear();
                 var listView = new ListView
                 {

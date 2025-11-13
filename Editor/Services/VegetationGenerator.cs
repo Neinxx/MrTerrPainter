@@ -316,6 +316,19 @@ namespace MrTerrainPainter.Editor.Services
                      c.objectList != null &&
                      c.objectTypeList.Length > 0 &&
                      c.objectList.Length > 0);
+            if (config != null && config.mappingEntries != null && config.mappingEntries.Count > 0)
+            {
+                for (int i = config.mappingEntries.Count - 1; i >= 0; i--)
+                {
+                    var entry = config.mappingEntries[i];
+                    if (entry == null) continue;
+                    if (entry.type != item.prefabType) continue;
+                    var go = entry.node;
+                    if (go == null) continue;
+                    var tf = go.transform;
+                    if (tf != null) return tf;
+                }
+            }
             if (config != null && config.objectTypeList != null && config.objectList != null)
             {
                 int maxCount = Mathf.Max(config.objectTypeList.Length, config.objectList.Length);

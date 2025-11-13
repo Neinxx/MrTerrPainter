@@ -2,7 +2,8 @@ using UnityEngine;
 using UnityEngine.UIElements;
 using UnityEditor;
 using System.Linq;
-using System.IO; // 引入 System.IO 命名空间
+using System.IO;
+using System.Collections.Generic;
 
 namespace MrTerrainPainter.Editor.Config
 {
@@ -46,6 +47,14 @@ namespace MrTerrainPainter.Editor.Config
         public VisualTreeAsset vegetationSharedUxml;
         public VisualTreeAsset brushOverlayUxml;
         public StyleSheet stylesUss;
+
+        [System.Serializable]
+        public class MappingEntry
+        {
+            public GameObject node;
+            public Runtime.Profiles.PrefabType type = Runtime.Profiles.PrefabType.Prop;
+        }
+        public List<MappingEntry> mappingEntries = new List<MappingEntry>();
     }
 
 #if UNITY_EDITOR
@@ -125,13 +134,8 @@ namespace MrTerrainPainter.Editor.Config
             if (string.IsNullOrEmpty(cfg.recipeGenerationPath)) { reason = "RecipeGenerationPath 为空"; return false; }
             if (!AssetDatabase.IsValidFolder(cfg.recipeGenerationPath)) { reason = "RecipeGenerationPath 不是有效的项目文件夹"; return false; }
 
-            // 优化：检查映射列表的长度是否一致，这是运行时配置健壮性的重要保障
-            if (cfg.objectList.Length != cfg.objectTypeList.Length)
-            {
-                reason = $"ObjectList (长度: {cfg.objectList.Length}) 和 ObjectTypeList (长度: {cfg.objectTypeList.Length}) 长度不一致，请检查配置。";
-                return false;
-            }
-
+            // 映射允许为空或长度不一致
+            
             return true;
         }
 
