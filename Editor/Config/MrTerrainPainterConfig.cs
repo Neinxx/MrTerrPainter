@@ -32,9 +32,7 @@ namespace MrTerrainPainter.Editor.Config
         public string recipeGenerationPath = "Assets/MrTerrainPainter/Data";
         public Runtime.Profiles.PrefabType defaultGenerationType = Runtime.Profiles.PrefabType.Prop;
 
-        [Tooltip("Generation Mapping：与设置页的 Object + Type 一一对应")]
-        public GameObject[] objectList = new GameObject[0];
-        public Runtime.Profiles.PrefabType[] objectTypeList = new Runtime.Profiles.PrefabType[0];
+        // 使用 MappingEntry 统一管理生成映射
 
         [Header("UI 资源")]
         public VisualTreeAsset startUxml;
@@ -51,7 +49,7 @@ namespace MrTerrainPainter.Editor.Config
         [System.Serializable]
         public class MappingEntry
         {
-            public GameObject node;
+            public Transform node;
             public Runtime.Profiles.PrefabType type = Runtime.Profiles.PrefabType.Prop;
         }
         public List<MappingEntry> mappingEntries = new List<MappingEntry>();
@@ -64,6 +62,9 @@ namespace MrTerrainPainter.Editor.Config
     /// </summary>
     public static class ConfigTools
     {
+        private static readonly string DefaultBrushOverlayUxmlPath = "Assets/MrTerrPainterV1/Editor/MTPBrushOverlay.uxml";
+        private static readonly string DefaultSettingsUxmlPath = "Assets/MrTerrPainterV1/Editor/MrTerrainPainterSettings.uxml";
+        private static readonly string DefaultSettingsMappingUxmlPath = "Assets/MrTerrPainterV1/Editor/MTPTerrainPainterSettingsMappinger.uxml";
         /// <summary>
         /// 查找或创建配置资源文件
         /// </summary>
@@ -93,6 +94,37 @@ namespace MrTerrainPainter.Editor.Config
             return cfg;
         }
 
+        public static VisualTreeAsset GetBrushOverlayUxml(MrTerrainPainterConfig cfg)
+        {
+            var v = cfg != null ? cfg.brushOverlayUxml : null;
+            if (v != null) return v;
+            return AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(DefaultBrushOverlayUxmlPath);
+        }
+
+        public static StyleSheet GetStylesUss(MrTerrainPainterConfig cfg)
+        {
+            return cfg != null ? cfg.stylesUss : null;
+        }
+
+        public static VisualTreeAsset GetSettingsUxml()
+        {
+            return AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(DefaultSettingsUxmlPath);
+        }
+
+        public static VisualTreeAsset GetSettingsMappingUxml()
+        {
+            return AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(DefaultSettingsMappingUxmlPath);
+        }
+
+        public static VisualTreeAsset GetStartUxml(MrTerrainPainterConfig cfg) => cfg != null ? cfg.startUxml : null;
+        public static VisualTreeAsset GetControlUxml(MrTerrainPainterConfig cfg) => cfg != null ? cfg.controlUxml : null;
+        public static VisualTreeAsset GetPaintUxml(MrTerrainPainterConfig cfg) => cfg != null ? cfg.paintUxml : null;
+        public static VisualTreeAsset GetGenerateUxml(MrTerrainPainterConfig cfg) => cfg != null ? cfg.generateUxml : null;
+        public static VisualTreeAsset GetVegetationSharedUxml(MrTerrainPainterConfig cfg) => cfg != null ? cfg.vegetationSharedUxml : null;
+        public static VisualTreeAsset GetVegetationProfileRowUxml(MrTerrainPainterConfig cfg) => cfg != null ? cfg.vegetationProfileRowUxml : null;
+        public static VisualTreeAsset GetPrefabIconUxml(MrTerrainPainterConfig cfg) => cfg != null ? cfg.prefabIconUxml : null;
+        public static VisualTreeAsset GetDraggableAreaUxml(MrTerrainPainterConfig cfg) => cfg != null ? cfg.draggableAreaUxml : null;
+
         /// <summary>
         /// 标记配置对象为脏并保存
         /// </summary>
@@ -119,30 +151,33 @@ namespace MrTerrainPainter.Editor.Config
             reason = string.Empty;
             if (cfg == null) { reason = "配置对象为空"; return false; }
 
-            // 优化：将所有必需的 UXML 和 USS 资源检查放在一个列表中进行迭代
-            if (cfg.startUxml == null) { reason = "StartUXML 未设置"; return false; }
-            if (cfg.controlUxml == null) { reason = "ControlUXML 未设置"; return false; }
-            if (cfg.paintUxml == null) { reason = "PaintUXML 未设置"; return false; }
-            if (cfg.generateUxml == null) { reason = "GenerateUXML 未设置"; return false; }
-            if (cfg.vegetationSharedUxml == null) { reason = "VegetationSharedUXML 未设置"; return false; }
-            if (cfg.stylesUss == null) { reason = "StylesUSS 未设置"; return false; }
-            if (cfg.vegetationProfileRowUxml == null) { reason = "VegetationProfileRowUXML 未设置"; return false; }
-            if (cfg.prefabIconUxml == null) { reason = "PrefabIconUXML 未设置"; return false; }
-            if (cfg.draggableAreaUxml == null) { reason = "DraggableAreaUXML 未设置"; return false; }
+            var reasons = new System.Collections.Generic.List<string>();
+            if (cfg.startUxml == null) reasons.Add("StartUXML 未设置");
+            if (cfg.controlUxml == null) reasons.Add("ControlUXML 未设置");
+            if (cfg.paintUxml == null) reasons.Add("PaintUXML 未设置");
+            if (cfg.generateUxml == null) reasons.Add("GenerateUXML 未设置");
+            if (cfg.vegetationSharedUxml == null) reasons.Add("VegetationSharedUXML 未设置");
+            if (cfg.stylesUss == null) reasons.Add("StylesUSS 未设置");
+            if (cfg.vegetationProfileRowUxml == null) reasons.Add("VegetationProfileRowUXML 未设置");
+            if (cfg.prefabIconUxml == null) reasons.Add("PrefabIconUXML 未设置");
+            if (cfg.draggableAreaUxml == null) reasons.Add("DraggableAreaUXML 未设置");
+            if (cfg.brushOverlayUxml == null) reasons.Add("BrushOverlayUXML 未设置");
 
-            // 检查生成路径
-            if (string.IsNullOrEmpty(cfg.recipeGenerationPath)) { reason = "RecipeGenerationPath 为空"; return false; }
-            if (!AssetDatabase.IsValidFolder(cfg.recipeGenerationPath)) { reason = "RecipeGenerationPath 不是有效的项目文件夹"; return false; }
+            if (string.IsNullOrEmpty(cfg.recipeGenerationPath)) reasons.Add("RecipeGenerationPath 为空");
+            else if (!AssetDatabase.IsValidFolder(cfg.recipeGenerationPath)) reasons.Add("RecipeGenerationPath 不是有效的项目文件夹");
 
-            // 映射允许为空或长度不一致
-            
+            if (reasons.Count > 0)
+            {
+                reason = string.Join("\n", reasons);
+                return false;
+            }
             return true;
         }
 
         /// <summary>
         /// 确保给定的 Assets 路径存在，如果不存在则创建所有必要的中间文件夹
         /// </summary>
-        private static void EnsureFolder(string path)
+        public static void EnsureFolder(string path)
         {
             // 移除路径开头的 "Assets/" 部分，转换为相对路径
             if (path.StartsWith("Assets/"))

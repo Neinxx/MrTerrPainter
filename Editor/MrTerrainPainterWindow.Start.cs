@@ -84,13 +84,7 @@ namespace MrTerrainPainter.Editor
         private void HandleLogoDoubleClick(Label logoLabel)
         {
             if (logoLabel == null) return;
-
-            // 切换文本
-            logoLabel.text = HelloThereMessage;
-
-            // 重置计数器，以便下一次可以再次双击
-            // (虽然 IsDoubleClick 方法中已经重置，但这里显式清零是逻辑上的完成)
-            // 在 IsDoubleClick 中重置 count=0 的逻辑，这里可以省略重置。
+            OpenSettingsTab();
         }
 
         /// <summary>

@@ -1,11 +1,11 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="True">
-    <Style src="project://database/Assets/MrTerrainPainter/Editor/MrTerrainPainterStyles.uss?fileID=7433441132597879392&amp;guid=1094a64c2bc4b654486d9ae7dcc8907c&amp;type=3#MrTerrainPainterStyles" />
-    <ui:GroupBox style="margin-left: 0; margin-right: 0; margin-top: 3px; margin-bottom: 3px; padding-left: 0; padding-right: 0; padding-top: 0; padding-bottom: 0;">
-        <ui:VisualElement style="flex-direction: row; align-items: center; margin-bottom: 5px; border-left-width: 0; border-right-width: 0; margin-left: 4px; margin-right: 4px; padding-left: 0; padding-right: 0;">
+    <Style src="project://database/Assets/MrTerrPainterV1/Editor/MrTerrainPainterStyles.uss?fileID=7433441132597879392&amp;guid=1094a64c2bc4b654486d9ae7dcc8907c&amp;type=3#MrTerrainPainterStyles" />
+    <ui:GroupBox picking-mode="Ignore" style="margin-left: 0; margin-right: 0; margin-top: 0; margin-bottom: 0; padding-left: 0; padding-right: 0; padding-top: 0; padding-bottom: 0;">
+        <ui:VisualElement style="flex-direction: row; align-items: center; margin-bottom: 1px; border-left-width: 0; border-right-width: 0; margin-left: 4px; margin-right: 4px; padding-left: 0; padding-right: 0; margin-top: 6px;">
             <ui:Toggle name="Select" />
             <uie:ObjectField name="ProfileField" style="flex-shrink: 1; flex-grow: 1; height: auto; max-height: 20px; min-height: 20px;" />
             <ui:Button text="X" display-tooltip-when-elided="true" name="DeleteProfileInline" class="mt-buttonR" style="padding-left: 0; padding-right: 0; padding-top: 0; padding-bottom: 0; margin-left: 0; margin-right: 0; margin-top: 0; margin-bottom: 0; width: 20px; height: 20px; min-height: 20px; max-height: 20px;" />
         </ui:VisualElement>
-        <ui:GroupBox name="Thumbs" style="flex-shrink: 1; flex-grow: 1; height: auto; min-height: 70px; flex-direction: row; flex-wrap: wrap; padding-bottom: 0; background-color: rgba(0, 0, 0, 0); padding-left: 0; padding-right: 0; padding-top: 0; margin-left: 6px; margin-right: 6px; margin-top: 6px; margin-bottom: 6px;" />
+        <ui:GroupBox name="Thumbs" class="mt-frame" style="flex-shrink: 1; flex-grow: 1; height: auto; min-height: 90px; flex-direction: row; flex-wrap: wrap; padding-bottom: 6px; background-color: rgba(0, 0, 0, 0.09); padding-left: 6px; padding-right: 6px; padding-top: 6px; margin-left: 6px; margin-right: 6px; margin-top: 6px; margin-bottom: 6px; width: auto;" />
     </ui:GroupBox>
 </ui:UXML>

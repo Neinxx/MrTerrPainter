@@ -34,21 +34,11 @@ namespace MrTerrainPainter.Editor.Views.Tabs
             }
 
             var fold = page.Q<Foldout>("MappingList");
-            var mappingTemplate = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Assets/MrTerrPainterV1/Editor/MTPTerrainPainterSettingsMappinger.uxml");
+            var mappingTemplate = ConfigTools.GetSettingsMappingUxml();
             if (fold != null && mappingTemplate != null)
             {
                 if (window.config.mappingEntries == null) window.config.mappingEntries = new System.Collections.Generic.List<MrTerrainPainterConfig.MappingEntry>();
-                if (window.config.mappingEntries.Count == 0 && (window.config.objectList != null || window.config.objectTypeList != null))
-                {
-                    int max = Mathf.Max(window.config.objectList != null ? window.config.objectList.Length : 0, window.config.objectTypeList != null ? window.config.objectTypeList.Length : 0);
-                    for (int i = 0; i < max; i++)
-                    {
-                        var entry = new MrTerrainPainterConfig.MappingEntry();
-                        if (window.config.objectList != null && i < window.config.objectList.Length) entry.node = window.config.objectList[i];
-                        if (window.config.objectTypeList != null && i < window.config.objectTypeList.Length) entry.type = window.config.objectTypeList[i];
-                        window.config.mappingEntries.Add(entry);
-                    }
-                }
+                
                 void Refresh()
                 {
                     fold.Clear();
@@ -60,28 +50,30 @@ namespace MrTerrainPainter.Editor.Views.Tabs
                         var of = mapRoot.Q<ObjectField>("ObjectField");
                         if (of != null)
                         {
+                            int idxLocal = i;
                             of.objectType = typeof(UnityEngine.Transform);
                             of.allowSceneObjects = true;
-                            var initialGo = window.config.mappingEntries[i].node;
-                            of.SetValueWithoutNotify(initialGo != null ? initialGo.transform : null);
+                            var initialTf = window.config.mappingEntries[idxLocal].node;
+                            of.SetValueWithoutNotify(initialTf);
                             of.RegisterValueChangedCallback(e =>
                             {
-                                window.config.mappingEntries[i].node = (e.newValue as UnityEngine.Transform)?.gameObject;
-                                SyncArraysFromEntries();
+                                window.config.mappingEntries[idxLocal].node = e.newValue as Transform;
                                 EditorUtility.SetDirty(window.config);
+                                Refresh();
                             });
                         }
                         var typeField = mapRoot.Q<EnumField>("PrefabType");
                         if (typeField != null)
                         {
-                            var initialType = window.config.mappingEntries[i].type;
+                            int idxLocal2 = i;
+                            var initialType = window.config.mappingEntries[idxLocal2].type;
                             typeField.Init(initialType);
                             typeField.SetValueWithoutNotify(initialType);
                             typeField.RegisterValueChangedCallback(e =>
                             {
-                                window.config.mappingEntries[i].type = (MrTerrainPainter.Runtime.Profiles.PrefabType)e.newValue;
-                                SyncArraysFromEntries();
+                                window.config.mappingEntries[idxLocal2].type = (MrTerrainPainter.Runtime.Profiles.PrefabType)e.newValue;
                                 EditorUtility.SetDirty(window.config);
+                                Refresh();
                             });
                         }
                         var btnDel = rowRoot.Q<Button>("Delete");
@@ -114,6 +106,52 @@ namespace MrTerrainPainter.Editor.Views.Tabs
                     };
                 }
             }
+
+            var btnCheck = page.Q<Button>("CheckConfiguration");
+            if (btnCheck != null) btnCheck.clicked += () =>
+            {
+                if (ConfigTools.IsComplete(window.config, out var reason))
+                {
+                    EditorUtility.DisplayDialog("检查结果", "配置完整。", "确定");
+                }
+                else
+                {
+                    EditorUtility.DisplayDialog("检查结果", reason, "确定");
+                }
+            };
+
+            var btnFix = page.Q<Button>("FixMissingResources");
+            if (btnFix != null) btnFix.clicked += () =>
+            {
+                if (!string.IsNullOrEmpty(window.config.recipeGenerationPath))
+                {
+                    ConfigTools.EnsureFolder(window.config.recipeGenerationPath);
+                }
+                EditorUtility.DisplayDialog("已修复", "已尝试修复部分缺失资源路径。", "确定");
+            };
+
+            var btnBindDefaults = page.Q<Button>("BindDefaultResources");
+            if (btnBindDefaults != null) btnBindDefaults.clicked += () =>
+            {
+                if (window.config.brushOverlayUxml == null)
+                {
+                    window.config.brushOverlayUxml = ConfigTools.GetBrushOverlayUxml(window.config);
+                }
+                if (window.config.stylesUss == null)
+                {
+                    window.config.stylesUss = ConfigTools.GetStylesUss(window.config);
+                }
+                if (window.config.startUxml == null) window.config.startUxml = ConfigTools.GetStartUxml(window.config);
+                if (window.config.controlUxml == null) window.config.controlUxml = ConfigTools.GetControlUxml(window.config);
+                if (window.config.paintUxml == null) window.config.paintUxml = ConfigTools.GetPaintUxml(window.config);
+                if (window.config.generateUxml == null) window.config.generateUxml = ConfigTools.GetGenerateUxml(window.config);
+                if (window.config.vegetationSharedUxml == null) window.config.vegetationSharedUxml = ConfigTools.GetVegetationSharedUxml(window.config);
+                if (window.config.vegetationProfileRowUxml == null) window.config.vegetationProfileRowUxml = ConfigTools.GetVegetationProfileRowUxml(window.config);
+                if (window.config.prefabIconUxml == null) window.config.prefabIconUxml = ConfigTools.GetPrefabIconUxml(window.config);
+                if (window.config.draggableAreaUxml == null) window.config.draggableAreaUxml = ConfigTools.GetDraggableAreaUxml(window.config);
+                EditorUtility.SetDirty(window.config);
+                EditorUtility.DisplayDialog("已绑定", "已绑定可用的默认资源引用（如叠加层与样式）。", "确定");
+            };
         }
 
         private void BindTextField(VisualElement page, string name, System.Func<string> getter, System.Action<string> setter)
@@ -142,11 +180,6 @@ namespace MrTerrainPainter.Editor.Views.Tabs
             of.RegisterValueChangedCallback(e => setter(e.newValue));
         }
 
-        private void SyncArraysFromEntries()
-        {
-            var list = window.config.mappingEntries ?? new System.Collections.Generic.List<MrTerrainPainterConfig.MappingEntry>();
-            window.config.objectList = list.Select(e => e.node).ToArray();
-            window.config.objectTypeList = list.Select(e => e.type).ToArray();
-        }
+        private void SyncArraysFromEntries() { }
     }
 }

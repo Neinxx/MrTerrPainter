@@ -312,10 +312,7 @@ namespace MrTerrainPainter.Editor.Services
             // 查找全局配置（优先选择存在映射数据的配置实例）
             var config = Resources
                 .FindObjectsOfTypeAll<MrTerrainPainterConfig>()
-               .FirstOrDefault(c => c.objectTypeList != null &&
-                     c.objectList != null &&
-                     c.objectTypeList.Length > 0 &&
-                     c.objectList.Length > 0);
+               .FirstOrDefault(c => c.mappingEntries != null && c.mappingEntries.Count > 0);
             if (config != null && config.mappingEntries != null && config.mappingEntries.Count > 0)
             {
                 for (int i = config.mappingEntries.Count - 1; i >= 0; i--)
@@ -323,24 +320,7 @@ namespace MrTerrainPainter.Editor.Services
                     var entry = config.mappingEntries[i];
                     if (entry == null) continue;
                     if (entry.type != item.prefabType) continue;
-                    var go = entry.node;
-                    if (go == null) continue;
-                    var tf = go.transform;
-                    if (tf != null) return tf;
-                }
-            }
-            if (config != null && config.objectTypeList != null && config.objectList != null)
-            {
-                int maxCount = Mathf.Max(config.objectTypeList.Length, config.objectList.Length);
-                for (int i = maxCount - 1; i >= 0; i--)
-                {
-                    var hasType = i < config.objectTypeList.Length;
-                    var hasObj = i < config.objectList.Length;
-                    if (!hasType || !hasObj) continue;
-                    if (config.objectTypeList[i] != item.prefabType) continue;
-                    var go = config.objectList[i];
-                    if (go == null) continue;
-                    var tf = go.transform;
+                    var tf = entry.node;
                     if (tf != null) return tf;
                 }
             }

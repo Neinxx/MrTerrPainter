@@ -51,13 +51,14 @@ namespace MrTerrainPainter.Editor
         private IPrefabPickerController prefabPicker;
         public TerrainController terrainController;
         private PrefabAssignmentController prefabAssignment;
+        private ProfileController profileController;
+        private PaintingController paintingController;
         // 视图：Contral 页列表视图
         private ContralView contralView;
         // 视图：Contral 页属性面板视图
         private PropertyPanelView propertyPanelView;
         // 视图：地形列表（Start/Contral 页）
         private TerrainListView startTerrainListView;
-        private TerrainListView contralTerrainListView;
         // 视图：Paint/Generate 页模块化视图
         private BrushView brushView;
         private GenerateFilterView generateFilterView;
@@ -92,6 +93,8 @@ namespace MrTerrainPainter.Editor
         private readonly Slider uiMinimumSpacing;
         private ListView uiVegetationList;
         private VisualElement uiPreviewPrefabList;
+        private ListView uiPreviewListView;
+        private readonly System.Collections.Generic.Dictionary<int, Texture2D> previewTexCache = new();
         private float vegetationListContentWidth = 600f; // 列表内容区域宽度缓存，用于行高估算
         private GameObject currentPrefab; // 当前选中的预制体（用于交互与显示）
 
@@ -101,9 +104,25 @@ namespace MrTerrainPainter.Editor
         [MenuItem("Tools/Mr Terrain Painter Main")]
         public static void Open()
         {
-            var cfg = ConfigTools.LoadOrCreateAsset();
+            GetOrOpen();
+        }
+
+        public static bool TryGet(out MrTerrainPainterWindow window)
+        {
+            window = null;
+            if (EditorWindow.HasOpenInstances<MrTerrainPainterWindow>())
+            {
+                // 仅在已打开时检索现有实例，避免隐式创建
+                window = Resources.FindObjectsOfTypeAll<MrTerrainPainterWindow>().FirstOrDefault();
+            }
+            return window != null;
+        }
+
+        public static MrTerrainPainterWindow GetOrOpen()
+        {
             var win = GetWindow<MrTerrainPainterWindow>(false, "Mr Terrain Painter");
             win.Show();
+            return win;
         }
 
 
@@ -111,7 +130,14 @@ namespace MrTerrainPainter.Editor
         // 重新扫描并刷新 VegetationProfile 列表与相关 UI
         private void ReloadAvailableProfiles()
         {
-            // 重新扫描并确保 Profile 列表与当前选择有效
+            ScanVegetationProfiles();
+            ValidateCurrentProfile();
+            PruneExtraProfiles();
+            RefreshProfileUI();
+        }
+
+        private void ScanVegetationProfiles()
+        {
             availableProfiles?.Clear();
             var guids = AssetDatabase.FindAssets("t:VegetationProfile");
             for (int gi = 0; gi < guids.Length; gi++)
@@ -120,27 +146,33 @@ namespace MrTerrainPainter.Editor
                 var asset = AssetDatabase.LoadAssetAtPath<VegetationProfile>(path);
                 if (asset != null) availableProfiles.Add(asset);
             }
-            // 当前 Profile 如已被删除或为空，回退到首个有效项
+        }
+
+        private void ValidateCurrentProfile()
+        {
             if (currentProfile == null || !availableProfiles.Contains(currentProfile))
             {
                 currentProfile = availableProfiles.Count > 0 ? availableProfiles[0] : null;
             }
-            // 清理批量生成列表中的无效引用，避免后续生成报错
-            if (extraProfiles != null)
+        }
+
+        private void PruneExtraProfiles()
+        {
+            if (extraProfiles == null) return;
+            for (int i = extraProfiles.Count - 1; i >= 0; i--)
             {
-                for (int i = extraProfiles.Count - 1; i >= 0; i--)
-                {
-                    if (extraProfiles[i] == null) extraProfiles.RemoveAt(i);
-                }
+                if (extraProfiles[i] == null) extraProfiles.RemoveAt(i);
             }
-            // 刷新 ListView 展示
+        }
+
+        private void RefreshProfileUI()
+        {
             if (uiVegetationList != null)
             {
                 uiVegetationList.itemsSource = availableProfiles;
                 uiVegetationList.Rebuild();
             }
-            // 同步其他关联 UI
-            selectedThumbIndices.Clear(); // 切换/刷新后清空多选
+            selectedThumbIndices.Clear();
             RefreshVegetationListUI();
             RefreshPreviewListUI();
             UpdatePropertyPanelFromSelectedItem();
@@ -173,14 +205,14 @@ namespace MrTerrainPainter.Editor
             VegetationPool.ShowInHierarchy = config.showPoolInHierarchy;
             // 移除旧设置页的对象列表同步逻辑（独立窗口管理，不在主窗口维护）
 
-            uxmlStart = config.startUxml;
-            uxmlContral = config.controlUxml;
-            uxmlGenerate = config.generateUxml;
-            uxmlPaint = config.paintUxml;
-            uxmlVegetationShared = config.vegetationSharedUxml;
-            uxmlVegetationProfileRow = config.vegetationProfileRowUxml;
-            uxmlVegetationProfilePrefabIcon = config.prefabIconUxml;
-            uxmlVegetationProfileDraggableArea = config.draggableAreaUxml;
+            uxmlStart = ConfigTools.GetStartUxml(config);
+            uxmlContral = ConfigTools.GetControlUxml(config);
+            uxmlGenerate = ConfigTools.GetGenerateUxml(config);
+            uxmlPaint = ConfigTools.GetPaintUxml(config);
+            uxmlVegetationShared = ConfigTools.GetVegetationSharedUxml(config);
+            uxmlVegetationProfileRow = ConfigTools.GetVegetationProfileRowUxml(config);
+            uxmlVegetationProfilePrefabIcon = ConfigTools.GetPrefabIconUxml(config);
+            uxmlVegetationProfileDraggableArea = ConfigTools.GetDraggableAreaUxml(config);
 
             // 预加载 Profile 列表，确保后续页面构建有数据来源
             ReloadAvailableProfiles();
@@ -207,6 +239,8 @@ namespace MrTerrainPainter.Editor
                 (profile, index, prefab) => prefabAssignment.AssignPrefabToItem(profile, index, prefab)
             );
             terrainController = new TerrainController();
+            profileController = new ProfileController();
+            paintingController = new PaintingController();
 
             // 构建UI Toolkit界面
             CreateGUI();
@@ -227,13 +261,7 @@ namespace MrTerrainPainter.Editor
         private void CreateGUI()
         {
             var root = rootVisualElement;
-            var styleSheet = config != null ? config.stylesUss : null;
-            if (styleSheet == null)
-            {
-                root.Add(new Label("样式未配置：请在 Settings 中设置 StylesUSS"));
-                return;
-            }
-            root.styleSheets.Add(styleSheet);
+            if (!Editor.Utils.PageAssembler.EnsureStylesAndValidate(config, root, out var reason)) return;
 
             root.style.paddingLeft = 6;
             root.style.paddingRight = 6;
@@ -242,12 +270,13 @@ namespace MrTerrainPainter.Editor
             root.Clear();
 
             pageContainer = new ScrollView();
+            //  pageContainer.mode = ScrollViewMode.Vertical;
+            //  pageContainer.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
             pageContainer.style.flexGrow = 1;
+            pageContainer.contentContainer.style.paddingRight = 16;
             root.Add(pageContainer);
 
-            // 默认首页：Start
-            startRoot = InstantiatePage(uxmlStart);
-            pageContainer.Add(startRoot);
+            startRoot = PageAssembler.Assemble(pageContainer, uxmlStart);
             startRoot.AddToClassList("mt-frame");
             SetupStartPageEvents();
         }
@@ -361,70 +390,32 @@ namespace MrTerrainPainter.Editor
 
         private void EnsureDataFolderExists()
         {
-            var path = DataFolderPath.Replace("\\", "/");
-            if (AssetDatabase.IsValidFolder(path)) return;
-            var segments = path.Split('/');
-            if (segments.Length < 2) return;
-            string current = segments[0];
-            for (int i = 1; i < segments.Length; i++)
-            {
-                string next = segments[i];
-                string combined = current + "/" + next;
-                if (!AssetDatabase.IsValidFolder(combined))
-                {
-                    AssetDatabase.CreateFolder(current, next);
-                }
-                current = combined;
-            }
-            AssetDatabase.Refresh();
+            profileController?.EnsureDataFolderExists(DataFolderPath);
         }
 
         private void CreateNewVegetationProfileAsset()
         {
-            EnsureDataFolderExists();
-            var profile = CreateInstance<VegetationProfile>();
-            profile.name = "VegetationProfile";
-            var path = AssetDatabase.GenerateUniqueAssetPath($"{DataFolderPath}/VegetationProfile.asset");
-            AssetDatabase.CreateAsset(profile, path);
-            AssetDatabase.SaveAssets();
-            AssetDatabase.Refresh();
+            var profile = profileController?.CreateNewVegetationProfileAsset(DataFolderPath);
             currentProfile = profile;
+            ReloadAvailableProfiles();
         }
 
         private void DeleteVegetationProfileAsset(VegetationProfile profile)
         {
-            if (profile == null) return; // 提前返回
-            // 删除确认对话框
+            if (profile == null) return;
             bool confirm = EditorUtility.DisplayDialog("确认删除Profile",
                 $"确定删除 Profile: {profile.name} ？此操作不可撤销。",
                 "删除", "取消");
-            if (!confirm) return; // 提前返回
-            var path = AssetDatabase.GetAssetPath(profile);
-            if (string.IsNullOrEmpty(path)) return; // 提前返回
-            AssetDatabase.DeleteAsset(path);
-            AssetDatabase.SaveAssets();
-            AssetDatabase.Refresh();
-            // 清理批量生成列表中的引用，防止后续生成访问到已删除的 SO
-            if (extraProfiles != null)
-            {
-                for (int i = extraProfiles.Count - 1; i >= 0; i--)
-                {
-                    if (extraProfiles[i] == null || extraProfiles[i] == profile)
-                        extraProfiles.RemoveAt(i);
-                }
-            }
-            if (currentProfile == profile)
-            {
-                currentProfile = null;
-                if (availableProfiles.Count > 0) currentProfile = availableProfiles[0];
-            }
+            if (!confirm) return;
+            profileController?.DeleteVegetationProfileAsset(profile);
+            ReloadAvailableProfiles();
         }
 
         private void SetListSelectionToCurrentProfile()
         {
             // 移除 SO 项高亮：不再设置选中索引，始终清空选择
             if (uiVegetationList == null) return; // 提前返回
-            // 清空选择以避免 ListView 默认选中样式（蓝色高亮）
+                                                  // 清空选择以避免 ListView 默认选中样式（蓝色高亮）
             uiVegetationList.selectedIndex = -1;
             uiVegetationList.ClearSelection();
         }
@@ -462,15 +453,7 @@ namespace MrTerrainPainter.Editor
 
         private void ScanSceneTerrains()
         {
-            // 使用 Unity API 扫描场景地形
-            scannedTerrainNames.Clear();
-            terrainListUIData.Clear();
-            foreach (var t in Terrain.activeTerrains)
-            {
-                if (t == null) continue;
-                scannedTerrainNames.Add(t.name);
-                terrainListUIData.Add(t);
-            }
+            terrainController?.ScanSceneTerrains(terrainListUIData, scannedTerrainNames);
         }
 
         public readonly List<string> scannedTerrainNames = new();
@@ -484,6 +467,31 @@ namespace MrTerrainPainter.Editor
             if (UnityEditor.EditorTools.ToolManager.activeToolType == typeof(Tools.MTPBrushTool)) return;
             EnsureRandom();
             var e = Event.current;
+            HandleLayoutControl(e);
+            var ray = HandleUtility.GUIPointToWorldRay(e.mousePosition);
+            Terrain hitTerrain = null;
+            Vector3 hitPos = Vector3.zero;
+            Vector3 hitNormal = Vector3.up;
+            bool hasHit = terrainController != null && terrainController.TryGetTerrainHit(ray, out hitTerrain, out hitPos, out hitNormal);
+            RenderBrushPreview(hasHit, hitPos, hitNormal, e);
+            if (e.type == EventType.MouseDown || e.type == EventType.MouseDrag)
+            {
+                if (!hasHit) return;
+                if (mode == Mode.Generate)
+                {
+                    HandleGenerateMouse(e, hitPos);
+                    return;
+                }
+                if (mode == Mode.Paint)
+                {
+                    HandlePaintMouse(e, hitTerrain, hitPos);
+                    return;
+                }
+            }
+        }
+
+        private void HandleLayoutControl(Event e)
+        {
             if (mode == Mode.Paint || (mode == Mode.Generate && e.shift))
             {
                 if (e.type == EventType.Layout)
@@ -491,155 +499,75 @@ namespace MrTerrainPainter.Editor
                     HandleUtility.AddDefaultControl(GUIUtility.GetControlID(FocusType.Passive));
                 }
             }
+        }
 
-            var ray = HandleUtility.GUIPointToWorldRay(e.mousePosition);
-            Terrain hitTerrain = null;
-            Vector3 hitPos = Vector3.zero;
-            Vector3 hitNormal = Vector3.up;
-            bool hasHit = TryGetTerrainHit(ray, out hitTerrain, out hitPos, out hitNormal);
+        private void RenderBrushPreview(bool hasHit, Vector3 hitPos, Vector3 hitNormal, Event e)
+        {
+            if (e.type != EventType.Repaint) return;
+            if (!hasHit || mode != Mode.Paint) return;
+            BrushPainter.DrawPreview(hitPos, hitNormal, brush);
+        }
 
-            if (e.type == EventType.Repaint)
+        private void HandleGenerateMouse(Event e, Vector3 hitPos)
+        {
+            if (!e.shift) return;
+            if (selectedTerrains.Count > 0 && currentProfile != null)
             {
-                if (hasHit && mode == Mode.Paint)
+                var filter = BuildFilterSettings();
+                var ov = BuildPlacementOverrides();
+                VegetationGenerator.GenerateInBrushArea(selectedTerrains, currentProfile, hitPos, brush.size, filter, ov);
+                for (int i = 0; i < extraProfiles.Count; i++)
                 {
-                    BrushPainter.DrawPreview(hitPos, hitNormal, brush);
+                    var p = extraProfiles[i];
+                    if (p == null || p.IsEmpty()) continue;
+                    VegetationGenerator.GenerateInBrushArea(selectedTerrains, p, hitPos, brush.size, filter, ov);
+                }
+                MarkSceneDirty();
+            }
+            if (e.button != 2) e.Use();
+        }
+
+        private void HandlePaintMouse(Event e, Terrain hitTerrain, Vector3 hitPos)
+        {
+            var terrain = hitTerrain != null ? hitTerrain : (terrainController != null ? terrainController.NearestTerrain(hitPos, selectedTerrains) : null);
+            if (terrain != null)
+            {
+                if (e.button == 1)
+                {
+                    BrushPainter.Erase(terrain, hitPos, brush, eraseAll: true);
+                    MarkSceneDirty();
+                }
+                else if (e.button == 0)
+                {
+                    VegetationPainterOnTerrain(terrain, hitPos);
                 }
             }
-
-            if (e.type == EventType.MouseDown || e.type == EventType.MouseDrag)
-            {
-                if (!hasHit) return;
-                if (mode == Mode.Generate)
-                {
-                    if (e.shift)
-                    {
-                        if (selectedTerrains.Count > 0 && currentProfile != null)
-                        {
-                            var filter = BuildFilterSettings();
-                            var ov = BuildPlacementOverrides();
-                            VegetationGenerator.GenerateInBrushArea(selectedTerrains, currentProfile, hitPos, brush.size, filter, ov);
-                            for (int i = 0; i < extraProfiles.Count; i++)
-                            {
-                                var p = extraProfiles[i];
-                                if (p == null || p.IsEmpty()) continue;
-                                VegetationGenerator.GenerateInBrushArea(selectedTerrains, p, hitPos, brush.size, filter, ov);
-                            }
-                            MarkSceneDirty();
-                        }
-                        if (e.button != 2) e.Use();
-                        return;
-                    }
-                }
-                else if (mode == Mode.Paint)
-                {
-                    var terrain = hitTerrain != null ? hitTerrain : NearestTerrain(hitPos);
-                    if (terrain != null)
-                    {
-                        if (e.button == 1)
-                        {
-                            BrushPainter.Erase(terrain, hitPos, brush, eraseAll: true);
-                            MarkSceneDirty();
-                        }
-                        else if (e.button == 0)
-                        {
-                            VegetationPainterOnTerrain(terrain, hitPos);
-                        }
-                    }
-                    if (e.button != 2) e.Use();
-                    return;
-                }
-            }
+            if (e.button != 2) e.Use();
         }
 
         private bool TryGetTerrainHit(Ray ray, out Terrain terrain, out Vector3 pos, out Vector3 normal)
         {
-            terrain = null;
-            pos = Vector3.zero;
-            normal = Vector3.up;
-            float bestT = float.MaxValue;
-            foreach (var t in Terrain.activeTerrains)
+            if (terrainController == null)
             {
-                if (t == null) continue;
-                var col = t.GetComponent<TerrainCollider>();
-                if (col != null)
-                {
-                    if (col.Raycast(ray, out var hit, 10000f))
-                    {
-                        if (hit.distance < bestT)
-                        {
-                            bestT = hit.distance;
-                            terrain = t;
-                            pos = hit.point;
-                            if (TerrainUtils.TryGetHeightAndNormal(terrain, pos, out var h, out var n))
-                            {
-                                pos.y = h;
-                                normal = n;
-                            }
-                        }
-                    }
-                    continue;
-                }
-                float dy = ray.direction.y;
-                if (Mathf.Abs(dy) < 1e-5f) continue;
-                float planeY = t.transform.position.y;
-                float tt = (planeY - ray.origin.y) / dy;
-                if (tt <= 0f || tt >= bestT) continue;
-                var p = ray.origin + ray.direction * tt;
-                var size = t.terrainData.size;
-                var tp = t.transform.position;
-                if (p.x < tp.x || p.x > tp.x + size.x || p.z < tp.z || p.z > tp.z + size.z) continue;
-                if (TerrainUtils.TryGetHeightAndNormal(t, p, out var hh, out var nn))
-                {
-                    bestT = tt;
-                    terrain = t;
-                    pos = new Vector3(p.x, hh, p.z);
-                    normal = nn;
-                }
+                terrain = null;
+                pos = Vector3.zero;
+                normal = Vector3.up;
+                return false;
             }
-            return terrain != null;
+            return terrainController.TryGetTerrainHit(ray, out terrain, out pos, out normal);
         }
 
         private void VegetationPainterOnTerrain(Terrain terrain, Vector3 center)
         {
-            if (terrain == null || currentProfile == null || currentProfile.IsEmpty()) return; // 提前返回
+            if (terrain == null || currentProfile == null || currentProfile.IsEmpty()) return;
             var ov = BuildPlacementOverrides();
-            if (brush.mixExtraProfiles)
-            {
-                var list = new List<Runtime.Profiles.VegetationProfile>();
-                list.Add(currentProfile);
-                for (int i = 0; i < extraProfiles.Count; i++)
-                {
-                    var p = extraProfiles[i];
-                    if (p == null || p.IsEmpty()) continue;
-                    list.Add(p);
-                }
-                BrushPainter.PaintMixed(terrain, list, center, brush, rnd, ov);
-            }
-            else
-            {
-                BrushPainter.Paint(terrain, currentProfile, center, brush, rnd, ov);
-                for (int i = 0; i < extraProfiles.Count; i++)
-                {
-                    var p = extraProfiles[i];
-                    if (p == null || p.IsEmpty()) continue;
-                    BrushPainter.Paint(terrain, p, center, brush, rnd, ov);
-                }
-            }
+            paintingController?.PaintOnTerrain(terrain, center, currentProfile, extraProfiles, brush, rnd, ov, brush.mixExtraProfiles);
             MarkSceneDirty();
         }
 
         private Terrain NearestTerrain(Vector3 pos)
         {
-            Terrain best = null;
-            float bestDist = float.MaxValue;
-            for (int i = 0; i < selectedTerrains.Count; i++)
-            {
-                var t = selectedTerrains[i];
-                if (t == null) continue;
-                float d = Vector3.SqrMagnitude(pos - t.transform.position);
-                if (d < bestDist) { bestDist = d; best = t; }
-            }
-            return best;
+            return terrainController != null ? terrainController.NearestTerrain(pos, selectedTerrains) : null;
         }
 
         private void EnsureRandom()
@@ -701,4 +629,5 @@ namespace MrTerrainPainter.Editor
             }
         }
     }
+
 }

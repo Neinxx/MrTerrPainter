@@ -334,13 +334,11 @@ namespace MrTerrainPainter.Editor.Services
                 for (int ci = 0; ci < configs.Length; ci++)
                 {
                     var c = configs[ci];
-                    var list = c != null ? c.objectList : null;
-                    if (list == null || list.Length == 0) continue;
-                    for (int i = 0; i < list.Length; i++)
+                    var entries = c != null ? c.mappingEntries : null;
+                    if (entries == null || entries.Count == 0) continue;
+                    for (int i = 0; i < entries.Count; i++)
                     {
-                        var go = list[i];
-                        if (go == null) continue;
-                        var tf = go.transform;
+                        var tf = entries[i]?.node;
                         if (tf == null) continue;
                         if (set.Add(tf)) roots.Add(tf);
                     }
