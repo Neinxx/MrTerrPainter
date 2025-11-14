@@ -46,17 +46,6 @@ MonoBehaviour:
     baseDensity: 2.75
     minSpacing: 5.88
     alignToTerrainNormal: 1
-  - prefab: {fileID: 5177702211549093989, guid: 3ca2a6659fde875498f107a4299d52a1,
-      type: 3}
-    weight: 1
-    prefabType: 2
-    uniformScaleRange: {x: 1, y: 1}
-    yRotationRange: {x: 0, y: 30}
-    heightRange: {x: 0, y: 1000}
-    slopeRange: {x: 0, y: 90}
-    baseDensity: 1
-    minSpacing: 1.5
-    alignToTerrainNormal: 1
   initialized: 1
   randomSeed: 12345
   baseDensity: 1

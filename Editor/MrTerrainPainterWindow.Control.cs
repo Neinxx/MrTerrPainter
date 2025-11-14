@@ -147,6 +147,7 @@ namespace MrTerrainPainter.Editor
             var scroll = new ScrollView();
             scroll.mode = ScrollViewMode.Vertical;
             scroll.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
+            scroll.contentContainer.style.paddingRight = 16;
             var vegRoot = PageAssembler.Assemble(scroll, uxmlVegetationShared);
             var paintRoot = PageAssembler.Assemble(scroll, uxmlPaint);
             contralTabContent.Add(scroll);
@@ -164,6 +165,7 @@ namespace MrTerrainPainter.Editor
             var scroll = new ScrollView();
             scroll.mode = ScrollViewMode.Vertical;
             scroll.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
+            scroll.contentContainer.style.paddingRight = 16;
             var vegRoot = PageAssembler.Assemble(scroll, uxmlVegetationShared);
             var genRoot = PageAssembler.Assemble(scroll, uxmlGenerate);
             contralTabContent.Add(scroll);
@@ -570,91 +572,115 @@ namespace MrTerrainPainter.Editor
         private void RefreshPreviewListUI()
         {
             if (uiPreviewPrefabList == null) return;
-            Utils.UIThrottle.RunOnPanel(uiPreviewPrefabList, RefreshPreviewListUIInternal);
+            Utils.UIThrottle.RunOnPanel(uiPreviewPrefabList, EnsurePreviewListView);
         }
 
-        private void RefreshPreviewListUIInternal()
+        private void EnsurePreviewListView()
         {
-            uiPreviewPrefabList.Clear();
             if (currentProfile != null)
             {
                 prefabAssignment?.CleanNullPrefabItems(currentProfile);
             }
             var items = GetProfileItemsSnapshot();
-            selectedItemIndex = Mathf.Clamp(selectedItemIndex, 0, Mathf.Max(0, items.Count - 1));
-            for (int i = 0; i < items.Count; i++)
+            if (uiPreviewListView == null)
             {
-                var it = items[i];
-                var box = new VisualElement();
-                box.AddToClassList("preview-item");
-                box.pickingMode = PickingMode.Position;
-                var img = new Image();
-                img.AddToClassList("preview-item__image");
-                Texture2D tex = null;
-                if (it != null && it.prefab != null)
+                var lv = new ListView
                 {
-                    tex = AssetPreview.GetAssetPreview(it.prefab) ?? AssetPreview.GetMiniThumbnail(it.prefab);
-                }
-                img.image = tex;
-                box.Add(img);
-                var index = i;
-                box.RegisterCallback<PointerDownEvent>(evt =>
+                    selectionType = SelectionType.None,
+                    itemsSource = items,
+                    virtualizationMethod = CollectionVirtualizationMethod.FixedHeight,
+                    fixedItemHeight = 72
+                };
+                lv.style.flexGrow = 1;
+                lv.makeItem = () =>
                 {
-                    if (evt.button == 0)
+                    var box = new VisualElement();
+                    box.AddToClassList("preview-item");
+                    var img = new Image();
+                    img.AddToClassList("preview-item__image");
+                    box.Add(img);
+                    return box;
+                };
+                lv.bindItem = (elem, i) =>
+                {
+                    var it = (i >= 0 && i < items.Count) ? items[i] : null;
+                    var img = elem.Q<Image>();
+                    Texture2D tex = null;
+                    if (it != null && it.prefab != null)
                     {
-                        var idx = index;
-                        Utils.UIThrottle.RunOnPanel(uiPreviewPrefabList, () => SetSelectedThumbIndex(idx));
-                        evt.StopPropagation();
-                    }
-                });
-                img.RegisterCallback<PointerDownEvent>(evt =>
-                {
-                    if (evt.button == 0)
-                    {
-                        var idx = index;
-                        Utils.UIThrottle.RunOnPanel(uiPreviewPrefabList, () => SetSelectedThumbIndex(idx));
-                        evt.StopPropagation();
-                    }
-                });
-                box.RegisterCallback<PointerDownEvent>(evt =>
-                {
-                    if (evt.button == 1)
-                    {
-                        var menu = new GenericMenu();
-                        menu.AddItem(new GUIContent("删除"), false, () =>
+                        var id = it.prefab.GetInstanceID();
+                        if (!previewTexCache.TryGetValue(id, out tex) || tex == null)
                         {
-                            var idx = index;
-                            Utils.UIThrottle.RunNextFrame(() =>
-                            {
-                                prefabAssignment?.RemoveItemAt(idx);
-                                RefreshVegetationListUI();
-                                RefreshPreviewListUI();
-                            });
-                        });
-                        var enumValues = System.Enum.GetValues(typeof(MrTerrainPainter.Runtime.Profiles.PrefabType));
-                        foreach (MrTerrainPainter.Runtime.Profiles.PrefabType val in enumValues)
-                        {
-                            var tname = val.ToString();
-                            bool isCurrent = it != null && it.prefabType == val;
-                            menu.AddItem(new GUIContent($"类型/{tname}"), isCurrent, () =>
-                            {
-                                var idx = index;
-                                prefabAssignment?.SetItemType(currentProfile, idx, val);
-                                if (currentProfile != null) EditorUtility.SetDirty(currentProfile);
-                                Utils.UIThrottle.RunOnPanel(uiPreviewPrefabList, () => SetSelectedThumbIndex(idx));
-                            });
+                            tex = AssetPreview.GetAssetPreview(it.prefab) ?? AssetPreview.GetMiniThumbnail(it.prefab);
+                            previewTexCache[id] = tex;
+                            if (tex == null) Utils.UIThrottle.RunNextFrame(() => RefreshPreviewListUI());
                         }
-                        menu.ShowAsContext();
-                        evt.StopPropagation();
                     }
-                });
-                if (index == selectedItemIndex)
-                {
-                    box.AddToClassList("preview-item--selected");
-                }
-                uiPreviewPrefabList.Add(box);
+                    img.image = tex;
+                    elem.userData = i;
+                    var sel = i == selectedItemIndex;
+                    if (sel) elem.AddToClassList("preview-item--selected"); else elem.RemoveFromClassList("preview-item--selected");
+                    elem.RegisterCallback<PointerDownEvent>(evt =>
+                    {
+                        if (evt.button == 0)
+                        {
+                            SetSelectedThumbIndex(i);
+                            evt.StopPropagation();
+                        }
+                        else if (evt.button == 1)
+                        {
+                            var menu = new GenericMenu();
+                            menu.AddItem(new GUIContent("删除"), false, () =>
+                            {
+                                var idx = i;
+                                Utils.UIThrottle.RunNextFrame(() =>
+                                {
+                                    prefabAssignment?.RemoveItemAt(idx);
+                                    RefreshVegetationListUI();
+                                    RefreshPreviewListUI();
+                                });
+                            });
+                            var values = (MrTerrainPainter.Runtime.Profiles.PrefabType[])System.Enum.GetValues(typeof(MrTerrainPainter.Runtime.Profiles.PrefabType));
+                            for (int vi = 0; vi < values.Length; vi++)
+                            {
+                                var val = values[vi];
+                                bool isCurrent = it != null && it.prefabType == val;
+                                menu.AddItem(new GUIContent($"类型/{val}"), isCurrent, () =>
+                                {
+                                    var idx = i;
+                                    prefabAssignment?.SetItemType(currentProfile, idx, val);
+                                    if (currentProfile != null) EditorUtility.SetDirty(currentProfile);
+                                    Utils.UIThrottle.RunOnPanel(uiPreviewListView, () => UpdatePreviewSelectionVisuals());
+                                });
+                            }
+                            menu.ShowAsContext();
+                            evt.StopPropagation();
+                        }
+                    });
+                };
+                uiPreviewListView = lv;
+                uiPreviewPrefabList.Clear();
+                uiPreviewPrefabList.Add(uiPreviewListView);
             }
-            uiPreviewPrefabList.MarkDirtyRepaint();
+            else
+            {
+                uiPreviewListView.itemsSource = items;
+                uiPreviewListView.Rebuild();
+            }
+            Utils.UIThrottle.RunOnPanel(uiPreviewListView, UpdatePreviewSelectionVisuals);
+        }
+
+        private void UpdatePreviewSelectionVisuals()
+        {
+            if (uiPreviewListView == null) return;
+            var children = uiPreviewListView.contentContainer.Children().ToList();
+            for (int ci = 0; ci < children.Count; ci++)
+            {
+                var ve = children[ci];
+                var idx = ve.userData is int n ? n : -1;
+                if (idx < 0) continue;
+                if (idx == selectedItemIndex) ve.AddToClassList("preview-item--selected"); else ve.RemoveFromClassList("preview-item--selected");
+            }
         }
 
         private void UpdatePropertyPanelFromSelectedItem()
@@ -668,17 +694,7 @@ namespace MrTerrainPainter.Editor
         {
             selectedItemIndex = index;
             currentPrefab = GetSelectedItem()?.prefab;
-            if (uiPreviewPrefabList != null)
-            {
-                var children = uiPreviewPrefabList.Children().ToList();
-                for (int ci = 0; ci < children.Count; ci++)
-                {
-                    var child = children[ci];
-                    child.RemoveFromClassList("preview-item--selected");
-                    if (ci == index) child.AddToClassList("preview-item--selected");
-                }
-                uiPreviewPrefabList.MarkDirtyRepaint();
-            }
+            Utils.UIThrottle.RunOnPanel(uiPreviewListView, UpdatePreviewSelectionVisuals);
             UpdatePropertyPanelFromSelectedItem();
         }
 

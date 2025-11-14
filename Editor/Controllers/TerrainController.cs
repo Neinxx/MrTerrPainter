@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using MrTerrainPainter.Editor.Utils;
 
 namespace MrTerrainPainter.Editor.Controllers
 {
@@ -50,6 +51,72 @@ namespace MrTerrainPainter.Editor.Controllers
             if (!selectedTerrains.Contains(terrain)) selectedTerrains.Add(terrain);
             if (!terrainListUIData.Contains(terrain)) terrainListUIData.Add(terrain);
             if (!scannedTerrainNames.Contains(terrain.name)) scannedTerrainNames.Add(terrain.name);
+        }
+
+        public bool TryGetTerrainHit(Ray ray, out Terrain terrain, out Vector3 pos, out Vector3 normal)
+        {
+            terrain = null;
+            pos = Vector3.zero;
+            normal = Vector3.up;
+            float bestT = float.MaxValue;
+            var terrains = Terrain.activeTerrains;
+            if (terrains == null || terrains.Length == 0) return false;
+            for (int i = 0; i < terrains.Length; i++)
+            {
+                var t = terrains[i];
+                if (t == null) continue;
+                var col = t.GetComponent<TerrainCollider>();
+                if (col != null)
+                {
+                    if (col.Raycast(ray, out var hit, 10000f))
+                    {
+                        if (hit.distance < bestT)
+                        {
+                            bestT = hit.distance;
+                            terrain = t;
+                            pos = hit.point;
+                            if (TerrainUtils.TryGetHeightAndNormal(terrain, pos, out var h, out var n))
+                            {
+                                pos.y = h;
+                                normal = n;
+                            }
+                        }
+                    }
+                    continue;
+                }
+                float dy = ray.direction.y;
+                if (Mathf.Abs(dy) < 1e-5f) continue;
+                float planeY = t.transform.position.y;
+                float tt = (planeY - ray.origin.y) / dy;
+                if (tt <= 0f || tt >= bestT) continue;
+                var p = ray.origin + ray.direction * tt;
+                var size = t.terrainData.size;
+                var tp = t.transform.position;
+                if (p.x < tp.x || p.x > tp.x + size.x || p.z < tp.z || p.z > tp.z + size.z) continue;
+                if (TerrainUtils.TryGetHeightAndNormal(t, p, out var hh, out var nn))
+                {
+                    bestT = tt;
+                    terrain = t;
+                    pos = new Vector3(p.x, hh, p.z);
+                    normal = nn;
+                }
+            }
+            return terrain != null;
+        }
+
+        public Terrain NearestTerrain(Vector3 pos, List<Terrain> selectedTerrains)
+        {
+            Terrain best = null;
+            float bestDist = float.MaxValue;
+            if (selectedTerrains == null) return best;
+            for (int i = 0; i < selectedTerrains.Count; i++)
+            {
+                var t = selectedTerrains[i];
+                if (t == null) continue;
+                float d = Vector3.SqrMagnitude(pos - t.transform.position);
+                if (d < bestDist) { bestDist = d; best = t; }
+            }
+            return best;
         }
     }
 }

@@ -114,6 +114,7 @@ namespace MrTerrainPainter.Editor.Views
             row.style.flexDirection = FlexDirection.Column;
             row.style.minHeight = 112;
             row.style.flexShrink = 0;
+            row.style.paddingRight = 16;
 
             var top = new VisualElement();
             top.style.flexDirection = FlexDirection.Row;
@@ -273,8 +274,10 @@ namespace MrTerrainPainter.Editor.Views
                 }
                 int rows = thumbRows?.Invoke(profile.Items.Count + 1) ?? 1;
                 int header = 90;
-                int rowHeight = header + rows * (int)(ThumbSize + ThumbGap);
+                int verticalPadding = 16;
+                int rowHeight = header + rows * ((int)ThumbSize + (int)ThumbGap) + verticalPadding;
                 row.style.height = rowHeight;
+                row.style.minHeight = rowHeight;
             }
         }
     }
