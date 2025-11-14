@@ -27,7 +27,7 @@ MonoBehaviour:
   - prefab: {fileID: 1651033132722489925, guid: 8f3afd5551a37c945864133eec666ff2,
       type: 3}
     weight: 0.296
-    prefabType: 2
+    prefabType: 0
     uniformScaleRange: {x: 1, y: 1.4779413}
     yRotationRange: {x: 0, y: 360}
     heightRange: {x: 0, y: 1000}

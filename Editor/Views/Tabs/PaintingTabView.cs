@@ -17,7 +17,6 @@ namespace MrTerrainPainter.Editor.Views.Tabs
         {
             var paintParam = paintRoot.Q<VisualElement>("PaintParameter") ?? paintRoot;
             window.BindBrushControls(paintParam);
-            window.BindContralNamedControls();
         }
     }
 }

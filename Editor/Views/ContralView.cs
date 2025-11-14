@@ -30,7 +30,7 @@ namespace MrTerrainPainter.Editor.Views
 
         public ListView ListView { get; private set; }
 
-        private const float ThumbSize = 64f;
+        private const float ThumbSize = 64;
         private const float ThumbGap = 8f;
 
         public ContralView(VisualElement contralRoot, VisualTreeAsset vegetationProfileRowTemplate)
@@ -87,17 +87,16 @@ namespace MrTerrainPainter.Editor.Views
                 btnCreateProfile.text = string.IsNullOrEmpty(btnCreateProfile.text) ? "新建Profile" : btnCreateProfile.text;
                 btnCreateProfile.AddToClassList("mt-buttonG");
                 // 防重复：清理旧的点击回调
-                var old = btnCreateProfile.userData as Action;
-                if (old != null) btnCreateProfile.clicked -= old;
-                Action handler = () =>
+                if (btnCreateProfile.userData is Action old) btnCreateProfile.clicked -= old;
+                void handler()
                 {
                     cb.CreateNewVegetationProfileAsset?.Invoke();
                     cb.ReloadAvailableProfiles?.Invoke();
                     cb.SetListSelectionToCurrentProfile?.Invoke();
                     cb.RefreshAllUI?.Invoke();
-                };
-                btnCreateProfile.userData = handler;
-                btnCreateProfile.clicked += handler;
+                }
+                btnCreateProfile.userData = (Action)handler;
+                btnCreateProfile.clicked += (Action)handler;
             }
         }
 
@@ -173,8 +172,15 @@ namespace MrTerrainPainter.Editor.Views
             if (profile != null && profile == current) row.AddToClassList("profile-row--selected");
             else row.RemoveFromClassList("profile-row--selected");
 
-            // 点击整行切换当前 Profile
-            row.RegisterCallback<PointerDownEvent>(evt =>
+            // 点击缩略图区域(Thumbs)切换当前 Profile（避免整行覆盖 ObjectField 的交互）
+
+            // 健壮性：控件可能为空（模板或重绑定异常时）
+            if (delBtn == null || thumbs == null)
+            {
+                return; // 提前返回，避免空引用崩溃
+            }
+
+            thumbs.RegisterCallback<PointerDownEvent>(evt =>
             {
                 if (evt.button != 0) return;
                 if (profile == null) return;
@@ -184,30 +190,23 @@ namespace MrTerrainPainter.Editor.Views
                 evt.StopPropagation();
             });
 
-            // 健壮性：控件可能为空（模板或重绑定异常时）
-            if (delBtn == null || thumbs == null)
-            {
-                return; // 提前返回，避免空引用崩溃
-            }
-
             if (nameLabel != null)
             {
                 nameLabel.text = profile != null ? profile.name : "(空)";
             }
 
             // 删除按钮
-            var oldDelHandler = delBtn.userData as Action;
-            if (oldDelHandler != null) delBtn.clicked -= oldDelHandler;
-            Action newDelHandler = () =>
+            if (delBtn.userData is Action oldDelHandler) delBtn.clicked -= oldDelHandler;
+            void newDelHandler()
             {
                 if (profile == null) return;
                 extraProfiles.Remove(profile);
                 cb.DeleteVegetationProfileAsset?.Invoke(profile);
                 cb.ReloadAvailableProfiles?.Invoke();
                 cb.RefreshAllUI?.Invoke();
-            };
-            delBtn.userData = newDelHandler;
-            delBtn.clicked += newDelHandler;
+            }
+            delBtn.userData = (Action)newDelHandler;
+            delBtn.clicked += (Action)newDelHandler;
 
             // Profile 字段变更
             if (profileFld != null)
@@ -215,12 +214,10 @@ namespace MrTerrainPainter.Editor.Views
                 profileFld.objectType = typeof(VegetationProfile);
                 profileFld.allowSceneObjects = false;
                 profileFld.SetValueWithoutNotify(profile);
-                var oldProfileCb = profileFld.userData as EventCallback<ChangeEvent<UnityEngine.Object>>;
-                if (oldProfileCb != null) profileFld.UnregisterCallback(oldProfileCb);
+                if (profileFld.userData is EventCallback<ChangeEvent<UnityEngine.Object>> oldProfileCb) profileFld.UnregisterCallback(oldProfileCb);
                 EventCallback<ChangeEvent<UnityEngine.Object>> newProfileCb = evt =>
                 {
-                    var p = evt.newValue as VegetationProfile;
-                    if (p == null) return;
+                    if (evt.newValue is not VegetationProfile p) return;
                     cb.SetCurrentProfile?.Invoke(p);
                     cb.ResetSelectionForProfileChange?.Invoke();
                     cb.RefreshAllUI?.Invoke();
@@ -274,8 +271,10 @@ namespace MrTerrainPainter.Editor.Views
                     var thumb = makeThumb?.Invoke(profile, item, idx);
                     if (thumb != null) thumbs.Add(thumb);
                 }
-
-                row.style.minHeight = (StyleLength)(40 + thumbRows?.Invoke(profile.Items.Count + 1) * (ThumbSize + ThumbGap));
+                int rows = thumbRows?.Invoke(profile.Items.Count + 1) ?? 1;
+                int header = 90;
+                int rowHeight = header + rows * (int)(ThumbSize + ThumbGap);
+                row.style.height = rowHeight;
             }
         }
     }

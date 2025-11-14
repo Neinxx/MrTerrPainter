@@ -15,16 +15,16 @@ namespace MrTerrainPainter.Editor.Tools
         private Vector3 lastNormal = Vector3.up;
         public override void OnActivated()
         {
-            var win = Resources.FindObjectsOfTypeAll<MrTerrainPainterWindow>().FirstOrDefault();
-            if (win == null)
+            if (!MrTerrainPainter.Editor.MrTerrainPainterWindow.TryGet(out var _))
             {
-                MrTerrainPainterWindow.Open();
+                MrTerrainPainter.Editor.MrTerrainPainterWindow.GetOrOpen();
             }
         }
 
         public override void OnToolGUI(EditorWindow window)
         {
             var sceneView = window as SceneView;
+            if (sceneView == null) return;
             var e = Event.current;
             var brush = MTPBrushContext.Brush;
 
@@ -63,7 +63,7 @@ namespace MrTerrainPainter.Editor.Tools
                     }
                     else if (e.button == 0)
                     {
-                        var win = Resources.FindObjectsOfTypeAll<MrTerrainPainterWindow>().FirstOrDefault();
+                        MrTerrainPainter.Editor.MrTerrainPainterWindow.TryGet(out var win);
                         var profile = win != null ? win.GetCurrentProfile() : null;
                         if (profile != null)
                         {

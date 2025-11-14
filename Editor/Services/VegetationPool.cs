@@ -113,13 +113,11 @@ public static class VegetationPool
         var mappedParents = new List<Transform>();
         foreach (var cfg in Resources.FindObjectsOfTypeAll<MrTerrainPainter.Editor.Config.MrTerrainPainterConfig>())
         {
-            var objs = cfg != null ? cfg.objectList : null;
-            if (objs == null || objs.Length == 0) continue;
-            for (int i = 0; i < objs.Length; i++)
+            var entries = cfg != null ? cfg.mappingEntries : null;
+            if (entries == null || entries.Count == 0) continue;
+            for (int i = 0; i < entries.Count; i++)
             {
-                var go = objs[i];
-                if (go == null) continue;
-                var tf = go.transform;
+                var tf = entries[i]?.node;
                 if (tf != null && !mappedParents.Contains(tf)) mappedParents.Add(tf);
             }
         }

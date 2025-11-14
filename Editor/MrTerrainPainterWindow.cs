@@ -57,7 +57,6 @@ namespace MrTerrainPainter.Editor
         private PropertyPanelView propertyPanelView;
         // 视图：地形列表（Start/Contral 页）
         private TerrainListView startTerrainListView;
-        private TerrainListView contralTerrainListView;
         // 视图：Paint/Generate 页模块化视图
         private BrushView brushView;
         private GenerateFilterView generateFilterView;
@@ -101,9 +100,25 @@ namespace MrTerrainPainter.Editor
         [MenuItem("Tools/Mr Terrain Painter Main")]
         public static void Open()
         {
-            var cfg = ConfigTools.LoadOrCreateAsset();
+            GetOrOpen();
+        }
+
+        public static bool TryGet(out MrTerrainPainterWindow window)
+        {
+            window = null;
+            if (EditorWindow.HasOpenInstances<MrTerrainPainterWindow>())
+            {
+                // 仅在已打开时检索现有实例，避免隐式创建
+                window = Resources.FindObjectsOfTypeAll<MrTerrainPainterWindow>().FirstOrDefault();
+            }
+            return window != null;
+        }
+
+        public static MrTerrainPainterWindow GetOrOpen()
+        {
             var win = GetWindow<MrTerrainPainterWindow>(false, "Mr Terrain Painter");
             win.Show();
+            return win;
         }
 
 
@@ -173,14 +188,14 @@ namespace MrTerrainPainter.Editor
             VegetationPool.ShowInHierarchy = config.showPoolInHierarchy;
             // 移除旧设置页的对象列表同步逻辑（独立窗口管理，不在主窗口维护）
 
-            uxmlStart = config.startUxml;
-            uxmlContral = config.controlUxml;
-            uxmlGenerate = config.generateUxml;
-            uxmlPaint = config.paintUxml;
-            uxmlVegetationShared = config.vegetationSharedUxml;
-            uxmlVegetationProfileRow = config.vegetationProfileRowUxml;
-            uxmlVegetationProfilePrefabIcon = config.prefabIconUxml;
-            uxmlVegetationProfileDraggableArea = config.draggableAreaUxml;
+            uxmlStart = ConfigTools.GetStartUxml(config);
+            uxmlContral = ConfigTools.GetControlUxml(config);
+            uxmlGenerate = ConfigTools.GetGenerateUxml(config);
+            uxmlPaint = ConfigTools.GetPaintUxml(config);
+            uxmlVegetationShared = ConfigTools.GetVegetationSharedUxml(config);
+            uxmlVegetationProfileRow = ConfigTools.GetVegetationProfileRowUxml(config);
+            uxmlVegetationProfilePrefabIcon = ConfigTools.GetPrefabIconUxml(config);
+            uxmlVegetationProfileDraggableArea = ConfigTools.GetDraggableAreaUxml(config);
 
             // 预加载 Profile 列表，确保后续页面构建有数据来源
             ReloadAvailableProfiles();
@@ -227,13 +242,7 @@ namespace MrTerrainPainter.Editor
         private void CreateGUI()
         {
             var root = rootVisualElement;
-            var styleSheet = config != null ? config.stylesUss : null;
-            if (styleSheet == null)
-            {
-                root.Add(new Label("样式未配置：请在 Settings 中设置 StylesUSS"));
-                return;
-            }
-            root.styleSheets.Add(styleSheet);
+            if (!Editor.Utils.PageAssembler.EnsureStylesAndValidate(config, root, out var reason)) return;
 
             root.style.paddingLeft = 6;
             root.style.paddingRight = 6;
@@ -242,12 +251,12 @@ namespace MrTerrainPainter.Editor
             root.Clear();
 
             pageContainer = new ScrollView();
+            // pageContainer.mode = ScrollViewMode.Vertical;
+            //  pageContainer.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
             pageContainer.style.flexGrow = 1;
             root.Add(pageContainer);
 
-            // 默认首页：Start
-            startRoot = InstantiatePage(uxmlStart);
-            pageContainer.Add(startRoot);
+            startRoot = PageAssembler.Assemble(pageContainer, uxmlStart);
             startRoot.AddToClassList("mt-frame");
             SetupStartPageEvents();
         }

@@ -56,10 +56,15 @@ namespace MrTerrainPainter.Editor.Views
             });
             thumb.RegisterCallback<DragPerformEvent>(evt =>
             {
-                var pref = DragAndDrop.objectReferences.OfType<GameObject>().FirstOrDefault();
-                if (pref == null) return; // 提前返回
+                var prefs = DragAndDrop.objectReferences.OfType<GameObject>().ToArray();
+                if (prefs == null || prefs.Length == 0) return; // 提前返回
                 DragAndDrop.AcceptDrag();
-                cb.AddPrefabAsNewItem?.Invoke(profile, pref);
+                for (int i = 0; i < prefs.Length; i++)
+                {
+                    var pref = prefs[i];
+                    if (pref == null) continue;
+                    cb.AddPrefabAsNewItem?.Invoke(profile, pref);
+                }
                 evt.StopPropagation();
             });
             return thumb;

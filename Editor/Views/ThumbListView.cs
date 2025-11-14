@@ -30,6 +30,7 @@ namespace MrTerrainPainter.Editor.Views
             public Action<VegetationProfile, IEnumerable<int>> RemoveItemsAtFromProfile;
             public Action<VegetationProfile, int, Runtime.Profiles.PrefabType> SetItemType;
             public Action<VegetationProfile, int> OpenPrefabPickerForItem;
+            public Func<IEnumerable<Runtime.Profiles.PrefabType>> GetAvailableTypes;
         }
 
         private readonly VisualTreeAsset prefabIconTemplate;
@@ -262,6 +263,9 @@ namespace MrTerrainPainter.Editor.Views
         {
             var menu = new GenericMenu();
             var selectedIndices = cb.GetSelectedIndices?.Invoke()?.ToList() ?? new List<int>();
+            var currentItem = (profile != null && profile.Items != null && index >= 0 && index < profile.Items.Count)
+                ? profile.Items[index]
+                : null;
 
             // 1. 删除单个或选中的多个项
             menu.AddItem(new GUIContent("删除该预制体"), false, () =>
@@ -281,19 +285,27 @@ namespace MrTerrainPainter.Editor.Views
 
             menu.AddSeparator("");
 
-            // 2. 类型设置子菜单
-            menu.AddItem(new GUIContent("类型/Prop"), false, () =>
+            // 2. 类型设置子菜单（动态枚举）
+            var typeList = cb.GetAvailableTypes?.Invoke()?.ToList();
+            if (typeList == null || typeList.Count == 0)
             {
-                cb.SetItemType?.Invoke(profile, index, Runtime.Profiles.PrefabType.Prop);
-            });
-            menu.AddItem(new GUIContent("类型/Plant"), false, () =>
+                typeList = ((Runtime.Profiles.PrefabType[])Enum.GetValues(typeof(Runtime.Profiles.PrefabType))).ToList();
+            }
+            for (int vi = 0; vi < typeList.Count; vi++)
             {
-                cb.SetItemType?.Invoke(profile, index, Runtime.Profiles.PrefabType.Plant);
-            });
-            menu.AddItem(new GUIContent("类型/Rock"), false, () =>
-            {
-                cb.SetItemType?.Invoke(profile, index, Runtime.Profiles.PrefabType.Rock);
-            });
+                var valLocal = typeList[vi];
+                bool isCurrent = currentItem != null && currentItem.prefabType == valLocal;
+                menu.AddItem(new GUIContent($"类型/{valLocal}"), isCurrent, () =>
+                {
+                    // 批量或单项应用类型
+                    var indices = selectedIndices != null && selectedIndices.Count > 0 ? selectedIndices : new List<int> { index };
+                    foreach (var idxLocal in indices)
+                    {
+                        cb.SetItemType?.Invoke(profile, idxLocal, valLocal);
+                    }
+                    cb.RefreshPreviewListUI?.Invoke();
+                });
+            }
 
             menu.ShowAsContext();
         }

@@ -13,7 +13,7 @@ namespace MrTerrainPainter.Editor.Tools
     {
         private bool subscribed;
         private bool ensuredWindow;
-        private const string AssetPath = "Assets/MrTerrPainterV1/Editor/MTPBrushOverlay.uxml";
+
 
 
 
@@ -27,9 +27,14 @@ namespace MrTerrainPainter.Editor.Tools
                 UpdateVisibility();
             }
             var cfg = MrTerrainPainter.Editor.Config.ConfigTools.LoadOrCreateAsset();
-            var vt = cfg.brushOverlayUxml ?? AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(AssetPath);
-            var root = vt != null ? vt.Instantiate() : new VisualElement();
-            if (cfg.stylesUss != null) root.styleSheets.Add(cfg.stylesUss);
+            var vt = MrTerrainPainter.Editor.Config.ConfigTools.GetBrushOverlayUxml(cfg);
+            if (vt == null)
+            {
+                return new Label("Overlay UXML 未配置或未找到");
+            }
+            var root = vt.Instantiate();
+            var style = MrTerrainPainter.Editor.Config.ConfigTools.GetStylesUss(cfg);
+            if (style != null) root.styleSheets.Add(style);
             var brush = MTPBrushContext.Brush;
 
             BindSlider(root, "Size", 0.5f, 50f, () => brush.size, v => brush.size = v);
@@ -54,11 +59,11 @@ namespace MrTerrainPainter.Editor.Tools
             {
                 btnOpen.clicked += () =>
                 {
-                    var win = Resources.FindObjectsOfTypeAll<MrTerrainPainterWindow>().FirstOrDefault();
-                    if (win == null) win = EditorWindow.GetWindow<MrTerrainPainterWindow>(false, "Mr Terrain Painter");
+                    var win = MrTerrainPainter.Editor.MrTerrainPainterWindow.TryGet(out var existing) ? existing : MrTerrainPainter.Editor.MrTerrainPainterWindow.GetOrOpen();
+                    if (win == null) return;
                     win.Show();
-                    var method = win.GetType().GetMethod("OpenPaintingSettings", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
-                    method?.Invoke(win, null);
+                    win.Focus();
+                    EditorApplication.delayCall += () => { if (win != null) win.OpenPaintingSettings(); };
                 };
             }
             return root;
@@ -71,10 +76,9 @@ namespace MrTerrainPainter.Editor.Tools
             if (isActive && !ensuredWindow)
             {
                 ensuredWindow = true;
-                var win = Resources.FindObjectsOfTypeAll<MrTerrainPainterWindow>().FirstOrDefault();
-                if (win == null)
+                if (!MrTerrainPainter.Editor.MrTerrainPainterWindow.TryGet(out var _))
                 {
-                    MrTerrainPainterWindow.Open();
+                    MrTerrainPainter.Editor.MrTerrainPainterWindow.GetOrOpen();
                 }
             }
             if (!isActive)

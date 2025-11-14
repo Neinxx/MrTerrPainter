@@ -16,7 +16,7 @@ namespace MrTerrainPainter.Editor.Views.Tabs
 
         public void Setup()
         {
-            var genParam = window.GetGenerateParameterElement();
+            var genParam = genRoot;
             window.BindGenerateFilterControls(genParam);
             // 绑定生成/清除按钮（直接绑定，移除 GenerateActionsView 依赖）
             var btnGenerate = genParam.Q<Button>("GenerateTerrainObject");
