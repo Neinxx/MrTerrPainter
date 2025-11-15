@@ -7,7 +7,7 @@ using UnityEditor;
 
 namespace MrTerrainPainter.Editor.Views
 {
-    // 地形列表视图：封装 Start/Contral 页的 Terrain 列表渲染
+    // 地形列表视图：封装 Start/Control 页的 Terrain 列表渲染
     public class TerrainListView
     {
         private readonly VisualElement root;

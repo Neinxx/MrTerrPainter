@@ -9,72 +9,74 @@ using static MrTerrainPainter.Editor.Services.VegetationGenerator;
 using UnityEditor.UIElements;
 using MrTerrainPainter.Editor.Tools;
 using MrTerrainPainter.Editor.Config;
+using MrTerrainPainter.Runtime.Profiles;
+using MTPPrefabType = MrTerrainPainter.Runtime.Profiles.PrefabType;
 
 namespace MrTerrainPainter.Editor
 {
     // Contral 页相关逻辑（窗口只做装配与绑定）
     public partial class MrTerrainPainterWindow
     {
-        private void BuildContralSection()
+        private void BuildControlSection()
         {
-            if (contralRoot != null) return; // 已加载则提前返回
-            contralRoot = PageAssembler.Assemble(pageContainer, uxmlContral);
-            contralRoot.AddToClassList("mt-frame");
+            if (controlRoot != null) return;
+            controlRoot = PageAssembler.Assemble(pageContainer, uxmlControl);
+            controlRoot.AddToClassList("mt-frame");
 
             // TabContent 容器
-            contralTabContent = contralRoot.Q<VisualElement>("TabContent");
-            if (contralTabContent == null)
+            controlTabContent = controlRoot.Q<VisualElement>("TabContent");
+            if (controlTabContent == null)
             {
-                contralTabContent = new VisualElement();
-                contralRoot.Add(contralTabContent);
+                controlTabContent = new VisualElement();
+                controlRoot.Add(controlTabContent);
             }
 
             // TabBar 与 TabButton 样式
-            var tabBar = contralRoot.Q<VisualElement>("TabBar");
+            var tabBar = controlRoot.Q<VisualElement>("TabBar");
             tabBar?.AddToClassList("mt-tabbar");
-            var tabBtnPainting = contralRoot.Q<Button>("Painting");
-            var tabBtnGenerate = contralRoot.Q<Button>("Generate");
+            var tabBtnPainting = controlRoot.Q<Button>("Painting");
+            var tabBtnGenerate = controlRoot.Q<Button>("Generate");
             tabBtnPainting?.AddToClassList("mt-tabbutton");
             tabBtnGenerate?.AddToClassList("mt-tabbutton");
 
-            var contralTabView = new MrTerrainPainter.Editor.Views.Tabs.ContralTabView(this, contralRoot);
-            contralTabView.SetupTabEvents();
-            contralTabView.SetupNamedControls();
+            var controlTabView = new ControlTabView(this, controlRoot);
+            controlTabView.SetupTabEvents();
+            controlTabView.SetupNamedControls();
             UpdatePropertyPanelFromSelectedItem();
             // 地形列表刷新由 Generate 页负责，避免在控制页根上查询不存在的容器
 
             // 默认选中 Painting 标签
-            var btnPainting = contralRoot.Q<Button>("Painting");
-            var btnGenerate = contralRoot.Q<Button>("Generate");
+            var btnPainting = controlRoot.Q<Button>("Painting");
+            var btnGenerate = controlRoot.Q<Button>("Generate");
             if (btnPainting != null && btnGenerate != null)
             {
                 SetTabActive(btnPainting, btnGenerate);
-                contralTabContent?.Clear();
+                controlTabContent?.Clear();
                 LoadPaintingTab();
             }
         }
 
         // 根据地形列表数量切换 Contral 页可见性（清空或刷新时调用）
-        private void ToggleContralPageVisibility()
+        private void ToggleControlPageVisibility()
         {
-            if (contralRoot == null) return; // 未构建无需处理
+            if (controlRoot == null) return; // 未构建无需处理
             var hasTerrains = terrainListUIData != null && terrainListUIData.Count > 0;
-            contralRoot.style.display = hasTerrains ? DisplayStyle.Flex : DisplayStyle.None;
+            controlRoot.style.display = hasTerrains ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
-        private void SetupContralTabEvents()
+        private void SetupControlTabEvents()
         {
-            if (contralRoot == null) return;
-            var btnPainting = contralRoot.Q<Button>("Painting");
-            var btnGenerate = contralRoot.Q<Button>("Generate");
-            var btnSettings = contralRoot.Q<Button>("Settings");
+            if (controlRoot == null) return;
+            var btnPainting = controlRoot.Q<Button>("Painting");
+            var btnGenerate = controlRoot.Q<Button>("Generate");
+            var btnSettings = controlRoot.Q<Button>("Settings");
             if (btnPainting != null)
                 btnPainting.clicked += () =>
                 {
                     // 始终保持一个标签激活
                     SetTabActive(btnPainting, btnGenerate);
                     btnSettings?.RemoveFromClassList("mt-tabbutton--active");
-                    contralTabContent?.Clear();
+                    controlTabContent?.Clear();
                     LoadPaintingTab();
                 };
             if (btnGenerate != null)
@@ -82,7 +84,7 @@ namespace MrTerrainPainter.Editor
                 {
                     SetTabActive(btnGenerate, btnPainting);
                     btnSettings?.RemoveFromClassList("mt-tabbutton--active");
-                    contralTabContent?.Clear();
+                    controlTabContent?.Clear();
                     LoadGenerateTab();
                 };
             if (btnSettings != null)
@@ -92,12 +94,12 @@ namespace MrTerrainPainter.Editor
                     btnSettings.AddToClassList("mt-tabbutton--active");
                     btnPainting?.RemoveFromClassList("mt-tabbutton--active");
                     btnGenerate?.RemoveFromClassList("mt-tabbutton--active");
-                    contralTabContent?.Clear();
+                    controlTabContent?.Clear();
                     LoadSettingsTab();
                 };
 
             // CreateNewVegetation 按钮
-            var btnCreate = contralRoot.Q<Button>("CreateNewVegetation");
+            var btnCreate = controlRoot.Q<Button>("CreateNewVegetation");
             if (btnCreate != null)
             {
                 // btnCreate.AddToClassList("mt-button");
@@ -112,21 +114,21 @@ namespace MrTerrainPainter.Editor
 
         public void OpenPaintingSettings()
         {
-            if (contralRoot == null)
+            if (controlRoot == null)
             {
-                BuildContralSection();
+                BuildControlSection();
             }
-            if (contralRoot != null)
+            if (controlRoot != null)
             {
-                var btnPainting = contralRoot.Q<Button>("Painting");
-                var btnGenerate = contralRoot.Q<Button>("Generate");
+                var btnPainting = controlRoot.Q<Button>("Painting");
+                var btnGenerate = controlRoot.Q<Button>("Generate");
                 if (btnPainting != null && btnGenerate != null) SetTabActive(btnPainting, btnGenerate);
-                if (contralTabContent == null)
+                if (controlTabContent == null)
                 {
-                    contralTabContent = new VisualElement();
-                    contralRoot.Add(contralTabContent);
+                    controlTabContent = new VisualElement();
+                    controlRoot.Add(controlTabContent);
                 }
-                contralTabContent.Clear();
+                controlTabContent.Clear();
                 LoadPaintingTab();
             }
         }
@@ -142,37 +144,37 @@ namespace MrTerrainPainter.Editor
 
         public void LoadPaintingTab()
         {
-            if (contralTabContent == null) return;
-            contralTabContent.Clear();
+            if (controlTabContent == null) return;
+            controlTabContent.Clear();
             var scroll = new ScrollView();
             scroll.mode = ScrollViewMode.Vertical;
             scroll.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
             scroll.contentContainer.style.paddingRight = 16;
             var vegRoot = PageAssembler.Assemble(scroll, uxmlVegetationShared);
             var paintRoot = PageAssembler.Assemble(scroll, uxmlPaint);
-            contralTabContent.Add(scroll);
+            controlTabContent.Add(scroll);
             ReloadAvailableProfiles();
             SetupVegetationProfileListPublic(vegRoot);
             BindPropertyPanelViewFromRoot(vegRoot);
-            var view = new MrTerrainPainter.Editor.Views.Tabs.PaintingTabView(this, paintRoot);
+            var view = new PaintingTabView(this, paintRoot);
             view.Setup();
         }
 
         public void LoadGenerateTab()
         {
-            if (contralTabContent == null) return;
-            contralTabContent.Clear();
+            if (controlTabContent == null) return;
+            controlTabContent.Clear();
             var scroll = new ScrollView();
             scroll.mode = ScrollViewMode.Vertical;
             scroll.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
             scroll.contentContainer.style.paddingRight = 16;
             var vegRoot = PageAssembler.Assemble(scroll, uxmlVegetationShared);
             var genRoot = PageAssembler.Assemble(scroll, uxmlGenerate);
-            contralTabContent.Add(scroll);
+            controlTabContent.Add(scroll);
             ReloadAvailableProfiles();
             SetupVegetationProfileListPublic(vegRoot);
             BindPropertyPanelViewFromRoot(vegRoot);
-            var tab = new MrTerrainPainter.Editor.Views.Tabs.GenerateTabView(this, genRoot);
+            var tab = new GenerateTabView(this, genRoot);
             tab.Setup();
             mode = Mode.Generate;
         }
@@ -191,7 +193,7 @@ namespace MrTerrainPainter.Editor
 
         public void LoadSettingsTab()
         {
-            var root = contralTabContent;
+            var root = controlTabContent;
             if (root == null) return;
             var settingsUxml = ConfigTools.GetSettingsUxml();
             root.Clear();
@@ -202,18 +204,18 @@ namespace MrTerrainPainter.Editor
 
         public void OpenSettingsTab()
         {
-            if (contralRoot == null)
+            if (controlRoot == null)
             {
-                BuildContralSection();
+                BuildControlSection();
             }
-            if (contralRoot != null)
+            if (controlRoot != null)
             {
-                if (contralTabContent == null)
+                if (controlTabContent == null)
                 {
-                    contralTabContent = new VisualElement();
-                    contralRoot.Add(contralTabContent);
+                    controlTabContent = new VisualElement();
+                    controlRoot.Add(controlTabContent);
                 }
-                contralTabContent.Clear();
+                controlTabContent.Clear();
                 LoadSettingsTab();
             }
         }
@@ -271,7 +273,7 @@ namespace MrTerrainPainter.Editor
             {
                 EditorUtility.DisplayDialog(
                     "提示",
-                    "没有可用地形或未选择Profile。请先在Contral页添加选中地形。",
+                    "没有可用地形或未选择Profile。请先在Control页添加选中地形。",
                     "确定"
                 );
                 return;
@@ -282,12 +284,14 @@ namespace MrTerrainPainter.Editor
             var placementOverrides = BuildPlacementOverrides();
 
             // 生成主Profile的植被
+            var mapping = MrTerrainPainter.Editor.Config.ConfigTools.BuildTypeMapping(config);
             Services.VegetationGenerator.GenerateOnTerrains(
                 selectedTerrains,
                 currentProfile,
                 null,
                 filter,
-                placementOverrides
+                placementOverrides,
+                mapping
             );
 
             // 生成额外Profile的植被
@@ -353,8 +357,8 @@ namespace MrTerrainPainter.Editor
         /// </summary>
         private void RefreshTerrainListUI()
         {
-            if (contralRoot == null) return;
-            PopulateTerrianListUI(contralRoot);
+            if (controlRoot == null) return;
+            PopulateTerrianListUI(controlRoot);
         }
 
         /// <summary>
@@ -362,6 +366,7 @@ namespace MrTerrainPainter.Editor
         /// </summary>
         private void GenerateExtraProfilesVegetation(FilterSettings filter, PlacementOverrides overrides)
         {
+            var mapping = MrTerrainPainter.Editor.Config.ConfigTools.BuildTypeMapping(config);
             foreach (var profile in extraProfiles)
             {
                 if (profile == null || profile.IsEmpty()) continue;
@@ -371,7 +376,8 @@ namespace MrTerrainPainter.Editor
                     profile,
                     null,
                     filter,
-                    overrides
+                    overrides,
+                    mapping
                 );
             }
         }
@@ -391,14 +397,14 @@ namespace MrTerrainPainter.Editor
             MarkSceneDirty();
 
             mode = Mode.Generate;
-            if (contralRoot != null)
+            if (controlRoot != null)
             {
-                var btnPainting = contralRoot.Q<Button>("Painting");
-                var btnGenerate = contralRoot.Q<Button>("Generate");
+                var btnPainting = controlRoot.Q<Button>("Painting");
+                var btnGenerate = controlRoot.Q<Button>("Generate");
                 btnPainting?.RemoveFromClassList("mt-tabbutton--active");
                 btnGenerate?.RemoveFromClassList("mt-tabbutton--active");
             }
-            contralTabContent?.Clear();
+            controlTabContent?.Clear();
         }
 
         // —— 绑定：Generate 页过滤控件 ——
@@ -417,18 +423,18 @@ namespace MrTerrainPainter.Editor
             brushView.Bind(brush);
         }
 
-        public void BindContralNamedControls()
+        public void BindControlNamedControls()
         {
-            if (contralRoot == null) return;
-            if (contralBindingsInitialized) return;
-            var prefabRange = contralRoot.Q<VisualElement>("PrefabRange");
-            var queryRoot = prefabRange ?? contralRoot;
-            SetPreviewListContainer(contralRoot.Q<VisualElement>("PreviewPrefabList"));
+            if (controlRoot == null) return;
+            if (controlBindingsInitialized) return;
+            var prefabRange = controlRoot.Q<VisualElement>("PrefabRange");
+            var queryRoot = prefabRange ?? controlRoot;
+            SetPreviewListContainer(controlRoot.Q<VisualElement>("PreviewPrefabList"));
             SetupVegetationProfileListPublic(queryRoot);
             // 如果列表仍为空，回退构建一个简单的列表以确保显示
             if (uiVegetationList == null)
             {
-                var container = contralRoot.Q<VisualElement>("VegetationList") ?? queryRoot;
+                var container = controlRoot.Q<VisualElement>("VegetationList") ?? queryRoot;
                 if (container != null)
                 {
                     var lv = new ListView
@@ -475,7 +481,7 @@ namespace MrTerrainPainter.Editor
             {
                 RefreshVegetationListUI();
             }
-            contralBindingsInitialized = true;
+            controlBindingsInitialized = true;
         }
 
         public void AddPrefabsToCurrentProfile(GameObject[] gos)
@@ -487,26 +493,26 @@ namespace MrTerrainPainter.Editor
             UpdatePropertyPanelFromSelectedItem();
         }
 
-        private readonly System.Collections.Generic.List<Runtime.Profiles.VegetationProfile> availableProfiles = new();
+        private readonly System.Collections.Generic.List<VegetationProfile> availableProfiles = new();
 
         // 统一构建 VegetationProfile 列表与交互
         private void SetupVegetationProfileList(VisualElement hostRoot)
         {
             if (hostRoot == null) return;
 
-            if (contralView == null)
+            if (controlView == null)
             {
-                contralView = new ContralView(hostRoot, uxmlVegetationProfileRow);
+                controlView = new ControlView(hostRoot, uxmlVegetationProfileRow);
             }
 
-            var cb = new ContralViewCallbacks
+            var cb = new ControlViewCallbacks
             {
                 CreateNewVegetationProfileAsset = CreateNewVegetationProfileAsset,
                 ReloadAvailableProfiles = ReloadAvailableProfiles,
                 RefreshAllUI = RefreshAllUI,
                 SetListSelectionToCurrentProfile = SetListSelectionToCurrentProfile,
                 DeleteVegetationProfileAsset = DeleteVegetationProfileAsset,
-                SetCurrentProfile = p => { currentProfile = p; },
+                SetCurrentProfile = p => { currentProfile = p; rnd = currentProfile != null ? new System.Random(currentProfile.randomSeed) : null; },
                 ResetSelectionForProfileChange = () => { selectedItemIndex = -1; selectedThumbIndices.Clear(); },
                 GetCurrentProfile = () => currentProfile,
                 OnListContentWidthMeasured = w => vegetationListContentWidth = w
@@ -536,7 +542,7 @@ namespace MrTerrainPainter.Editor
                     GetAvailableTypes = () =>
                     {
                         var types = config?.mappingEntries?.Select(e => e.type).Distinct().ToList();
-                        return types != null && types.Count > 0 ? types : ((Runtime.Profiles.PrefabType[])System.Enum.GetValues(typeof(Runtime.Profiles.PrefabType)));
+                        return types != null && types.Count > 0 ? types : ((MTPPrefabType[])System.Enum.GetValues(typeof(MTPPrefabType)));
                     }
                 }
             );
@@ -550,7 +556,7 @@ namespace MrTerrainPainter.Editor
                 }
             );
 
-            contralView.SetupVegetationProfileList(
+            controlView.SetupVegetationProfileList(
                 availableProfiles,
                 extraProfiles,
                 cb,
@@ -559,7 +565,7 @@ namespace MrTerrainPainter.Editor
                 ThumbRows);
 
             // 兼容窗口现有刷新函数
-            uiVegetationList = contralView.ListView;
+            uiVegetationList = controlView.ListView;
         }
 
         private void RefreshVegetationListUI()
@@ -612,7 +618,17 @@ namespace MrTerrainPainter.Editor
                         if (!previewTexCache.TryGetValue(id, out tex) || tex == null)
                         {
                             tex = AssetPreview.GetAssetPreview(it.prefab) ?? AssetPreview.GetMiniThumbnail(it.prefab);
-                            previewTexCache[id] = tex;
+                            if (tex != null)
+                            {
+                                previewTexCache[id] = tex;
+                                previewOrder.Add(id);
+                                if (previewOrder.Count > PreviewCacheCapacity)
+                                {
+                                    var evictId = previewOrder[0];
+                                    previewOrder.RemoveAt(0);
+                                    previewTexCache.Remove(evictId);
+                                }
+                            }
                             if (tex == null) Utils.UIThrottle.RunNextFrame(() => RefreshPreviewListUI());
                         }
                     }
@@ -640,7 +656,7 @@ namespace MrTerrainPainter.Editor
                                     RefreshPreviewListUI();
                                 });
                             });
-                            var values = (MrTerrainPainter.Runtime.Profiles.PrefabType[])System.Enum.GetValues(typeof(MrTerrainPainter.Runtime.Profiles.PrefabType));
+                            var values = (MTPPrefabType[])System.Enum.GetValues(typeof(MTPPrefabType));
                             for (int vi = 0; vi < values.Length; vi++)
                             {
                                 var val = values[vi];

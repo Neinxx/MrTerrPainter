@@ -12,12 +12,13 @@ using UnityEngine;
 using UnityEngine.UIElements;
 using UnityEditor.UIElements;
 using MrTerrainPainter.Editor.Utils;
+using MTPPrefabType = MrTerrainPainter.Runtime.Profiles.PrefabType;
 
 namespace MrTerrainPainter.Editor
 {
     public partial class MrTerrainPainterWindow : EditorWindow
     {
-        private enum Page { Start, Contral, Generate, Paint }
+        private enum Page { Start, Control, Generate, Paint }
         private enum Mode { Generate, Paint, Erase }
 
         public readonly List<Terrain> selectedTerrains = new();
@@ -53,9 +54,9 @@ namespace MrTerrainPainter.Editor
         private PrefabAssignmentController prefabAssignment;
         private ProfileController profileController;
         private PaintingController paintingController;
-        // 视图：Contral 页列表视图
-        private ContralView contralView;
-        // 视图：Contral 页属性面板视图
+        // 视图：Control 页列表视图
+        private ControlView controlView;
+        // 视图：Control 页属性面板视图
         private PropertyPanelView propertyPanelView;
         // 视图：地形列表（Start/Contral 页）
         private TerrainListView startTerrainListView;
@@ -65,7 +66,7 @@ namespace MrTerrainPainter.Editor
 
         // UI Toolkit: 资源与实例
         private VisualTreeAsset uxmlStart;
-        private VisualTreeAsset uxmlContral;
+        private VisualTreeAsset uxmlControl;
         private VisualTreeAsset uxmlGenerate;
         private VisualTreeAsset uxmlPaint;
         private VisualTreeAsset uxmlVegetationShared;
@@ -74,12 +75,12 @@ namespace MrTerrainPainter.Editor
         private VisualTreeAsset uxmlVegetationProfileDraggableArea; // 可拖拽新建区域（UXML）
         private VisualElement pageContainer;
         private VisualElement startRoot;
-        private VisualElement contralRoot;
+        private VisualElement controlRoot;
 
-        private VisualElement contralTabContent;
-        private Page page = Page.Start;
+        private VisualElement controlTabContent;
+       // private Page page = Page.Start;
         private bool refreshingUI;
-        private bool contralBindingsInitialized;
+        private bool controlBindingsInitialized;
 
         // Contral 页面命名控件绑定
 
@@ -95,6 +96,8 @@ namespace MrTerrainPainter.Editor
         private VisualElement uiPreviewPrefabList;
         private ListView uiPreviewListView;
         private readonly System.Collections.Generic.Dictionary<int, Texture2D> previewTexCache = new();
+        private const int PreviewCacheCapacity = 256;
+        private readonly System.Collections.Generic.List<int> previewOrder = new();
         private float vegetationListContentWidth = 600f; // 列表内容区域宽度缓存，用于行高估算
         private GameObject currentPrefab; // 当前选中的预制体（用于交互与显示）
 
@@ -153,6 +156,7 @@ namespace MrTerrainPainter.Editor
             if (currentProfile == null || !availableProfiles.Contains(currentProfile))
             {
                 currentProfile = availableProfiles.Count > 0 ? availableProfiles[0] : null;
+                rnd = currentProfile != null ? new System.Random(currentProfile.randomSeed) : null;
             }
         }
 
@@ -180,6 +184,7 @@ namespace MrTerrainPainter.Editor
 
         private void OnProjectChangedRefreshProfiles()
         {
+            MrTerrainPainter.Editor.Config.ConfigTools.ResetSearchCaches();
             ReloadAvailableProfiles();
         }
 
@@ -200,13 +205,14 @@ namespace MrTerrainPainter.Editor
             brush.densityScale = config.defaultBrushDensityScale;
             brush.hardness = config.defaultBrushHardness;
             brush.preview = config.showPreview;
+            brush.useJobs = config.defaultUseJobs;
 
             // 应用配置到运行时状态
             VegetationPool.ShowInHierarchy = config.showPoolInHierarchy;
             // 移除旧设置页的对象列表同步逻辑（独立窗口管理，不在主窗口维护）
 
             uxmlStart = ConfigTools.GetStartUxml(config);
-            uxmlContral = ConfigTools.GetControlUxml(config);
+            uxmlControl = ConfigTools.GetControlUxml(config);
             uxmlGenerate = ConfigTools.GetGenerateUxml(config);
             uxmlPaint = ConfigTools.GetPaintUxml(config);
             uxmlVegetationShared = ConfigTools.GetVegetationSharedUxml(config);
@@ -297,7 +303,7 @@ namespace MrTerrainPainter.Editor
 
 
 
-        public void GeneratePrefabsAtNodeByTypePublic(Transform parentNode, Runtime.Profiles.PrefabType type)
+        public void GeneratePrefabsAtNodeByTypePublic(Transform parentNode, MTPPrefabType type)
         {
             if (parentNode == null || currentProfile == null) return; // 提前返回
             var items = currentProfile.Items.Where(i => i != null && i.prefab != null && i.prefabType == type).ToList();
@@ -384,9 +390,7 @@ namespace MrTerrainPainter.Editor
         }
 
         // —— Profile SO 资产操作 ——
-        private string DataFolderPath => !string.IsNullOrEmpty(config?.recipeGenerationPath)
-            ? config.recipeGenerationPath
-            : "Assets/MrTerrainPainter/Data";
+        private string DataFolderPath => MrTerrainPainter.Editor.Config.ConfigTools.ResolveRecipePath(config);
 
         private void EnsureDataFolderExists()
         {
@@ -397,6 +401,7 @@ namespace MrTerrainPainter.Editor
         {
             var profile = profileController?.CreateNewVegetationProfileAsset(DataFolderPath);
             currentProfile = profile;
+            rnd = currentProfile != null ? new System.Random(currentProfile.randomSeed) : null;
             ReloadAvailableProfiles();
         }
 
@@ -515,12 +520,13 @@ namespace MrTerrainPainter.Editor
             {
                 var filter = BuildFilterSettings();
                 var ov = BuildPlacementOverrides();
-                VegetationGenerator.GenerateInBrushArea(selectedTerrains, currentProfile, hitPos, brush.size, filter, ov);
+                var mapping = MrTerrainPainter.Editor.Config.ConfigTools.BuildTypeMapping(config);
+                VegetationGenerator.GenerateInBrushArea(selectedTerrains, currentProfile, hitPos, brush.size, filter, ov, mapping);
                 for (int i = 0; i < extraProfiles.Count; i++)
                 {
                     var p = extraProfiles[i];
                     if (p == null || p.IsEmpty()) continue;
-                    VegetationGenerator.GenerateInBrushArea(selectedTerrains, p, hitPos, brush.size, filter, ov);
+                    VegetationGenerator.GenerateInBrushArea(selectedTerrains, p, hitPos, brush.size, filter, ov, mapping);
                 }
                 MarkSceneDirty();
             }
@@ -561,7 +567,8 @@ namespace MrTerrainPainter.Editor
         {
             if (terrain == null || currentProfile == null || currentProfile.IsEmpty()) return;
             var ov = BuildPlacementOverrides();
-            paintingController?.PaintOnTerrain(terrain, center, currentProfile, extraProfiles, brush, rnd, ov, brush.mixExtraProfiles);
+            var mapping = MrTerrainPainter.Editor.Config.ConfigTools.BuildTypeMapping(config);
+            paintingController?.PaintOnTerrain(terrain, center, currentProfile, extraProfiles, brush, rnd, ov, brush.mixExtraProfiles, mapping);
             MarkSceneDirty();
         }
 
@@ -605,15 +612,15 @@ namespace MrTerrainPainter.Editor
             // if (config != null && config.switchToGenerateOnLostFocus)
             // {
             //     // 若控制页尚未构建，先构建
-            //     if (contralRoot == null)
+            //     if (controlRoot == null)
             //     {
-            //         BuildContralSection();
+            //         BuildControlSection();
             //     }
             //     // 切换到 Generate 标签并高亮，但允许手动继续绘制
             //     //  LoadGenerateTab();
             //     LoadPaintingTab();
-            //     var btnPainting = contralRoot?.Q<Button>("Painting");
-            //     var btnGenerate = contralRoot?.Q<Button>("Generate");
+            //     var btnPainting = controlRoot?.Q<Button>("Painting");
+            //     var btnGenerate = controlRoot?.Q<Button>("Generate");
             //     if (btnPainting != null && btnGenerate != null)
             //     {
             //         SetTabActive(btnGenerate, btnPainting);

@@ -9,7 +9,7 @@ using UnityEngine.UIElements;
 namespace MrTerrainPainter.Editor.Views
 {
     // 回调与状态接口：避免视图依赖窗口内部字段，实现单一职责
-    public struct ContralViewCallbacks
+    public struct ControlViewCallbacks
     {
         public Action CreateNewVegetationProfileAsset;
         public Action ReloadAvailableProfiles;
@@ -23,7 +23,7 @@ namespace MrTerrainPainter.Editor.Views
     }
 
     // 视图：负责 Contral 页的 VegetationProfile 列表构建与数据绑定
-    public class ContralView
+    public class ControlView
     {
         private readonly VisualElement root;
         private readonly VisualTreeAsset rowTemplate;
@@ -33,9 +33,9 @@ namespace MrTerrainPainter.Editor.Views
         private const float ThumbSize = 64;
         private const float ThumbGap = 8f;
 
-        public ContralView(VisualElement contralRoot, VisualTreeAsset vegetationProfileRowTemplate)
+        public ControlView(VisualElement controlRoot, VisualTreeAsset vegetationProfileRowTemplate)
         {
-            root = contralRoot;
+            root = controlRoot;
             rowTemplate = vegetationProfileRowTemplate;
         }
 
@@ -43,7 +43,7 @@ namespace MrTerrainPainter.Editor.Views
         public void SetupVegetationProfileList(
             List<VegetationProfile> availableProfiles,
             List<VegetationProfile> extraProfiles,
-            ContralViewCallbacks cb,
+            ControlViewCallbacks cb,
             Func<VegetationProfile, VisualElement> makeDraggableArea,
             Func<VegetationProfile, VegetationItem, int, VisualElement> makeThumb,
             Func<int, int> thumbRows)
@@ -156,7 +156,7 @@ namespace MrTerrainPainter.Editor.Views
             VegetationProfile profile,
             List<VegetationProfile> availableProfiles,
             List<VegetationProfile> extraProfiles,
-            ContralViewCallbacks cb,
+            ControlViewCallbacks cb,
             Func<VegetationProfile, VisualElement> makeDraggableArea,
             Func<VegetationProfile, VegetationItem, int, VisualElement> makeThumb,
             Func<int, int> thumbRows)

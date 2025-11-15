@@ -71,7 +71,7 @@ namespace MrTerrainPainter.Editor.Tools
 
         private void OnActiveToolChanged()
         {
-            bool isActive = ToolManager.activeToolType == typeof(MrTerrainPainter.Editor.Tools.MTPBrushTool);
+            bool isActive = ToolManager.activeToolType == typeof(MTPBrushTool);
             try { displayed = isActive; } catch { }
             if (isActive && !ensuredWindow)
             {

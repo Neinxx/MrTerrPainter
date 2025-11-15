@@ -97,19 +97,19 @@ namespace MrTerrainPainter.Editor
 
             // 1. 定义动画参数
             var originalColor = element.style.color.value;
-            var pressedColor = new StyleColor(new UnityEngine.Color(0.8f, 0.6f, 0.1f)); // 偏黄的按压色
+            var pressedColor = new StyleColor(new Color(0.8f, 0.6f, 0.1f)); // 偏黄的按压色
             var animationDuration = 100; // 动画时长 (毫秒)
 
             // 2. 播放动画：按下效果
             element.style.color = pressedColor; // 改变颜色
-            element.style.scale = new StyleScale(new UnityEngine.UIElements.Scale(new Vector3(0.95f, 0.95f, 0.95f))); // 缩小一点
+            element.style.scale = new StyleScale(new Scale(new Vector3(0.95f, 0.95f, 0.95f))); // 缩小一点
 
             // 3. 使用 UIElements 的 `schedule.Execute` 延迟恢复
             element.schedule.Execute(() =>
             {
                 // 恢复到原始状态
                 element.style.color = originalColor;
-                element.style.scale = new StyleScale(new UnityEngine.UIElements.Scale(new Vector3(1f, 1f, 1f)));
+                element.style.scale = new StyleScale(new Scale(new Vector3(1f, 1f, 1f)));
             }).StartingIn(animationDuration); // 在指定毫秒后执行
         }
     }

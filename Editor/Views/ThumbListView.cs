@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using MrTerrainPainter.Runtime.Profiles;
+using MTPPrefabType = MrTerrainPainter.Runtime.Profiles.PrefabType;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -28,9 +29,9 @@ namespace MrTerrainPainter.Editor.Views
             public Action RefreshPreviewListUI;
             public Action<VegetationProfile, int> RemoveItemAtFromProfile;
             public Action<VegetationProfile, IEnumerable<int>> RemoveItemsAtFromProfile;
-            public Action<VegetationProfile, int, Runtime.Profiles.PrefabType> SetItemType;
+            public Action<VegetationProfile, int, MTPPrefabType> SetItemType;
             public Action<VegetationProfile, int> OpenPrefabPickerForItem;
-            public Func<IEnumerable<Runtime.Profiles.PrefabType>> GetAvailableTypes;
+            public Func<IEnumerable<MTPPrefabType>> GetAvailableTypes;
         }
 
         private readonly VisualTreeAsset prefabIconTemplate;
@@ -289,7 +290,7 @@ namespace MrTerrainPainter.Editor.Views
             var typeList = cb.GetAvailableTypes?.Invoke()?.ToList();
             if (typeList == null || typeList.Count == 0)
             {
-                typeList = ((Runtime.Profiles.PrefabType[])Enum.GetValues(typeof(Runtime.Profiles.PrefabType))).ToList();
+                typeList = ((MTPPrefabType[])Enum.GetValues(typeof(MTPPrefabType))).ToList();
             }
             for (int vi = 0; vi < typeList.Count; vi++)
             {

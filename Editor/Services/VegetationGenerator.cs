@@ -7,6 +7,7 @@ using MrTerrainPainter.Runtime.Core;
 using MrTerrainPainter.Runtime.Profiles;
 using UnityEditor;
 using UnityEngine;
+using PrefabType = MrTerrainPainter.Runtime.Profiles.PrefabType;
 
 namespace MrTerrainPainter.Editor.Services
 {
@@ -126,6 +127,18 @@ namespace MrTerrainPainter.Editor.Services
             }
         }
 
+        public static void GenerateOnTerrains(IReadOnlyList<Terrain> terrains, VegetationProfile profile, Bounds? area, FilterSettings filter, PlacementOverrides ov, Dictionary<PrefabType, Transform> mapping)
+        {
+            if (terrains == null || terrains.Count == 0) return;
+            if (profile == null || profile.IsEmpty()) return;
+            var rnd = new System.Random(profile.randomSeed);
+            foreach (var terrain in terrains)
+            {
+                if (terrain == null) continue;
+                GenerateOnTerrainWithMap(terrain, profile, area, rnd, filter, ov, mapping);
+            }
+        }
+
         // 在场景中以笔刷圆形范围进行区域生成（每个地形根据其世界Y校正Bounds中心）
         public static void GenerateInBrushArea(IReadOnlyList<Terrain> terrains, VegetationProfile profile, Vector3 center, float radius)
         {
@@ -172,6 +185,20 @@ namespace MrTerrainPainter.Editor.Services
             }
         }
 
+        public static void GenerateInBrushArea(IReadOnlyList<Terrain> terrains, VegetationProfile profile, Vector3 center, float radius, FilterSettings filter, PlacementOverrides ov, Dictionary<PrefabType, Transform> mapping)
+        {
+            if (terrains == null || terrains.Count == 0) return;
+            if (profile == null || profile.IsEmpty()) return;
+            var rnd = new System.Random(profile.randomSeed);
+            foreach (var terrain in terrains)
+            {
+                if (terrain == null) continue;
+                var y = terrain.transform.position.y;
+                var area = new Bounds(new Vector3(center.x, y, center.z), new Vector3(radius * 2f, 1f, radius * 2f));
+                GenerateOnTerrainWithMap(terrain, profile, area, rnd, filter, ov, mapping);
+            }
+        }
+
         private static void GenerateOnTerrain(Terrain terrain, VegetationProfile profile, Bounds? area, System.Random rnd, FilterSettings filter, PlacementOverrides? ov)
         {
             var td = terrain.terrainData;
@@ -191,7 +218,7 @@ namespace MrTerrainPainter.Editor.Services
             float areaZ = area.HasValue ? area.Value.size.z : size.z;
 
             // 缺少映射的类型仅报错一次，避免刷屏
-            var missingTypesLogged = new HashSet<Runtime.Profiles.PrefabType>();
+            var missingTypesLogged = new HashSet<PrefabType>();
             for (int it = 0; it < items.Count; it++)
             {
                 var item = items[it];
@@ -272,6 +299,83 @@ namespace MrTerrainPainter.Editor.Services
             }
         }
 
+        private static void GenerateOnTerrainWithMap(Terrain terrain, VegetationProfile profile, Bounds? area, System.Random rnd, FilterSettings filter, PlacementOverrides? ov, Dictionary<PrefabType, Transform> mapping)
+        {
+            var td = terrain.terrainData;
+            if (td == null) return;
+            var size = td.size;
+            var worldPos = terrain.transform.position;
+            var grids = new Dictionary<int, Grid>();
+            var items = profile.Items;
+            if (items == null || items.Count == 0) return;
+            float areaX = area.HasValue ? area.Value.size.x : size.x;
+            float areaZ = area.HasValue ? area.Value.size.z : size.z;
+            var missing = new HashSet<PrefabType>();
+            for (int it = 0; it < items.Count; it++)
+            {
+                var item = items[it];
+                if (item == null || !item.IsValid()) continue;
+                int count = Mathf.RoundToInt(item.baseDensity * (areaX * areaZ) * 0.001f * Mathf.Max(item.weight, 0f));
+                count = Mathf.Clamp(count, 0, 50000);
+                if (count <= 0) continue;
+                float spacing = Mathf.Max(item.minSpacing, 0.01f);
+                if (!grids.TryGetValue(it, out var grid)) { grid = new Grid(spacing); grids[it] = grid; }
+                for (int s = 0; s < count; s++)
+                {
+                    float fx, fz;
+                    if (area.HasValue)
+                    {
+                        var a = area.Value;
+                        float minX = a.center.x - a.extents.x;
+                        float maxX = a.center.x + a.extents.x;
+                        float minZ = a.center.z - a.extents.z;
+                        float maxZ = a.center.z + a.extents.z;
+                        fx = (float)rnd.NextDouble() * (maxX - minX) + (minX - worldPos.x);
+                        fz = (float)rnd.NextDouble() * (maxZ - minZ) + (minZ - worldPos.z);
+                    }
+                    else
+                    {
+                        fx = (float)rnd.NextDouble() * size.x;
+                        fz = (float)rnd.NextDouble() * size.z;
+                    }
+                    Vector3 sample = new Vector3(worldPos.x + fx, worldPos.y, worldPos.z + fz);
+                    bool noiseEnabled = filter != null && filter.noise != null && filter.noise.enabled;
+                    float noiseAcceptance = 1f;
+                    if (noiseEnabled)
+                    {
+                        float nv = FractalNoise(new Vector2(sample.x, sample.z), filter.noise);
+                        if (filter.noise.invert) nv = 1f - nv;
+                        if (nv < Mathf.Clamp01(filter.noise.threshold)) continue;
+                        noiseAcceptance = nv;
+                        if (rnd.NextDouble() > noiseAcceptance) continue;
+                    }
+                    if (!TerrainUtils.TryGetHeightAndNormal(terrain, sample, out float h, out Vector3 n)) continue;
+                    sample.y = h;
+                    float slope = TerrainUtils.ComputeSlope(n);
+                    float heightLocal = h - worldPos.y;
+                    if (noiseEnabled)
+                    {
+                        var hr = ov.HasValue ? ov.Value.heightRange : item.heightRange;
+                        if (heightLocal < hr.x || heightLocal > hr.y) continue;
+                    }
+                    else
+                    {
+                        if (!MatchTerrain(item, heightLocal, slope, ov)) continue;
+                    }
+                    var p2 = new Vector2(fx, fz);
+                    if (grid.HasNearby(p2, spacing)) continue;
+                    grid.Add(p2);
+                    var parent = ResolveTargetParentWithMap(terrain, item, mapping);
+                    if (parent == null)
+                    {
+                        if (!missing.Contains(item.prefabType)) missing.Add(item.prefabType);
+                        continue;
+                    }
+                    CreateInstance(item, sample, n, terrain, it, parent, rnd, ov);
+                }
+            }
+        }
+
 
         private static float FractalNoise(Vector2 p, NoiseSettings ns)
         {
@@ -328,6 +432,13 @@ namespace MrTerrainPainter.Editor.Services
             return null;
         }
 
+        public static Transform ResolveTargetParentWithMap(Terrain terrain, VegetationItem item, Dictionary<PrefabType, Transform> mapping)
+        {
+            if (terrain == null || item == null) return null;
+            if (mapping != null && mapping.TryGetValue(item.prefabType, out var tf) && tf != null) return tf;
+            return null;
+        }
+
         private static void CreateInstance(VegetationItem item, Vector3 pos, Vector3 normal, Terrain terrain, int itemIndex, Transform parent, System.Random rnd, PlacementOverrides? ov)
         {
             if (item.prefab == null) return; // 提前返回
@@ -353,6 +464,7 @@ namespace MrTerrainPainter.Editor.Services
             vi.sourceTerrain = terrain;
             vi.profileItemIndex = itemIndex;
             vi.instanceId = Guid.NewGuid().ToString();
+            vi.prefabType = item.prefabType;
         }
     }
 }

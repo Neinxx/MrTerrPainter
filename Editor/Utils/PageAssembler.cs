@@ -8,18 +8,10 @@ namespace MrTerrainPainter.Editor.Utils
         {
             reason = string.Empty;
             var styleSheet = Config.ConfigTools.GetStylesUss(cfg);
-            if (styleSheet == null)
+            if (styleSheet != null)
             {
-                reason = "样式未配置：请在 Settings 中设置 StylesUSS";
-                root.Add(new Label(reason));
-                return false;
+                root.styleSheets.Add(styleSheet);
             }
-            if (!Config.ConfigTools.IsComplete(cfg, out reason))
-            {
-                root.Add(new Label(reason));
-                return false;
-            }
-            root.styleSheets.Add(styleSheet);
             return true;
         }
 

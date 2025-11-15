@@ -76,15 +76,13 @@ public static class VegetationPool
         var t = terrain.transform.Find(name);
         if (t != null)
         {
-            // 动态应用显示设置
-            t.gameObject.hideFlags = ShowInHierarchy ? HideFlags.None : HideFlags.HideInHierarchy;
+            t.gameObject.hideFlags = ShowInHierarchy ? HideFlags.None : (HideFlags.HideInHierarchy | HideFlags.NotEditable);
             return t;
         }
         var go = new GameObject(name);
         go.transform.SetParent(terrain.transform, false);
         go.transform.localPosition = Vector3.zero;
-        // 根据设置决定是否在层级显示
-        go.hideFlags = ShowInHierarchy ? HideFlags.None : HideFlags.HideInHierarchy;
+        go.hideFlags = ShowInHierarchy ? HideFlags.None : (HideFlags.HideInHierarchy | HideFlags.NotEditable);
         return go.transform;
     }
 

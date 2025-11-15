@@ -4,6 +4,8 @@ using UnityEditor;
 using System.Linq;
 using System.IO;
 using System.Collections.Generic;
+using MrTerrainPainter.Runtime.Profiles;
+using MTPPrefabType = MrTerrainPainter.Runtime.Profiles.PrefabType;
 
 namespace MrTerrainPainter.Editor.Config
 {
@@ -26,11 +28,12 @@ namespace MrTerrainPainter.Editor.Config
         public float defaultBrushStrength = 1f;
         public float defaultBrushDensityScale = 1f;
         public float defaultBrushHardness = 1f;
+        public bool defaultUseJobs = true;
 
         [Header("运行时/生成设置")]
         public bool showPoolInHierarchy = false;
         public string recipeGenerationPath = "Assets/MrTerrainPainter/Data";
-        public Runtime.Profiles.PrefabType defaultGenerationType = Runtime.Profiles.PrefabType.Prop;
+        public MTPPrefabType defaultGenerationType = MTPPrefabType.Prop;
 
         // 使用 MappingEntry 统一管理生成映射
 
@@ -50,7 +53,8 @@ namespace MrTerrainPainter.Editor.Config
         public class MappingEntry
         {
             public Transform node;
-            public Runtime.Profiles.PrefabType type = Runtime.Profiles.PrefabType.Prop;
+            public MTPPrefabType type = MTPPrefabType.Prop;
+            public int layer = -1;
         }
         public List<MappingEntry> mappingEntries = new List<MappingEntry>();
     }
@@ -62,9 +66,69 @@ namespace MrTerrainPainter.Editor.Config
     /// </summary>
     public static class ConfigTools
     {
-        private static readonly string DefaultBrushOverlayUxmlPath = "Assets/MrTerrPainterV1/Editor/MTPBrushOverlay.uxml";
-        private static readonly string DefaultSettingsUxmlPath = "Assets/MrTerrPainterV1/Editor/MrTerrainPainterSettings.uxml";
-        private static readonly string DefaultSettingsMappingUxmlPath = "Assets/MrTerrPainterV1/Editor/MTPTerrainPainterSettingsMappinger.uxml";
+        private static readonly System.Collections.Generic.Dictionary<string, VisualTreeAsset> _uxmlCache = new System.Collections.Generic.Dictionary<string, VisualTreeAsset>();
+        private static readonly System.Collections.Generic.Dictionary<string, StyleSheet> _styleCache = new System.Collections.Generic.Dictionary<string, StyleSheet>();
+        private static VisualTreeAsset FindUxmlByName(params string[] names)
+        {
+            if (names == null || names.Length == 0) return null;
+            for (int i = 0; i < names.Length; i++)
+            {
+                var n = names[i];
+                if (string.IsNullOrEmpty(n)) continue;
+                if (_uxmlCache.TryGetValue(n, out var cached) && cached != null) return cached;
+                var guids = AssetDatabase.FindAssets($"t:VisualTreeAsset name:{n}");
+                for (int g = 0; g < guids.Length; g++)
+                {
+                    var path = AssetDatabase.GUIDToAssetPath(guids[g]);
+                    var v = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(path);
+                    if (v != null)
+                    {
+                        _uxmlCache[n] = v;
+                        return v;
+                    }
+                }
+            }
+            return null;
+        }
+
+        private static VisualTreeAsset FindUxmlByNamesOrHints(string[] names, string[] hints)
+        {
+            var byName = FindUxmlByName(names);
+            if (byName != null) return byName;
+            var guids = AssetDatabase.FindAssets("t:VisualTreeAsset");
+            int bestScore = -1; VisualTreeAsset best = null;
+            for (int i = 0; i < guids.Length; i++)
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guids[i]);
+                var file = System.IO.Path.GetFileNameWithoutExtension(path);
+                int score = 0;
+                if (names != null)
+                {
+                    for (int n = 0; n < names.Length; n++)
+                    {
+                        var nm = names[n];
+                        if (!string.IsNullOrEmpty(nm) && file.Equals(nm)) score += 2;
+                        else if (!string.IsNullOrEmpty(nm) && file.IndexOf(nm, System.StringComparison.OrdinalIgnoreCase) >= 0) score += 1;
+                    }
+                }
+                if (hints != null)
+                {
+                    for (int h = 0; h < hints.Length; h++)
+                    {
+                        var ht = hints[h];
+                        if (!string.IsNullOrEmpty(ht) && file.IndexOf(ht, System.StringComparison.OrdinalIgnoreCase) >= 0) score += 1;
+                    }
+                }
+                if (score <= 0) continue;
+                var v = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(path);
+                if (v == null) continue;
+                if (score > bestScore)
+                {
+                    bestScore = score; best = v;
+                }
+            }
+            return best;
+        }
         /// <summary>
         /// 查找或创建配置资源文件
         /// </summary>
@@ -98,32 +162,93 @@ namespace MrTerrainPainter.Editor.Config
         {
             var v = cfg != null ? cfg.brushOverlayUxml : null;
             if (v != null) return v;
-            return AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(DefaultBrushOverlayUxmlPath);
+            return FindUxmlByName("MTPBrushOverlay", "MrTerrainPainterBrushOverlay", "MTP.Brush.Overlay");
         }
 
         public static StyleSheet GetStylesUss(MrTerrainPainterConfig cfg)
         {
-            return cfg != null ? cfg.stylesUss : null;
+            var ss = cfg != null ? cfg.stylesUss : null;
+            if (ss != null) return ss;
+            var key = "MrTerrainPainterStyles";
+            if (_styleCache.TryGetValue(key, out var cached) && cached != null) return cached;
+            var guids = AssetDatabase.FindAssets("t:StyleSheet name:" + key);
+            for (int i = 0; i < guids.Length; i++)
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guids[i]);
+                var v = AssetDatabase.LoadAssetAtPath<StyleSheet>(path);
+                if (v != null)
+                {
+                    _styleCache[key] = v;
+                    return v;
+                }
+            }
+            return null;
         }
 
         public static VisualTreeAsset GetSettingsUxml()
         {
-            return AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(DefaultSettingsUxmlPath);
+            return FindUxmlByNamesOrHints(
+                new[] { "MrTerrainPainter.Settings", "MrTerrainPainterSettings", "MTPSettings" },
+                new[] { "MrTerrainPainter", "Settings" }
+            );
         }
 
         public static VisualTreeAsset GetSettingsMappingUxml()
         {
-            return AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(DefaultSettingsMappingUxmlPath);
+            return FindUxmlByNamesOrHints(
+                new[] { "MrTerrainPainter.Settings.Mapping", "MTPTerrainPainterSettingsMappinger", "MrTerrainPainterSettingsMapping" },
+                new[] { "MrTerrainPainter", "Settings", "Mapping" }
+            );
         }
 
-        public static VisualTreeAsset GetStartUxml(MrTerrainPainterConfig cfg) => cfg != null ? cfg.startUxml : null;
-        public static VisualTreeAsset GetControlUxml(MrTerrainPainterConfig cfg) => cfg != null ? cfg.controlUxml : null;
-        public static VisualTreeAsset GetPaintUxml(MrTerrainPainterConfig cfg) => cfg != null ? cfg.paintUxml : null;
-        public static VisualTreeAsset GetGenerateUxml(MrTerrainPainterConfig cfg) => cfg != null ? cfg.generateUxml : null;
-        public static VisualTreeAsset GetVegetationSharedUxml(MrTerrainPainterConfig cfg) => cfg != null ? cfg.vegetationSharedUxml : null;
-        public static VisualTreeAsset GetVegetationProfileRowUxml(MrTerrainPainterConfig cfg) => cfg != null ? cfg.vegetationProfileRowUxml : null;
-        public static VisualTreeAsset GetPrefabIconUxml(MrTerrainPainterConfig cfg) => cfg != null ? cfg.prefabIconUxml : null;
-        public static VisualTreeAsset GetDraggableAreaUxml(MrTerrainPainterConfig cfg) => cfg != null ? cfg.draggableAreaUxml : null;
+        public static VisualTreeAsset GetStartUxml(MrTerrainPainterConfig cfg)
+        {
+            var v = cfg != null ? cfg.startUxml : null;
+            if (v != null) return v;
+            return FindUxmlByName("MrTerrainPainterWindow.Start", "MrTerrainPainterWindowStart", "MTPStart");
+        }
+        public static VisualTreeAsset GetControlUxml(MrTerrainPainterConfig cfg)
+        {
+            var v = cfg != null ? cfg.controlUxml : null;
+            if (v != null) return v;
+            return FindUxmlByName("MrTerrainPainterWindow.Control", "MrTerrainPainterWindowControl", "MTPControl");
+        }
+        public static VisualTreeAsset GetPaintUxml(MrTerrainPainterConfig cfg)
+        {
+            var v = cfg != null ? cfg.paintUxml : null;
+            if (v != null) return v;
+            return FindUxmlByName("MrTerrainPainterWindow.Paint", "MrTerrainPainterWindowPaintPage", "MTPPaint");
+        }
+        public static VisualTreeAsset GetGenerateUxml(MrTerrainPainterConfig cfg)
+        {
+            var v = cfg != null ? cfg.generateUxml : null;
+            if (v != null) return v;
+            return FindUxmlByName("MrTerrainPainterWindow.Generate", "MrTerrainPainterWindowGenerate", "MTPGenerate");
+        }
+        public static VisualTreeAsset GetVegetationSharedUxml(MrTerrainPainterConfig cfg)
+        {
+            var v = cfg != null ? cfg.vegetationSharedUxml : null;
+            if (v != null) return v;
+            return FindUxmlByName("MrTerrainPainterWindow.VegetationShared", "MrTerrainPainterVegetationShared", "VegetationShared");
+        }
+        public static VisualTreeAsset GetVegetationProfileRowUxml(MrTerrainPainterConfig cfg)
+        {
+            var v = cfg != null ? cfg.vegetationProfileRowUxml : null;
+            if (v != null) return v;
+            return FindUxmlByName("MrTerrainPainterWindow.VegetationProfileRow", "VegetationProfileRow", "MrTerrainPainterVegetationProfileRow");
+        }
+        public static VisualTreeAsset GetPrefabIconUxml(MrTerrainPainterConfig cfg)
+        {
+            var v = cfg != null ? cfg.prefabIconUxml : null;
+            if (v != null) return v;
+            return FindUxmlByName("MrTerrainPainterWindow.PrefabIcon", "VegetationProfilePrefabIcon", "PrefabIcon");
+        }
+        public static VisualTreeAsset GetDraggableAreaUxml(MrTerrainPainterConfig cfg)
+        {
+            var v = cfg != null ? cfg.draggableAreaUxml : null;
+            if (v != null) return v;
+            return FindUxmlByName("MrTerrainPainterWindow.VegetationProfileDraggableArea", "MrTerrainPainterWindowVegetationProfileDraggableArea", "VegetationProfileDraggableArea");
+        }
 
         /// <summary>
         /// 标记配置对象为脏并保存
@@ -163,9 +288,6 @@ namespace MrTerrainPainter.Editor.Config
             if (cfg.draggableAreaUxml == null) reasons.Add("DraggableAreaUXML 未设置");
             if (cfg.brushOverlayUxml == null) reasons.Add("BrushOverlayUXML 未设置");
 
-            if (string.IsNullOrEmpty(cfg.recipeGenerationPath)) reasons.Add("RecipeGenerationPath 为空");
-            else if (!AssetDatabase.IsValidFolder(cfg.recipeGenerationPath)) reasons.Add("RecipeGenerationPath 不是有效的项目文件夹");
-
             if (reasons.Count > 0)
             {
                 reason = string.Join("\n", reasons);
@@ -199,6 +321,56 @@ namespace MrTerrainPainter.Editor.Config
                 }
                 currentPath = newPath;
             }
+        }
+
+        public static System.Collections.Generic.Dictionary<MrTerrainPainter.Runtime.Profiles.PrefabType, Transform> BuildTypeMapping(MrTerrainPainterConfig cfg)
+        {
+            var map = new System.Collections.Generic.Dictionary<MrTerrainPainter.Runtime.Profiles.PrefabType, Transform>();
+            if (cfg == null || cfg.mappingEntries == null) return map;
+            for (int i = 0; i < cfg.mappingEntries.Count; i++)
+            {
+                var e = cfg.mappingEntries[i];
+                if (e == null || e.node == null) continue;
+                map[e.type] = e.node;
+            }
+            return map;
+        }
+
+        public static int GetLayerForType(MrTerrainPainter.Runtime.Profiles.PrefabType t)
+        {
+            var guids = AssetDatabase.FindAssets($"t:{nameof(MrTerrainPainterConfig)}");
+            var path = guids.Length > 0 ? AssetDatabase.GUIDToAssetPath(guids[0]) : null;
+            var cfg = !string.IsNullOrEmpty(path) ? AssetDatabase.LoadAssetAtPath<MrTerrainPainterConfig>(path) : null;
+            if (cfg == null || cfg.mappingEntries == null) return -1;
+            for (int i = 0; i < cfg.mappingEntries.Count; i++)
+            {
+                var e = cfg.mappingEntries[i];
+                if (e == null) continue;
+                if (e.type == t && e.layer >= 0) return e.layer;
+            }
+            return -1;
+        }
+
+        public static string ResolveRecipePath(MrTerrainPainterConfig cfg)
+        {
+            if (cfg == null) return "Assets";
+            var p = cfg.recipeGenerationPath;
+            if (!string.IsNullOrEmpty(p) && AssetDatabase.IsValidFolder(p)) return p;
+            var cfgPath = AssetDatabase.GetAssetPath(cfg);
+            if (string.IsNullOrEmpty(cfgPath)) return "Assets/MrTerrainPainter/Data";
+            var d1 = Path.GetDirectoryName(cfgPath);
+            var d2 = string.IsNullOrEmpty(d1) ? null : Path.GetDirectoryName(d1);
+            var d3 = string.IsNullOrEmpty(d2) ? null : Path.GetDirectoryName(d2);
+            var root = string.IsNullOrEmpty(d3) ? "Assets" : d3.Replace('\\', '/');
+            var def = root + "/Data";
+            EnsureFolder(def);
+            return def;
+        }
+
+        public static void ResetSearchCaches()
+        {
+            _uxmlCache.Clear();
+            _styleCache.Clear();
         }
     }
 #endif

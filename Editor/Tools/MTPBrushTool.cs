@@ -67,7 +67,9 @@ namespace MrTerrainPainter.Editor.Tools
                         var profile = win != null ? win.GetCurrentProfile() : null;
                         if (profile != null)
                         {
-                            BrushPainter.Paint(hitTerrain, profile, lastPos, brush, rnd);
+                            var cfg = MrTerrainPainter.Editor.Config.ConfigTools.LoadOrCreateAsset();
+                            var mapping = MrTerrainPainter.Editor.Config.ConfigTools.BuildTypeMapping(cfg);
+                            BrushPainter.Paint(hitTerrain, profile, lastPos, brush, rnd, mapping);
                         }
                         e.Use();
                     }

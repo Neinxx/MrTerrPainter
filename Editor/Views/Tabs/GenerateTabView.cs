@@ -40,12 +40,12 @@ namespace MrTerrainPainter.Editor.Views.Tabs
                 ClearTerrainLists = () => window.terrainController.ClearTerrainLists(window.selectedTerrains, window.terrainListUIData, window.scannedTerrainNames),
                 AddTerrainToLists = t => window.terrainController.AddTerrainToLists(t, window.selectedTerrains, window.terrainListUIData, window.scannedTerrainNames),
                 RefreshStartListUI = () => { },
-                RefreshContralListUI = () =>
+                RefreshControlListUI = () =>
                 {
                     window.PopulateTerrianListUI(genParam);
                     window.UpdateGenerateActionsVisibility(genParam);
                 },
-                BuildContralSection = null
+                BuildControlSection = null
             });
             window.UpdateGenerateActionsVisibility(genParam);
         }

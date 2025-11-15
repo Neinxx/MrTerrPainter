@@ -18,7 +18,7 @@ MonoBehaviour:
   defaultBrushDensityScale: 1
   defaultBrushHardness: 1
   showPoolInHierarchy: 0
-  recipeGenerationPath: Assets/MrTerrPainterV1/Data
+  recipeGenerationPath: "Assets/MyterrainTool/\u672A\u547D\u540D/MrTerrPainter/Data"
   defaultGenerationType: 0
   startUxml: {fileID: 9197481963319205126, guid: cf85f8409c53be245b48930a95b32b6b,
     type: 3}

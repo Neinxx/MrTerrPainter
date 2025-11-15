@@ -22,8 +22,8 @@ namespace MrTerrainPainter.Editor.Views
             public Action ClearTerrainLists; // 清空 selectedTerrains / terrainListUIData / scannedTerrainNames
             public Action<Terrain> AddTerrainToLists; // 添加到 selectedTerrains / terrainListUIData / scannedTerrainNames
             public Action RefreshStartListUI;
-            public Action RefreshContralListUI;
-            public Action BuildContralSection;
+            public Action RefreshControlListUI;
+            public Action BuildControlSection;
         }
 
         public void Bind(SelectionActionsCallbacks cb)
@@ -55,10 +55,10 @@ namespace MrTerrainPainter.Editor.Views
 
                 // 刷新两个页面的列表（若存在）
                 cb.RefreshStartListUI?.Invoke();
-                cb.RefreshContralListUI?.Invoke();
+                cb.RefreshControlListUI?.Invoke();
 
                 // 构建控制区（Start 页行为保持一致）
-                cb.BuildContralSection?.Invoke();
+                cb.BuildControlSection?.Invoke();
             };
 
             btn.SetClickHandler(handler);

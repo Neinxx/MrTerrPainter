@@ -1,0 +1,21 @@
+{
+  "name": "MrTerrainPainter.Editor",
+  "references": [
+    "MrTerrainPainter.Runtime",
+    "Unity.Burst",
+    "Unity.Collections",
+    "Unity.Mathematics",
+    "Unity.Jobs"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

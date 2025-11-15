@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using MrTerrainPainter.Editor.Services;
 using MrTerrainPainter.Runtime.Profiles;
+using MTPPrefabType = MrTerrainPainter.Runtime.Profiles.PrefabType;
 using UnityEngine;
 
 namespace MrTerrainPainter.Editor.Controllers
@@ -15,7 +16,8 @@ namespace MrTerrainPainter.Editor.Controllers
             BrushSettings brush,
             System.Random rnd,
             VegetationGenerator.PlacementOverrides ov,
-            bool mixExtraProfiles)
+            bool mixExtraProfiles,
+            Dictionary<MTPPrefabType, Transform> mapping)
         {
             if (terrain == null || currentProfile == null || currentProfile.IsEmpty()) return;
 
@@ -29,16 +31,16 @@ namespace MrTerrainPainter.Editor.Controllers
                     if (p == null || p.IsEmpty()) continue;
                     list.Add(p);
                 }
-                BrushPainter.PaintMixed(terrain, list, center, brush, rnd, ov);
+                BrushPainter.PaintMixed(terrain, list, center, brush, rnd, mapping, ov);
             }
             else
             {
-                BrushPainter.Paint(terrain, currentProfile, center, brush, rnd, ov);
+                BrushPainter.Paint(terrain, currentProfile, center, brush, rnd, mapping, ov);
                 for (int i = 0; i < extraProfiles.Count; i++)
                 {
                     var p = extraProfiles[i];
                     if (p == null || p.IsEmpty()) continue;
-                    BrushPainter.Paint(terrain, p, center, brush, rnd, ov);
+                    BrushPainter.Paint(terrain, p, center, brush, rnd, mapping, ov);
                 }
             }
         }

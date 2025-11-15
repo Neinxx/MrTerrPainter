@@ -16,6 +16,80 @@ namespace MrTerrainPainter.Editor.Services
 
     public static class BrushEngine
     {
+        private struct SampleKey
+        {
+            public BrushShape shape;
+            public DistributionType dist;
+            public float radius;
+            public int count;
+            public float spacing;
+            public float jitter;
+            public int seed;
+            public int cCount;
+            public int cChild;
+            public float cRadius;
+            public float cJitter;
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    int h = (int)shape * 397 ^ (int)dist;
+                    h = h * 397 ^ radius.GetHashCode();
+                    h = h * 397 ^ count;
+                    h = h * 397 ^ spacing.GetHashCode();
+                    h = h * 397 ^ jitter.GetHashCode();
+                    h = h * 397 ^ seed;
+                    h = h * 397 ^ cCount;
+                    h = h * 397 ^ cChild;
+                    h = h * 397 ^ cRadius.GetHashCode();
+                    h = h * 397 ^ cJitter.GetHashCode();
+                    return h;
+                }
+            }
+        }
+        private static readonly System.Collections.Generic.Dictionary<SampleKey, System.Collections.Generic.List<Vector2>> cache = new System.Collections.Generic.Dictionary<SampleKey, System.Collections.Generic.List<Vector2>>();
+        private static System.Collections.Generic.List<Vector2> Translate(System.Collections.Generic.List<Vector2> src, Vector2 center)
+        {
+            var list = new System.Collections.Generic.List<Vector2>(src.Count);
+            for (int i = 0; i < src.Count; i++) list.Add(src[i] + center);
+            return list;
+        }
+        public static System.Collections.Generic.List<Vector2> SampleCached(Vector2 center, BrushShape shape, DistributionType dist, float radius, int count, float spacing, float jitter, int seed, ClusterSettings cs)
+        {
+            var key = new SampleKey
+            {
+                shape = shape,
+                dist = dist,
+                radius = radius,
+                count = count,
+                spacing = spacing,
+                jitter = jitter,
+                seed = seed,
+                cCount = cs.clusterCount,
+                cChild = cs.childPerCluster,
+                cRadius = cs.clusterRadius,
+                cJitter = cs.childJitter
+            };
+            if (cache.TryGetValue(key, out var off)) return Translate(off, center);
+            System.Collections.Generic.List<Vector2> abs;
+            switch (dist)
+            {
+                case DistributionType.PoissonDisk:
+                    abs = SamplePoisson(Vector2.zero, radius, shape, count, spacing, jitter, seed);
+                    break;
+                case DistributionType.Cluster:
+                    abs = SampleCluster(Vector2.zero, radius, shape, cs, spacing, seed);
+                    break;
+                case DistributionType.JitteredGrid:
+                    abs = SampleJittered(Vector2.zero, radius, shape, spacing, jitter, new System.Random(seed));
+                    break;
+                default:
+                    abs = SampleUniform(Vector2.zero, radius, shape, count, new System.Random(seed));
+                    break;
+            }
+            cache[key] = abs;
+            return Translate(abs, center);
+        }
         private static bool InsideShape(Vector2 p, Vector2 center, float radius, BrushShape shape)
         {
             if (shape == BrushShape.Circle)

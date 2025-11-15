@@ -21,6 +21,14 @@ namespace MrTerrainPainter.Editor.Views.Tabs
         public void Setup()
         {
             var page = root;
+            var useJobsToggle = page.Q<Toggle>("UseJobs");
+            if (useJobsToggle == null)
+            {
+                useJobsToggle = new Toggle("UseJobs") { name = "UseJobs" };
+                page.Add(useJobsToggle);
+            }
+            useJobsToggle.SetValueWithoutNotify(window.config.defaultUseJobs);
+            useJobsToggle.RegisterValueChangedCallback(e => { window.config.defaultUseJobs = e.newValue; EditorUtility.SetDirty(window.config); });
             BindTextField(page, "RecipeGenerationPath", () => window.config.recipeGenerationPath, v => { window.config.recipeGenerationPath = v; EditorUtility.SetDirty(window.config); });
             BindToggle(page, "ShowPool", () => VegetationPool.ShowInHierarchy, v => { VegetationPool.ShowInHierarchy = v; window.config.showPoolInHierarchy = v; EditorUtility.SetDirty(window.config); });
             BindObjectField(page, "VegetationSharedUXML", typeof(VisualTreeAsset), () => window.config.vegetationSharedUxml, v => { window.config.vegetationSharedUxml = v as VisualTreeAsset; EditorUtility.SetDirty(window.config); });
@@ -37,7 +45,7 @@ namespace MrTerrainPainter.Editor.Views.Tabs
             var mappingTemplate = ConfigTools.GetSettingsMappingUxml();
             if (fold != null && mappingTemplate != null)
             {
-                if (window.config.mappingEntries == null) window.config.mappingEntries = new System.Collections.Generic.List<MrTerrainPainterConfig.MappingEntry>();
+                window.config.mappingEntries ??= new System.Collections.Generic.List<MrTerrainPainterConfig.MappingEntry>();
                 
                 void Refresh()
                 {
@@ -51,7 +59,7 @@ namespace MrTerrainPainter.Editor.Views.Tabs
                         if (of != null)
                         {
                             int idxLocal = i;
-                            of.objectType = typeof(UnityEngine.Transform);
+                            of.objectType = typeof(Transform);
                             of.allowSceneObjects = true;
                             var initialTf = window.config.mappingEntries[idxLocal].node;
                             of.SetValueWithoutNotify(initialTf);
@@ -71,9 +79,26 @@ namespace MrTerrainPainter.Editor.Views.Tabs
                             typeField.SetValueWithoutNotify(initialType);
                             typeField.RegisterValueChangedCallback(e =>
                             {
-                                window.config.mappingEntries[idxLocal2].type = (MrTerrainPainter.Runtime.Profiles.PrefabType)e.newValue;
+                                window.config.mappingEntries[idxLocal2].type = (Runtime.Profiles.PrefabType)e.newValue;
                                 EditorUtility.SetDirty(window.config);
                                 Refresh();
+                            });
+                        }
+                        var layerField = mapRoot.Q<IntegerField>("Layer");
+                        if (layerField == null)
+                        {
+                            layerField = new IntegerField("Layer") { name = "Layer" };
+                            layerField.style.minWidth = 100;
+                            mapRoot.Add(layerField);
+                        }
+                        if (layerField != null)
+                        {
+                            int idxLocal3 = i;
+                            layerField.SetValueWithoutNotify(window.config.mappingEntries[idxLocal3].layer);
+                            layerField.RegisterValueChangedCallback(e =>
+                            {
+                                window.config.mappingEntries[idxLocal3].layer = e.newValue;
+                                EditorUtility.SetDirty(window.config);
                             });
                         }
                         var btnDel = rowRoot.Q<Button>("Delete");
@@ -170,7 +195,7 @@ namespace MrTerrainPainter.Editor.Views.Tabs
             t.RegisterValueChangedCallback(e => setter(e.newValue));
         }
 
-        private void BindObjectField(VisualElement page, string name, System.Type type, System.Func<UnityEngine.Object> getter, System.Action<UnityEngine.Object> setter)
+        private void BindObjectField(VisualElement page, string name, System.Type type, System.Func<Object> getter, System.Action<Object> setter)
         {
             var of = page.Q<ObjectField>(name);
             if (of == null) return;
