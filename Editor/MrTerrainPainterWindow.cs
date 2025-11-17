@@ -17,7 +17,6 @@ namespace MrTerrainPainter.Editor
 {
     public partial class MrTerrainPainterWindow : EditorWindow
     {
-        private enum Page { Start, Contral, Generate, Paint }
         private enum Mode { Generate, Paint, Erase }
 
         public readonly List<Terrain> selectedTerrains = new();
@@ -27,6 +26,7 @@ namespace MrTerrainPainter.Editor
         private readonly BrushSettings brush = new();
         private System.Random rnd;
         private readonly VegetationGenerator.NoiseSettings noise = new();
+        private VegetationGenerator.FilterSettings genFilter = new();
 
         // 窗口级自定义范围（覆盖 Profile SO 范围）
         private Vector2 customScaleRange = new(1f, 1f);
@@ -35,8 +35,7 @@ namespace MrTerrainPainter.Editor
         private Vector2 customHeightRange = new(0f, 1000f);
         private Vector2 customSlopeRange = new(0f, 90f);
 
-        // 多配方支持（用于批量生成）
-        private readonly List<VegetationProfile> extraProfiles = new();
+        // 多配方支持（用于批量生成）改为使用全局上下文 MTPBrushContext.ExtraProfiles
 
         // 配方条目 UI 状态
         private int selectedItemIndex = -1;
@@ -53,19 +52,21 @@ namespace MrTerrainPainter.Editor
         private PrefabAssignmentController prefabAssignment;
         private ProfileController profileController;
         private PaintingController paintingController;
-        // 视图：Contral 页列表视图
-        private ContralView contralView;
-        // 视图：Contral 页属性面板视图
+        private SceneInteractionService sceneService;
+        private IFilterStrategy filterStrategy;
+        private IPlacementOverrideStrategy placementStrategy;
+        // 视图：Control 页列表视图
+        private ControlView controlView;
+        // 视图：Control 页属性面板视图
         private PropertyPanelView propertyPanelView;
-        // 视图：地形列表（Start/Contral 页）
-        private TerrainListView startTerrainListView;
+
         // 视图：Paint/Generate 页模块化视图
         private BrushView brushView;
         private GenerateFilterView generateFilterView;
 
         // UI Toolkit: 资源与实例
         private VisualTreeAsset uxmlStart;
-        private VisualTreeAsset uxmlContral;
+        private VisualTreeAsset uxmlControl;
         private VisualTreeAsset uxmlGenerate;
         private VisualTreeAsset uxmlPaint;
         private VisualTreeAsset uxmlVegetationShared;
@@ -74,23 +75,16 @@ namespace MrTerrainPainter.Editor
         private VisualTreeAsset uxmlVegetationProfileDraggableArea; // 可拖拽新建区域（UXML）
         private VisualElement pageContainer;
         private VisualElement startRoot;
-        private VisualElement contralRoot;
+        private VisualElement controlRoot;
 
-        private VisualElement contralTabContent;
-        private Page page = Page.Start;
-        private bool refreshingUI;
-        private bool contralBindingsInitialized;
+        private VisualElement controlTabContent;
+        private System.Action<string> brushChangedHandler;
+        private System.Action<VegetationProfile> profileChangedHandler;
+        private bool sceneRepaintQueued;
+        private bool settingsOpen;
+        public static event System.Action<bool, bool, bool> WindowStateChanged;
 
-        // Contral 页面命名控件绑定
-
-        private readonly ObjectField uiSelectPrefab;
-        private readonly Slider uiWeigth;
-        private readonly MinMaxSlider uiSceleRange;
-        private readonly MinMaxSlider uiYrotationRange;
-        private readonly MinMaxSlider uiHeigthRange;
-        private readonly MinMaxSlider uiSlopeRange;
-        private readonly Slider uiBaseDensity;
-        private readonly Slider uiMinimumSpacing;
+        // Control 页面命名控件绑定
         private ListView uiVegetationList;
         private VisualElement uiPreviewPrefabList;
         private ListView uiPreviewListView;
@@ -101,10 +95,17 @@ namespace MrTerrainPainter.Editor
         // PrefabRange SO 选择与操作
         // 移除 PrefabRangeSO 相关控件与状态（改回使用 PrefabRange 节点下的属性控件）
 
-        [MenuItem("Tools/Mr Terrain Painter Main")]
-        public static void Open()
+        [MenuItem("Window/Mr Terrain Painter", priority = 2000)]
+        public static void OpenWindow()
         {
             GetOrOpen();
+        }
+
+        [MenuItem("Window/Mr Terrain Painter/Open Painting Settings", priority = 2001)]
+        public static void OpenPaintingSettingsMenu()
+        {
+            var win = GetOrOpen();
+            EditorApplication.delayCall += () => { if (win != null) win.OpenPaintingSettings(); };
         }
 
         public static bool TryGet(out MrTerrainPainterWindow window)
@@ -158,10 +159,11 @@ namespace MrTerrainPainter.Editor
 
         private void PruneExtraProfiles()
         {
-            if (extraProfiles == null) return;
-            for (int i = extraProfiles.Count - 1; i >= 0; i--)
+            var extras = MrTerrainPainter.Editor.Tools.MTPBrushContext.ExtraProfiles;
+            for (int i = extras.Count - 1; i >= 0; i--)
             {
-                if (extraProfiles[i] == null) extraProfiles.RemoveAt(i);
+                var p = extras[i];
+                if (p == null) MrTerrainPainter.Editor.Tools.MTPBrushContext.RemoveExtra(p);
             }
         }
 
@@ -176,6 +178,7 @@ namespace MrTerrainPainter.Editor
             RefreshVegetationListUI();
             RefreshPreviewListUI();
             UpdatePropertyPanelFromSelectedItem();
+            MrTerrainPainter.Editor.Tools.MTPBrushContext.CurrentProfile = currentProfile;
         }
 
         private void OnProjectChangedRefreshProfiles()
@@ -195,18 +198,22 @@ namespace MrTerrainPainter.Editor
             {
                 config = ConfigTools.LoadOrCreateAsset();
             }
+            if (config.mappingEntries == null) config.mappingEntries = new System.Collections.Generic.List<MrTerrainPainterConfig.MappingEntry>();
             brush.size = config.defaultBrushSize;
             brush.strength = config.defaultBrushStrength;
             brush.densityScale = config.defaultBrushDensityScale;
             brush.hardness = config.defaultBrushHardness;
             brush.preview = config.showPreview;
+            MrTerrainPainter.Editor.Tools.MTPBrushContext.SetSharedBrush(brush);
+            MrTerrainPainter.Editor.Tools.MTPBrushContext.SetConfig(config);
 
             // 应用配置到运行时状态
             VegetationPool.ShowInHierarchy = config.showPoolInHierarchy;
+            VegetationPool.ApplyShowInHierarchyAll();
             // 移除旧设置页的对象列表同步逻辑（独立窗口管理，不在主窗口维护）
 
             uxmlStart = ConfigTools.GetStartUxml(config);
-            uxmlContral = ConfigTools.GetControlUxml(config);
+            uxmlControl = ConfigTools.GetControlUxml(config);
             uxmlGenerate = ConfigTools.GetGenerateUxml(config);
             uxmlPaint = ConfigTools.GetPaintUxml(config);
             uxmlVegetationShared = ConfigTools.GetVegetationSharedUxml(config);
@@ -241,6 +248,28 @@ namespace MrTerrainPainter.Editor
             terrainController = new TerrainController();
             profileController = new ProfileController();
             paintingController = new PaintingController();
+            filterStrategy = new DefaultFilterStrategy(noise);
+            placementStrategy = new DefaultPlacementOverrideStrategy(
+                () => customScaleRange,
+                () => customYRotationRange,
+                () => customHeightRange,
+                () => customSlopeRange
+            );
+            sceneService = new SceneInteractionService(
+                terrainController,
+                paintingController,
+                () => currentProfile,
+                () => selectedTerrains,
+                brush,
+                filterStrategy,
+                placementStrategy,
+                () => mode == Mode.Generate,
+                () => mode == Mode.Paint,
+                MarkSceneDirty,
+                pos => NearestTerrain(pos),
+                () => { EnsureRandom(); return rnd; },
+                false
+            );
 
             // 构建UI Toolkit界面
             CreateGUI();
@@ -250,12 +279,34 @@ namespace MrTerrainPainter.Editor
         {
             SceneView.duringSceneGui -= OnSceneGUI;
             EditorApplication.projectChanged -= OnProjectChangedRefreshProfiles;
+            if (brushChangedHandler != null)
+            {
+                MrTerrainPainter.Editor.Tools.MTPBrushContext.Brush.Changed -= brushChangedHandler;
+                brushChangedHandler = null;
+            }
+            if (profileChangedHandler != null)
+            {
+                MrTerrainPainter.Editor.Tools.MTPBrushContext.ProfileChanged -= profileChangedHandler;
+                profileChangedHandler = null;
+            }
+            WindowStateChanged?.Invoke(false, false, false);
         }
 
         private void OnDestroy()
         {
             SceneView.duringSceneGui -= OnSceneGUI;
             EditorApplication.projectChanged -= OnProjectChangedRefreshProfiles;
+            if (brushChangedHandler != null)
+            {
+                MrTerrainPainter.Editor.Tools.MTPBrushContext.Brush.Changed -= brushChangedHandler;
+                brushChangedHandler = null;
+            }
+            if (profileChangedHandler != null)
+            {
+                MrTerrainPainter.Editor.Tools.MTPBrushContext.ProfileChanged -= profileChangedHandler;
+                profileChangedHandler = null;
+            }
+            WindowStateChanged?.Invoke(false, false, false);
         }
 
         private void CreateGUI()
@@ -263,22 +314,35 @@ namespace MrTerrainPainter.Editor
             var root = rootVisualElement;
             if (!Editor.Utils.PageAssembler.EnsureStylesAndValidate(config, root, out var reason)) return;
 
-            root.style.paddingLeft = 6;
-            root.style.paddingRight = 6;
-            root.style.paddingTop = 4;
-            root.style.paddingBottom = 4;
             root.Clear();
 
             pageContainer = new ScrollView();
             //  pageContainer.mode = ScrollViewMode.Vertical;
             //  pageContainer.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
-            pageContainer.style.flexGrow = 1;
-            pageContainer.contentContainer.style.paddingRight = 16;
+            pageContainer.AddToClassList("mt-scroll");
             root.Add(pageContainer);
 
             startRoot = PageAssembler.Assemble(pageContainer, uxmlStart);
             startRoot.AddToClassList("mt-frame");
             SetupStartPageEvents();
+            NotifyWindowStateChanged();
+        }
+
+        private void RequestSceneRepaint()
+        {
+            if (sceneRepaintQueued) return;
+            sceneRepaintQueued = true;
+            EditorApplication.delayCall += () =>
+            {
+                sceneRepaintQueued = false;
+                var sv = SceneView.lastActiveSceneView;
+                if (sv != null) sv.Repaint(); else SceneView.RepaintAll();
+            };
+        }
+
+        private void NotifyWindowStateChanged()
+        {
+            WindowStateChanged?.Invoke(true, settingsOpen, mode == Mode.Paint);
         }
 
         private VisualElement InstantiatePage(VisualTreeAsset vta)
@@ -316,6 +380,25 @@ namespace MrTerrainPainter.Editor
         }
 
         public VegetationProfile GetCurrentProfile() => currentProfile;
+
+        public System.Collections.Generic.List<VegetationProfile> GetAvailableProfilesSnapshotPublic()
+        {
+            return new System.Collections.Generic.List<VegetationProfile>(availableProfiles);
+        }
+
+        public System.Collections.Generic.List<VegetationProfile> GetExtraProfilesSnapshotPublic()
+        {
+            return new System.Collections.Generic.List<VegetationProfile>(MrTerrainPainter.Editor.Tools.MTPBrushContext.ExtraProfiles as System.Collections.Generic.IEnumerable<VegetationProfile>);
+        }
+
+        public void SetCurrentProfilePublic(VegetationProfile profile)
+        {
+            if (profile == null) return;
+            currentProfile = profile;
+            MrTerrainPainter.Editor.Tools.MTPBrushContext.CurrentProfile = profile;
+            RefreshAllUI();
+            RequestSceneRepaint();
+        }
 
 
 
@@ -373,15 +456,7 @@ namespace MrTerrainPainter.Editor
         }
 
         // 在 EditorWindow 的 IMGUI 循环中处理对象选择器事件
-        private void OnGUI()
-        {
-            var cmd = Event.current.commandName;
-            // 仅在关闭时处理，避免 Updated 与 Closed 双重触发造成重复添加
-            if (cmd == "ObjectSelectorClosed")
-            {
-                prefabPicker?.HandleObjectPickerClosed();
-            }
-        }
+
 
         // —— Profile SO 资产操作 ——
         private string DataFolderPath => !string.IsNullOrEmpty(config?.recipeGenerationPath)
@@ -445,11 +520,7 @@ namespace MrTerrainPainter.Editor
 
 
 
-        private class ThumbsDragHandlers
-        {
-            public EventCallback<DragUpdatedEvent> onUpdate;
-            public EventCallback<DragPerformEvent> onPerform;
-        }
+
 
         private void ScanSceneTerrains()
         {
@@ -464,30 +535,7 @@ namespace MrTerrainPainter.Editor
 
         private void OnSceneGUI(SceneView sv)
         {
-            if (UnityEditor.EditorTools.ToolManager.activeToolType == typeof(Tools.MTPBrushTool)) return;
-            EnsureRandom();
-            var e = Event.current;
-            HandleLayoutControl(e);
-            var ray = HandleUtility.GUIPointToWorldRay(e.mousePosition);
-            Terrain hitTerrain = null;
-            Vector3 hitPos = Vector3.zero;
-            Vector3 hitNormal = Vector3.up;
-            bool hasHit = terrainController != null && terrainController.TryGetTerrainHit(ray, out hitTerrain, out hitPos, out hitNormal);
-            RenderBrushPreview(hasHit, hitPos, hitNormal, e);
-            if (e.type == EventType.MouseDown || e.type == EventType.MouseDrag)
-            {
-                if (!hasHit) return;
-                if (mode == Mode.Generate)
-                {
-                    HandleGenerateMouse(e, hitPos);
-                    return;
-                }
-                if (mode == Mode.Paint)
-                {
-                    HandlePaintMouse(e, hitTerrain, hitPos);
-                    return;
-                }
-            }
+            sceneService?.OnSceneGUI();
         }
 
         private void HandleLayoutControl(Event e)
@@ -516,9 +564,10 @@ namespace MrTerrainPainter.Editor
                 var filter = BuildFilterSettings();
                 var ov = BuildPlacementOverrides();
                 VegetationGenerator.GenerateInBrushArea(selectedTerrains, currentProfile, hitPos, brush.size, filter, ov);
-                for (int i = 0; i < extraProfiles.Count; i++)
+                var extras = MrTerrainPainter.Editor.Tools.MTPBrushContext.ExtraProfiles;
+                for (int i = 0; i < extras.Count; i++)
                 {
-                    var p = extraProfiles[i];
+                    var p = extras[i];
                     if (p == null || p.IsEmpty()) continue;
                     VegetationGenerator.GenerateInBrushArea(selectedTerrains, p, hitPos, brush.size, filter, ov);
                 }
@@ -561,7 +610,8 @@ namespace MrTerrainPainter.Editor
         {
             if (terrain == null || currentProfile == null || currentProfile.IsEmpty()) return;
             var ov = BuildPlacementOverrides();
-            paintingController?.PaintOnTerrain(terrain, center, currentProfile, extraProfiles, brush, rnd, ov, brush.mixExtraProfiles);
+            var extras = new System.Collections.Generic.List<VegetationProfile>(MrTerrainPainter.Editor.Tools.MTPBrushContext.ExtraProfiles as System.Collections.Generic.IEnumerable<VegetationProfile>);
+            paintingController?.PaintOnTerrain(terrain, center, currentProfile, extras, brush, rnd, ov, brush.mixExtraProfiles);
             MarkSceneDirty();
         }
 
@@ -581,9 +631,9 @@ namespace MrTerrainPainter.Editor
 
         private VegetationGenerator.FilterSettings BuildFilterSettings()
         {
-            var filter = new VegetationGenerator.FilterSettings();
-            filter.noise = noise ?? new VegetationGenerator.NoiseSettings();
-            return filter;
+            genFilter ??= new VegetationGenerator.FilterSettings();
+            genFilter.noise = noise ?? new VegetationGenerator.NoiseSettings();
+            return genFilter;
         }
 
         private VegetationGenerator.PlacementOverrides BuildPlacementOverrides()
@@ -605,15 +655,15 @@ namespace MrTerrainPainter.Editor
             // if (config != null && config.switchToGenerateOnLostFocus)
             // {
             //     // 若控制页尚未构建，先构建
-            //     if (contralRoot == null)
+            //     if (controlRoot == null)
             //     {
-            //         BuildContralSection();
+            //         BuildControlSection();
             //     }
             //     // 切换到 Generate 标签并高亮，但允许手动继续绘制
             //     //  LoadGenerateTab();
             //     LoadPaintingTab();
-            //     var btnPainting = contralRoot?.Q<Button>("Painting");
-            //     var btnGenerate = contralRoot?.Q<Button>("Generate");
+            //     var btnPainting = controlRoot?.Q<Button>("Painting");
+            //     var btnGenerate = controlRoot?.Q<Button>("Generate");
             //     if (btnPainting != null && btnGenerate != null)
             //     {
             //         SetTabActive(btnGenerate, btnPainting);
@@ -628,6 +678,9 @@ namespace MrTerrainPainter.Editor
                 EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
             }
         }
-    }
 
+
+        public bool IsSettingsOpenPublic() => settingsOpen;
+        public bool IsPaintingModePublic() => mode == Mode.Paint;
+    }
 }

@@ -57,6 +57,10 @@
     border-bottom-color: rgb(80, 80, 80);
 }
 
+.mt-tabcontent {
+    flex-grow: 1;
+}
+
 .mt-tabbutton {
     min-height: 24px;
     margin-right: 8px;
@@ -91,6 +95,11 @@
     border-right-width: 0;
     border-top-width: 0;
     border-bottom-width: 0;
+}
+
+.mt-scroll {
+    flex-grow: 1;
+    padding-right: 16px;
 }
 
 .mt-button {
@@ -226,4 +235,160 @@
 
 .mt-buttonR:active {
     opacity: 0.85;
+}
+
+.profile-row__top {
+    flex-direction: row;
+    align-items: center;
+    margin-left: 4px;
+    margin-right: 4px;
+    margin-top: 6px;
+    margin-bottom: 1px;
+}
+
+.profile-row__thumbs {
+    flex-shrink: 1;
+    flex-grow: 1;
+    min-height: 90px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding-left: 6px;
+    padding-right: 6px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    margin-left: 6px;
+    margin-right: 6px;
+    margin-top: 6px;
+    margin-bottom: 6px;
+    background-color: rgba(0, 0, 0, 0.09);
+}
+
+.preview-item {
+    border-width: 1px;
+    border-color: rgb(80, 80, 80);
+    border-radius: 4px;
+    margin-left: 4px;
+    margin-right: 4px;
+    margin-top: 4px;
+    margin-bottom: 4px;
+    background-color: rgba(255, 255, 255, 0.02);
+}
+
+.preview-item__image {
+    width: 64px;
+    height: 64px;
+}
+
+.preview-item--selected {
+    border-color: rgb(64, 128, 230);
+    background-color: rgba(64, 128, 230, 0.10);
+}
+.mt-veg-list {
+    flex-grow: 1;
+}
+
+
+.mt-terrain-list {
+    flex-grow: 0;
+}
+
+.mt-terrain-list--max10 {
+    height: 284px;
+    max-height: 284px;
+}
+
+.mt-terrain-list--auto {
+    height: auto;
+    max-height: none;
+}
+
+.mt-terrain-list__item {
+    margin-bottom: 2px;
+}
+.mt-actions {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    min-height: 36px;
+    height: 36px;
+    flex-grow: 0;
+}
+
+.mt-btn--w100 { width: 100px; }
+.mt-btn--stretch { flex-grow: 1; flex-shrink: 1; }
+.mt-logo {
+    font-size: 47px;
+    -unity-text-align: middle-center;
+    -unity-font-style: bold;
+    color: rgb(226, 131, 72);
+}
+
+.mt-logo--complete {
+    color: rgb(60, 220, 120);
+}
+
+.mt-logo--pulse1 {
+    scale: 1.15 1.15;
+}
+
+.mt-logo--pulse2 {
+    scale: 0.95 0.95;
+}
+
+.mt-logo--pulse3 {
+    scale: 1.08 1.08;
+}
+
+.mt-button--primary {
+    border-color: rgb(64, 128, 230);
+    background-color: rgba(64, 128, 230, 0.25);
+}
+
+.mt-button--attention {
+    border-color: rgb(120, 200, 77);
+    background-color: rgba(78, 120, 60, 0.20);
+}
+
+.mt-docs {
+    flex-grow: 1;
+    padding-left: 8px;
+    padding-right: 8px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+}
+
+.mt-docs__h1 {
+    -unity-font-style: bold;
+    font-size: 20px;
+    color: rgb(230, 230, 230);
+    margin-bottom: 6px;
+}
+
+.mt-docs__h2 {
+    -unity-font-style: bold;
+    font-size: 16px;
+    color: rgb(226, 131, 72);
+    margin-top: 8px;
+    margin-bottom: 4px;
+}
+
+.mt-docs__p {
+    font-size: 13px;
+    color: rgb(210, 210, 210);
+    margin-bottom: 4px;
+}
+
+.mt-docs__code {
+    font-size: 12px;
+    color: rgb(200, 200, 200);
+    background-color: rgba(80, 80, 80, 0.2);
+    border-width: 1px;
+    border-color: rgb(90, 90, 90);
+    border-radius: 4px;
+    padding-left: 6px;
+    padding-right: 6px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+    margin-top: 2px;
+    margin-bottom: 6px;
 }

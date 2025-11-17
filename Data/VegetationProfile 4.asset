@@ -15,7 +15,7 @@ MonoBehaviour:
   items:
   - prefab: {fileID: 3177427968198971240, guid: 1a9d242f72190094782ef5725ed6bf12,
       type: 3}
-    weight: 0.498
+    weight: 0.364
     prefabType: 3
     uniformScaleRange: {x: 1, y: 2.4693358}
     yRotationRange: {x: 0, y: 360}
@@ -26,13 +26,13 @@ MonoBehaviour:
     alignToTerrainNormal: 1
   - prefab: {fileID: 1651033132722489925, guid: 8f3afd5551a37c945864133eec666ff2,
       type: 3}
-    weight: 0.296
+    weight: 0.776
     prefabType: 0
     uniformScaleRange: {x: 1, y: 1.4779413}
     yRotationRange: {x: 0, y: 360}
     heightRange: {x: 0, y: 1000}
     slopeRange: {x: 0, y: 90}
-    baseDensity: 0.53
+    baseDensity: 5.97
     minSpacing: 7.06
     alignToTerrainNormal: 1
   initialized: 1

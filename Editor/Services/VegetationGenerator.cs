@@ -12,6 +12,7 @@ namespace MrTerrainPainter.Editor.Services
 {
     public static class VegetationGenerator
     {
+        public static bool UseBurstPoisson = true;
         // 生成过滤参数：仅噪声（贴图过滤已移除）
         public class NoiseSettings
         {
@@ -22,12 +23,20 @@ namespace MrTerrainPainter.Editor.Services
             public float lacunarity = 2f;
             public int seed = 0;
             public bool invert = false;
-            public float threshold = 0.5f; // 0-1，门限
+            public float threshold = 0.35f; // 0-1，门限
         }
 
         public class FilterSettings
         {
             public NoiseSettings noise = new NoiseSettings();
+            public DistributionType distribution = DistributionType.PoissonDisk;
+            public BrushShape shape = BrushShape.Square;
+            public float minSpacingJitter = 0f;
+            public int maxPoints = 50000;
+            public ClusterSettings cluster = new ClusterSettings { clusterCount = 10, childPerCluster = 5, clusterRadius = 2f, childJitter = 0.2f };
+            public float adaptiveMinFactor = 0.7f;
+            public float adaptiveMaxFactor = 1.8f;
+            public float adaptiveNoiseWeight = 1f;
         }
 
         // 放置范围覆盖：替代从Profile SO读取的范围
@@ -206,25 +215,61 @@ namespace MrTerrainPainter.Editor.Services
                 float spacing = Mathf.Max(item.minSpacing, 0.01f);
                 if (!grids.TryGetValue(it, out var gridForItem)) { gridForItem = new Grid(spacing); grids[it] = gridForItem; }
 
-                for (int s = 0; s < count; s++)
+                Vector2 centerLocal;
+                float radiusLocal;
+                BrushShape shape = BrushShape.Square;
+                if (area.HasValue)
                 {
-                    float fx, fz;
-                    if (area.HasValue)
-                    {
-                        var a = area.Value;
-                        float minX = a.center.x - a.extents.x;
-                        float maxX = a.center.x + a.extents.x;
-                        float minZ = a.center.z - a.extents.z;
-                        float maxZ = a.center.z + a.extents.z;
-                        fx = (float)rnd.NextDouble() * (maxX - minX) + (minX - worldPos.x);
-                        fz = (float)rnd.NextDouble() * (maxZ - minZ) + (minZ - worldPos.z);
-                    }
-                    else
-                    {
-                        fx = (float)rnd.NextDouble() * size.x;
-                        fz = (float)rnd.NextDouble() * size.z;
-                    }
-
+                    var a = area.Value;
+                    centerLocal = new Vector2(a.center.x - worldPos.x, a.center.z - worldPos.z);
+                    radiusLocal = Mathf.Max(a.extents.x, a.extents.z);
+                }
+                else
+                {
+                    centerLocal = new Vector2(size.x * 0.5f, size.z * 0.5f);
+                    radiusLocal = Mathf.Min(size.x, size.z) * 0.5f;
+                }
+                var dShape = filter != null ? filter.shape : BrushShape.Square;
+                var dType = filter != null ? filter.distribution : DistributionType.PoissonDisk;
+                var jitter = filter != null ? filter.minSpacingJitter : 0f;
+                int desired = Mathf.Min(count, filter != null ? Mathf.Max(1, filter.maxPoints) : 50000);
+                List<Vector2> candidates;
+                switch (dType)
+                {
+                    case DistributionType.PoissonDisk:
+                        candidates = UseBurstPoisson
+                            ? BrushEngine.SamplePoissonBurst(centerLocal, radiusLocal, dShape, desired, spacing, jitter, profile.randomSeed + it)
+                            : BrushEngine.SamplePoisson(centerLocal, radiusLocal, dShape, desired, spacing, jitter, profile.randomSeed + it);
+                        break;
+                    case DistributionType.Cluster:
+                        candidates = BrushEngine.SampleCluster(centerLocal, radiusLocal, dShape, filter != null ? filter.cluster : new ClusterSettings { clusterCount = 10, childPerCluster = 5, clusterRadius = 2f, childJitter = 0.2f }, spacing, profile.randomSeed + it);
+                        break;
+                    case DistributionType.JitteredGrid:
+                        candidates = BrushEngine.SampleJittered(centerLocal, radiusLocal, dShape, Mathf.Max(spacing, 0.01f), jitter, rnd);
+                        break;
+                    case DistributionType.Natural:
+                        candidates = BrushEngine.SampleNatural(centerLocal, radiusLocal, dShape, desired, spacing, profile.randomSeed + it);
+                        break;
+                    case DistributionType.AdaptivePoisson:
+                        {
+                            float minF = filter != null ? Mathf.Max(0.1f, filter.adaptiveMinFactor) : 0.7f;
+                            float maxF = filter != null ? Mathf.Max(minF, filter.adaptiveMaxFactor) : 1.8f;
+                            float noiseW = filter != null ? Mathf.Max(0.0001f, filter.adaptiveNoiseWeight) : 1f;
+                            candidates = BrushEngine.SampleAdaptivePoisson(centerLocal, radiusLocal, dShape, desired, Mathf.Max(spacing * minF, 0.01f), spacing * maxF, jitter, noiseW, profile.randomSeed + it);
+                        }
+                        break;
+                    case DistributionType.Halton:
+                        candidates = BrushEngine.SampleHaltonUniform(centerLocal, radiusLocal, dShape, desired, profile.randomSeed + it);
+                        break;
+                    default:
+                        candidates = BrushEngine.SampleUniform(centerLocal, radiusLocal, dShape, desired, rnd);
+                        break;
+                }
+                for (int s = 0; s < candidates.Count; s++)
+                {
+                    var p2 = candidates[s];
+                    float fx = p2.x;
+                    float fz = p2.y;
                     Vector3 sample = new Vector3(worldPos.x + fx, worldPos.y, worldPos.z + fz);
 
                     bool noiseEnabled = filter != null && filter.noise != null && filter.noise.enabled;
@@ -253,9 +298,9 @@ namespace MrTerrainPainter.Editor.Services
                         if (!MatchTerrain(item, heightLocal, slope, ov)) continue;
                     }
 
-                    var p2 = new Vector2(fx, fz);
-                    if (gridForItem.HasNearby(p2, spacing)) continue;
-                    gridForItem.Add(p2);
+                    var p2Local = new Vector2(fx, fz);
+                    if (gridForItem.HasNearby(p2Local, spacing)) continue;
+                    gridForItem.Add(p2Local);
 
                     var targetParent = ResolveTargetParent(terrain, item);
                     if (targetParent == null)
@@ -269,6 +314,7 @@ namespace MrTerrainPainter.Editor.Services
                     }
                     CreateInstance(item, sample, n, terrain, it, targetParent, rnd, ov);
                 }
+                BrushEngine.ReleaseList(candidates);
             }
         }
 
@@ -310,9 +356,7 @@ namespace MrTerrainPainter.Editor.Services
         {
             if (terrain == null || item == null) return null; // 提前返回
             // 查找全局配置（优先选择存在映射数据的配置实例）
-            var config = Resources
-                .FindObjectsOfTypeAll<MrTerrainPainterConfig>()
-               .FirstOrDefault(c => c.mappingEntries != null && c.mappingEntries.Count > 0);
+            var config = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
             if (config != null && config.mappingEntries != null && config.mappingEntries.Count > 0)
             {
                 for (int i = config.mappingEntries.Count - 1; i >= 0; i--)
@@ -342,7 +386,9 @@ namespace MrTerrainPainter.Editor.Services
 
             float yRot = item.SampleYRotation(rnd);
             var rot = Quaternion.Euler(0f, yRot, 0f);
-            if (item.alignToTerrainNormal)
+            var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
+            bool useNormal = cfg != null ? (cfg.normalDirection || item.alignToTerrainNormal) : item.alignToTerrainNormal;
+            if (useNormal)
             {
                 rot = Quaternion.LookRotation(Vector3.Cross(Vector3.right, normal), normal) * Quaternion.Euler(0f, yRot, 0f);
             }
@@ -353,6 +399,7 @@ namespace MrTerrainPainter.Editor.Services
             vi.sourceTerrain = terrain;
             vi.profileItemIndex = itemIndex;
             vi.instanceId = Guid.NewGuid().ToString();
+            VegetationPool.IndexRegister(terrain, go);
         }
     }
 }

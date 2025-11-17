@@ -9,7 +9,7 @@ using UnityEngine.UIElements;
 namespace MrTerrainPainter.Editor.Views
 {
     // 回调与状态接口：避免视图依赖窗口内部字段，实现单一职责
-    public struct ContralViewCallbacks
+    public struct ControlViewCallbacks
     {
         public Action CreateNewVegetationProfileAsset;
         public Action ReloadAvailableProfiles;
@@ -22,8 +22,8 @@ namespace MrTerrainPainter.Editor.Views
         public Action<float> OnListContentWidthMeasured;
     }
 
-    // 视图：负责 Contral 页的 VegetationProfile 列表构建与数据绑定
-    public class ContralView
+    // 视图：负责 Control 页的 VegetationProfile 列表构建与数据绑定
+    public class ControlView
     {
         private readonly VisualElement root;
         private readonly VisualTreeAsset rowTemplate;
@@ -33,7 +33,7 @@ namespace MrTerrainPainter.Editor.Views
         private const float ThumbSize = 64;
         private const float ThumbGap = 8f;
 
-        public ContralView(VisualElement contralRoot, VisualTreeAsset vegetationProfileRowTemplate)
+        public ControlView(VisualElement contralRoot, VisualTreeAsset vegetationProfileRowTemplate)
         {
             root = contralRoot;
             rowTemplate = vegetationProfileRowTemplate;
@@ -43,27 +43,30 @@ namespace MrTerrainPainter.Editor.Views
         public void SetupVegetationProfileList(
             List<VegetationProfile> availableProfiles,
             List<VegetationProfile> extraProfiles,
-            ContralViewCallbacks cb,
+            ControlViewCallbacks cb,
             Func<VegetationProfile, VisualElement> makeDraggableArea,
             Func<VegetationProfile, VegetationItem, int, VisualElement> makeThumb,
             Func<int, int> thumbRows)
         {
             var host = root?.Q<VisualElement>("VegetationProfileList")
                        ?? root?.Q<VisualElement>("VegetationProfile");
-            if (host == null) return; // 提前返回：没有宿主容器
+            if (host == null) return;
 
-            host.Clear();
             cb.ReloadAvailableProfiles?.Invoke();
 
-            var lv = new ListView
+            var lv = root.Q<ListView>("VegetationProfileListLV");
+            if (lv == null)
             {
-                selectionType = SelectionType.None,
-                reorderable = true,
-                itemsSource = availableProfiles,
-                virtualizationMethod = CollectionVirtualizationMethod.DynamicHeight,
-                style = { flexGrow = 1 }
-            };
+                lv = new ListView();
+                lv.name = "VegetationProfileListLV";
+                lv.AddToClassList("mt-veg-list");
+                host.Add(lv);
+            }
 
+            lv.selectionType = SelectionType.None;
+            lv.reorderable = true;
+            lv.itemsSource = availableProfiles;
+            lv.virtualizationMethod = CollectionVirtualizationMethod.DynamicHeight;
             lv.RegisterCallback<GeometryChangedEvent>(e =>
             {
                 var w = lv.resolvedStyle.width;
@@ -77,7 +80,6 @@ namespace MrTerrainPainter.Editor.Views
                 BindRow(elem, profile, availableProfiles, extraProfiles, cb, makeDraggableArea, makeThumb, thumbRows);
             };
 
-            host.Add(lv);
             ListView = lv;
 
             // 使用 UXML 中的 CreateCreateButton 按钮
@@ -156,7 +158,7 @@ namespace MrTerrainPainter.Editor.Views
             VegetationProfile profile,
             List<VegetationProfile> availableProfiles,
             List<VegetationProfile> extraProfiles,
-            ContralViewCallbacks cb,
+            ControlViewCallbacks cb,
             Func<VegetationProfile, VisualElement> makeDraggableArea,
             Func<VegetationProfile, VegetationItem, int, VisualElement> makeThumb,
             Func<int, int> thumbRows)
@@ -202,6 +204,7 @@ namespace MrTerrainPainter.Editor.Views
             {
                 if (profile == null) return;
                 extraProfiles.Remove(profile);
+                MrTerrainPainter.Editor.Tools.MTPBrushContext.RemoveExtra(profile);
                 cb.DeleteVegetationProfileAsset?.Invoke(profile);
                 cb.ReloadAvailableProfiles?.Invoke();
                 cb.RefreshAllUI?.Invoke();
@@ -245,11 +248,13 @@ namespace MrTerrainPainter.Editor.Views
                     if (on)
                     {
                         if (profile != currentProfile && !extraProfiles.Contains(profile)) extraProfiles.Add(profile);
+                        MrTerrainPainter.Editor.Tools.MTPBrushContext.AddExtra(profile);
                         row.AddToClassList("profile-row--checked");
                     }
                     else
                     {
                         extraProfiles.Remove(profile);
+                        MrTerrainPainter.Editor.Tools.MTPBrushContext.RemoveExtra(profile);
                         row.RemoveFromClassList("profile-row--checked");
                     }
                 };
@@ -267,17 +272,20 @@ namespace MrTerrainPainter.Editor.Views
             {
                 var addArea = makeDraggableArea?.Invoke(profile);
                 if (addArea != null) thumbs.Add(addArea);
-                foreach (var (item, idx) in profile.Items.Select((v, i) => (v, i)))
+                var count = Math.Min(9, profile.Items.Count);
+                for (int i = 0; i < count; i++)
                 {
-                    var thumb = makeThumb?.Invoke(profile, item, idx);
+                    var item = profile.Items[i];
+                    var thumb = makeThumb?.Invoke(profile, item, i);
                     if (thumb != null) thumbs.Add(thumb);
                 }
-                int rows = thumbRows?.Invoke(profile.Items.Count + 1) ?? 1;
-                int header = 90;
-                int verticalPadding = 16;
-                int rowHeight = header + rows * ((int)ThumbSize + (int)ThumbGap) + verticalPadding;
-                row.style.height = rowHeight;
-                row.style.minHeight = rowHeight;
+                var remaining = profile.Items.Count - count;
+                if (remaining > 0)
+                {
+                    var more = new Label($"+{remaining}");
+                    more.AddToClassList("thumb-item__placeholder");
+                    thumbs.Add(more);
+                }
             }
         }
     }

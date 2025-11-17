@@ -1,34 +1,40 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="True">
-    <Style src="project://database/Assets/MrTerrainPainter/Editor/MrTerrainPainterStyles.uss?fileID=7433441132597879392&amp;guid=1094a64c2bc4b654486d9ae7dcc8907c&amp;type=3#MrTerrainPainterStyles" />
-    <ui:VisualElement name="PaintParameter" style="flex-grow: 1;">
+    <Style src="project://database/Assets/MrTerrPainterV1/Editor/MrTerrainPainterStyles.uss?fileID=7433441132597879392&amp;guid=1094a64c2bc4b654486d9ae7dcc8907c&amp;type=3#MrTerrainPainterStyles" />
+    <ui:VisualElement name="PaintParameter" style="flex-grow: 1; min-height: 300px; min-width: 400px;">
         <ui:VisualElement style="flex-grow: 1; min-width: auto; min-height: 30px; max-height: 30px; flex-direction: row; justify-content: space-between; align-items: center; margin-left: 3px; margin-bottom: 1px;">
             <ui:Label text="Brush Settings" display-tooltip-when-elided="true" name="BrushSettings" style="font-size: 16px; -unity-text-align: middle-left; margin-left: 0; -unity-font-style: bold; color: rgb(226, 131, 72); padding-left: 0; padding-right: 0; padding-top: 0; padding-bottom: 0;" />
         </ui:VisualElement>
         <ui:VisualElement style="margin-top: 2px;">
             <ui:VisualElement style="flex-direction: row; justify-content: space-between;">
-                <uie:EnumField label="笔刷形状" value="Center" name="Shape" style="flex-grow: 1; flex-shrink: 1; max-height: 20px; min-height: 20px; -unity-font-style: normal;" />
-                <ui:Toggle name="Preview" style="max-height: 20px; min-height: 20px;" />
+                <uie:EnumField label="笔刷形状" value="Center" name="Shape" tooltip="选择笔刷形状" style="flex-grow: 1; flex-shrink: 1; max-height: 20px; min-height: 20px; -unity-font-style: normal;" />
+                <ui:Toggle name="Preview" tooltip="是否开启笔刷预览" style="max-height: 20px; min-height: 20px;" />
             </ui:VisualElement>
-            <ui:SliderInt picking-mode="Ignore" label="笔刷大小" value="42" high-value="100" name="Size" style="flex-shrink: 1; flex-grow: 1; max-height: 20px; min-height: 20px;" />
-            <ui:SliderInt picking-mode="Ignore" label="绘制强度" value="42" high-value="100" name="Strength" style="flex-shrink: 1; flex-grow: 1; max-height: 20px; min-height: 20px;" />
-            <ui:SliderInt picking-mode="Ignore" label="绘制密度" value="42" high-value="100" name="Density" style="flex-shrink: 1; flex-grow: 1; max-height: 20px; min-height: 20px;" />
-            <ui:SliderInt picking-mode="Ignore" label="笔刷硬度" value="42" high-value="100" name="Hardness" style="flex-shrink: 1; flex-grow: 1; min-height: 20px; max-height: 20px;" />
-            <uie:EnumField label="分布类型" name="Distribution" style="flex-shrink: 1; flex-grow: 1; max-height: 20px; min-height: 20px;" />
-            <uie:CurveField label="边缘曲线" name="FalloffCurve" style="flex-shrink: 1; flex-grow: 1;" />
-            <ui:SliderInt picking-mode="Ignore" label="间距抖动" value="0" high-value="100" name="MinSpacingJitter" style="flex-shrink: 1; flex-grow: 1; max-height: 20px; min-height: 20px;" />
-            <uie:IntegerField label="笔触种子" name="StrokeSeed" />
-            <uie:IntegerField label="最大候选" name="MaxPoints" />
+            <ui:SliderInt picking-mode="Ignore" label="笔刷大小" value="42" high-value="100" name="Size" tooltip="调节笔刷半径" style="flex-shrink: 1; flex-grow: 1; max-height: 20px; min-height: 20px;" />
+            <ui:SliderInt picking-mode="Ignore" label="绘制强度" value="42" high-value="100" name="Strength" tooltip="调节笔触强度(影响接受概率和数量)" style="flex-shrink: 1; flex-grow: 1; max-height: 20px; min-height: 20px;" />
+            <ui:SliderInt picking-mode="Ignore" label="绘制密度" value="42" high-value="100" name="Density" tooltip="调节整体分布密度" style="flex-shrink: 1; flex-grow: 1; max-height: 20px; min-height: 20px;" />
+            <ui:SliderInt picking-mode="Ignore" label="笔刷硬度" value="42" high-value="100" name="Hardness" tooltip="调节边缘衰减硬度" style="flex-shrink: 1; flex-grow: 1; min-height: 20px; max-height: 20px;" />
+            <ui:SliderInt picking-mode="Ignore" label="笔触间距(相对大小)" value="25" high-value="100" name="StrokeSpacing" tooltip="按笔刷大小百分比控制拖拽落笔间距" style="flex-shrink: 1; flex-grow: 1; max-height: 20px; min-height: 20px;" />
+            <ui:VisualElement style="flex-direction: row; justify-content: space-between;">
+                <ui:Toggle label="绝对间距" name="UseAbsoluteStrokeSpacing" tooltip="开启后以世界单位固定间距落笔" />
+                <ui:SliderInt picking-mode="Ignore" value="0" high-value="200" name="StrokeSpacingAbs" tooltip="以米为单位设置落笔间隔" style="flex-shrink: 1; flex-grow: 1; max-height: 20px; min-height: 20px;" />
+            </ui:VisualElement>
+            <uie:EnumField label="分布类型" name="Distribution" tooltip="选择笔刷采样的空间分布" style="flex-shrink: 1; flex-grow: 1; max-height: 20px; min-height: 20px;" />
+            <ui:Toggle label="使用Burst Poisson采样" name="UseBurstPoisson" tooltip="启用Burst实现的高性能泊松采样" />
+            <uie:CurveField label="边缘曲线" name="FalloffCurve" tooltip="控制边缘接受度的曲线" style="flex-shrink: 1; flex-grow: 1;" />
+            <ui:SliderInt picking-mode="Ignore" label="间距抖动" value="0" high-value="100" name="MinSpacingJitter" tooltip="在最小间距附近引入随机偏移" style="flex-shrink: 1; flex-grow: 1; max-height: 20px; min-height: 20px;" />
+            <uie:IntegerField label="笔触种子" name="StrokeSeed" tooltip="为笔触采样设置随机种子" />
+            <uie:IntegerField label="最大候选" name="MaxPoints" tooltip="限制候选点数量上限" />
             <ui:Foldout text="簇集参数" name="ClusterSettings">
-                <uie:IntegerField label="簇数量" name="ClusterCount" />
-                <uie:IntegerField label="每簇数量" name="ChildPerCluster" />
-                <ui:SliderInt picking-mode="Ignore" label="簇半径" value="10" high-value="100" name="ClusterRadius" />
-                <ui:SliderInt picking-mode="Ignore" label="子点抖动" value="0" high-value="100" name="ChildJitter" />
+                <uie:IntegerField label="簇数量" name="ClusterCount" tooltip="生成的簇数量" />
+                <uie:IntegerField label="每簇数量" name="ChildPerCluster" tooltip="每个簇中的子点数量" />
+                <ui:SliderInt picking-mode="Ignore" label="簇半径" value="10" high-value="100" name="ClusterRadius" tooltip="簇内子点的最大偏移半径" />
+                <ui:SliderInt picking-mode="Ignore" label="子点抖动" value="0" high-value="100" name="ChildJitter" tooltip="对子点位置增加的随机抖动" />
             </ui:Foldout>
             <ui:Foldout text="条目混合与间距" name="Mixing">
-                <ui:Toggle label="按权重混合条目" name="MixItemsWeighted" />
-                <ui:Toggle label="限制每条目最大数量" name="LimitPerItem" />
-                <ui:SliderInt picking-mode="Ignore" label="全局间距因子" value="0" high-value="100" name="GlobalSpacingFactor" />
-                <ui:Toggle label="混合额外Profile" name="MixExtraProfiles" />
+                <ui:Toggle label="按权重混合条目" name="MixItemsWeighted" tooltip="按条目权重进行概率选择" />
+                <ui:Toggle label="限制每条目最大数量" name="LimitPerItem" tooltip="为每个条目设置最大数量限制" />
+                <ui:SliderInt picking-mode="Ignore" label="全局间距因子" value="0" high-value="100" name="GlobalSpacingFactor" tooltip="在所有条目上施加附加的全局最小间距" />
+                <ui:Toggle label="混合额外Profile" name="MixExtraProfiles" tooltip="将额外Profile混合到当前绘制" />
             </ui:Foldout>
         </ui:VisualElement>
     </ui:VisualElement>

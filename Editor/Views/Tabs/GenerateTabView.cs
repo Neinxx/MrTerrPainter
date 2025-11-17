@@ -30,7 +30,7 @@ namespace MrTerrainPainter.Editor.Views.Tabs
                 btnClear.clicked += () => window.HandleClearAction();
             }
             // 地形列表最多显示10项，其余滚动
-            window.PopulateTerrianListUI(genParam);
+            window.PopulateTerrainListUI(genParam);
             var startActions = new StartActionsView(genParam);
             startActions.BindAll(new StartActionsView.StartActionsCallbacks
             {
@@ -40,12 +40,12 @@ namespace MrTerrainPainter.Editor.Views.Tabs
                 ClearTerrainLists = () => window.terrainController.ClearTerrainLists(window.selectedTerrains, window.terrainListUIData, window.scannedTerrainNames),
                 AddTerrainToLists = t => window.terrainController.AddTerrainToLists(t, window.selectedTerrains, window.terrainListUIData, window.scannedTerrainNames),
                 RefreshStartListUI = () => { },
-                RefreshContralListUI = () =>
+                RefreshControlListUI = () =>
                 {
-                    window.PopulateTerrianListUI(genParam);
+                    window.PopulateTerrainListUI(genParam);
                     window.UpdateGenerateActionsVisibility(genParam);
                 },
-                BuildContralSection = null
+                BuildControlSection = null
             });
             window.UpdateGenerateActionsVisibility(genParam);
         }

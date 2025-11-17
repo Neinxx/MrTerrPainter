@@ -1,40 +1,46 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
-using UnityEditor;
-using System.Linq;
-using System.IO;
-using System.Collections.Generic;
 
 namespace MrTerrainPainter.Editor.Config
 {
-    // 工具窗口持久化的简单配置（可扩展）
+    // 工具窗口持久化的配置
     public class MrTerrainPainterConfig : ScriptableObject
     {
-        // --- 静态常量定义 ---
-        // 建议将配置文件的路径定义为常量，方便统一管理和修改
+        // --- 静态路径定义 ---
         private const string RootFolderName = "MrTerrPainterV1";
         private const string EditorFolderName = "Editor";
         private const string ConfigFolderName = "Config";
-        public const string ConfigAssetDirectory = "Assets/" + RootFolderName + "/" + EditorFolderName + "/" + ConfigFolderName;
+
+        // 动态构建路径，避免硬编码错误
+        public static readonly string ConfigAssetDirectory = $"{RootFolderName}/{EditorFolderName}/{ConfigFolderName}";
         public const string ConfigAssetName = nameof(MrTerrainPainterConfig) + ".asset";
-        public const string ConfigAssetPath = ConfigAssetDirectory + "/" + ConfigAssetName;
+        public static readonly string ConfigAssetPath = $"{ConfigAssetDirectory}/{ConfigAssetName}";
         // ----------------------
 
-        [Header("画笔设置")]
+        [Header("画笔设置 (Brush Settings)")]
+        [Tooltip("是否在编辑器中显示预览网格")]
         public bool showPreview = true;
-        public float defaultBrushSize = 5f;
-        public float defaultBrushStrength = 1f;
-        public float defaultBrushDensityScale = 1f;
-        public float defaultBrushHardness = 1f;
+        [Range(0.1f, 100f)] public float defaultBrushSize = 5f;
+        [Range(0f, 10f)] public float defaultBrushStrength = 1f;
+        [Range(0f, 10f)] public float defaultBrushDensityScale = 1f;
+        [Range(0f, 1f)] public float defaultBrushHardness = 1f;
 
-        [Header("运行时/生成设置")]
+        [Header("运行时/生成设置 (Runtime & Generation)")]
+        [Tooltip("生成的对象池是否在 Hierarchy 中展开显示")]
         public bool showPoolInHierarchy = false;
+        [Tooltip("生成的 Recipe 数据存放路径")]
         public string recipeGenerationPath = "Assets/MrTerrainPainter/Data";
         public Runtime.Profiles.PrefabType defaultGenerationType = Runtime.Profiles.PrefabType.Prop;
+        [Tooltip("是否沿法线方向对齐（全局开关）")]
+        public bool normalDirection = true;
 
-        // 使用 MappingEntry 统一管理生成映射
-
-        [Header("UI 资源")]
+        [Header("UI 资源绑定 (UI Assets)")]
         public VisualTreeAsset startUxml;
         public VisualTreeAsset controlUxml;
         public VisualTreeAsset paintUxml;
@@ -45,6 +51,10 @@ namespace MrTerrainPainter.Editor.Config
         public VisualTreeAsset vegetationSharedUxml;
         public VisualTreeAsset brushOverlayUxml;
         public StyleSheet stylesUss;
+
+        [Header("帮助 (Help)")]
+        public string docsUrl;
+        public string exampleScenePath;
 
         [System.Serializable]
         public class MappingEntry
@@ -62,68 +72,116 @@ namespace MrTerrainPainter.Editor.Config
     /// </summary>
     public static class ConfigTools
     {
-        private static readonly string DefaultBrushOverlayUxmlPath = "Assets/MrTerrPainterV1/Editor/MTPBrushOverlay.uxml";
-        private static readonly string DefaultSettingsUxmlPath = "Assets/MrTerrPainterV1/Editor/MrTerrainPainterSettings.uxml";
-        private static readonly string DefaultSettingsMappingUxmlPath = "Assets/MrTerrPainterV1/Editor/MTPTerrainPainterSettingsMappinger.uxml";
+        private static MrTerrainPainterConfig s_cached;
+        private static MrTerrainPainterConfig[] s_allCached;
+        static ConfigTools()
+        {
+            EditorApplication.projectChanged -= InvalidateCache;
+            EditorApplication.projectChanged += InvalidateCache;
+        }
+        private static void InvalidateCache()
+        {
+            s_cached = null;
+            s_allCached = null;
+        }
+        // 事件定义
+        public static event Action<bool> NormalDirectionChanged;
+        public static event Action<bool> CompletenessChanged;
+
+        // 默认资源路径常量
+        private const string DefaultBaseDir = "Assets/MrTerrPainterV1/Editor";
+        private static readonly string DefaultBrushOverlayPath = $"{DefaultBaseDir}/MTPBrushOverlay.uxml";
+        private static readonly string DefaultSettingsUxmlPath = $"{DefaultBaseDir}/MrTerrainPainterSettings.uxml";
+        private static readonly string DefaultSettingsMappingPath = $"{DefaultBaseDir}/MTPTerrainPainterSettingsMappinger.uxml";
+
         /// <summary>
         /// 查找或创建配置资源文件
         /// </summary>
         public static MrTerrainPainterConfig LoadOrCreateAsset()
         {
-            // 1. 尝试通过类型查找已存在的资产
-            // 使用 nameof(MrTerrainPainterConfig) 确保类型名变更时代码不会出错
+            // 1. 尝试查找现有资源
             var guids = AssetDatabase.FindAssets($"t:{nameof(MrTerrainPainterConfig)}");
-            var path = guids.Select(AssetDatabase.GUIDToAssetPath).FirstOrDefault(p => !string.IsNullOrEmpty(p));
-
-            if (!string.IsNullOrEmpty(path))
+            foreach (var guid in guids)
             {
-                // 如果找到了，尝试加载
-                var loaded = AssetDatabase.LoadAssetAtPath<MrTerrainPainterConfig>(path);
-                if (loaded != null) return loaded;
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (!string.IsNullOrEmpty(path))
+                {
+                    var loaded = AssetDatabase.LoadAssetAtPath<MrTerrainPainterConfig>(path);
+                    if (loaded != null) return loaded;
+                }
             }
 
-            // 2. 如果未找到或加载失败，则创建新的资产
-            EnsureFolder(MrTerrainPainterConfig.ConfigAssetDirectory); // 确保目录存在
+            // 2. 创建新资源
+            EnsureFolder("Assets/" + MrTerrainPainterConfig.ConfigAssetDirectory);
             var cfg = ScriptableObject.CreateInstance<MrTerrainPainterConfig>();
 
-            AssetDatabase.CreateAsset(cfg, MrTerrainPainterConfig.ConfigAssetPath);
-
-            // 立即保存资产并刷新数据库
+            // 使用完整的 Assets 路径
+            string fullPath = "Assets/" + MrTerrainPainterConfig.ConfigAssetPath;
+            AssetDatabase.CreateAsset(cfg, fullPath);
             AssetDatabase.SaveAssets();
-            AssetDatabase.Refresh();
+
+            Debug.Log($"[MrTerrainPainter] Created new config at: {fullPath}");
             return cfg;
         }
 
+        public static MrTerrainPainterConfig GetCachedConfig()
+        {
+            if (s_cached != null) return s_cached;
+            var guids = AssetDatabase.FindAssets($"t:{nameof(MrTerrainPainterConfig)}");
+            foreach (var guid in guids)
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (string.IsNullOrEmpty(path)) continue;
+                var loaded = AssetDatabase.LoadAssetAtPath<MrTerrainPainterConfig>(path);
+                if (loaded != null) { s_cached = loaded; break; }
+            }
+            return s_cached;
+        }
+
+        public static MrTerrainPainterConfig[] GetAllConfigsCached()
+        {
+            if (s_allCached != null) return s_allCached;
+            var guids = AssetDatabase.FindAssets($"t:{nameof(MrTerrainPainterConfig)}");
+            var list = new List<MrTerrainPainterConfig>();
+            for (int i = 0; i < guids.Length; i++)
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guids[i]);
+                if (string.IsNullOrEmpty(path)) continue;
+                var loaded = AssetDatabase.LoadAssetAtPath<MrTerrainPainterConfig>(path);
+                if (loaded != null) list.Add(loaded);
+            }
+            s_allCached = list.ToArray();
+            return s_allCached;
+        }
+
+        // --- 资源获取 (简化版) ---
+        public static VisualTreeAsset GetSettingsUxml() => LoadDefault<VisualTreeAsset>(DefaultSettingsUxmlPath);
+        public static VisualTreeAsset GetSettingsMappingUxml() => LoadDefault<VisualTreeAsset>(DefaultSettingsMappingPath);
+
+        // 从 Config 获取，如果为空则返回 Null（或者你可以指定默认值）
+        public static VisualTreeAsset GetStartUxml(MrTerrainPainterConfig cfg) => cfg?.startUxml;
+        public static VisualTreeAsset GetControlUxml(MrTerrainPainterConfig cfg) => cfg?.controlUxml;
+        public static VisualTreeAsset GetPaintUxml(MrTerrainPainterConfig cfg) => cfg?.paintUxml;
+        public static VisualTreeAsset GetGenerateUxml(MrTerrainPainterConfig cfg) => cfg?.generateUxml;
+        public static VisualTreeAsset GetVegetationSharedUxml(MrTerrainPainterConfig cfg) => cfg?.vegetationSharedUxml;
+        public static VisualTreeAsset GetVegetationProfileRowUxml(MrTerrainPainterConfig cfg) => cfg?.vegetationProfileRowUxml;
+        public static VisualTreeAsset GetPrefabIconUxml(MrTerrainPainterConfig cfg) => cfg?.prefabIconUxml;
+        public static VisualTreeAsset GetDraggableAreaUxml(MrTerrainPainterConfig cfg) => cfg?.draggableAreaUxml;
+
+        public static StyleSheet GetStylesUss(MrTerrainPainterConfig cfg) => cfg?.stylesUss;
+
+        // 特殊处理：BrushOverlay 有默认回退路径
         public static VisualTreeAsset GetBrushOverlayUxml(MrTerrainPainterConfig cfg)
         {
-            var v = cfg != null ? cfg.brushOverlayUxml : null;
-            if (v != null) return v;
-            return AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(DefaultBrushOverlayUxmlPath);
+            return (cfg != null && cfg.brushOverlayUxml != null)
+                ? cfg.brushOverlayUxml
+                : LoadDefault<VisualTreeAsset>(DefaultBrushOverlayPath);
         }
 
-        public static StyleSheet GetStylesUss(MrTerrainPainterConfig cfg)
+        private static T LoadDefault<T>(string path) where T : UnityEngine.Object
         {
-            return cfg != null ? cfg.stylesUss : null;
+            return AssetDatabase.LoadAssetAtPath<T>(path);
         }
-
-        public static VisualTreeAsset GetSettingsUxml()
-        {
-            return AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(DefaultSettingsUxmlPath);
-        }
-
-        public static VisualTreeAsset GetSettingsMappingUxml()
-        {
-            return AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(DefaultSettingsMappingUxmlPath);
-        }
-
-        public static VisualTreeAsset GetStartUxml(MrTerrainPainterConfig cfg) => cfg != null ? cfg.startUxml : null;
-        public static VisualTreeAsset GetControlUxml(MrTerrainPainterConfig cfg) => cfg != null ? cfg.controlUxml : null;
-        public static VisualTreeAsset GetPaintUxml(MrTerrainPainterConfig cfg) => cfg != null ? cfg.paintUxml : null;
-        public static VisualTreeAsset GetGenerateUxml(MrTerrainPainterConfig cfg) => cfg != null ? cfg.generateUxml : null;
-        public static VisualTreeAsset GetVegetationSharedUxml(MrTerrainPainterConfig cfg) => cfg != null ? cfg.vegetationSharedUxml : null;
-        public static VisualTreeAsset GetVegetationProfileRowUxml(MrTerrainPainterConfig cfg) => cfg != null ? cfg.vegetationProfileRowUxml : null;
-        public static VisualTreeAsset GetPrefabIconUxml(MrTerrainPainterConfig cfg) => cfg != null ? cfg.prefabIconUxml : null;
-        public static VisualTreeAsset GetDraggableAreaUxml(MrTerrainPainterConfig cfg) => cfg != null ? cfg.draggableAreaUxml : null;
 
         /// <summary>
         /// 标记配置对象为脏并保存
@@ -132,73 +190,131 @@ namespace MrTerrainPainter.Editor.Config
         {
             if (cfg == null) return;
 
-            // 使用 EditorUtility.SetDirty(cfg) 标记对象已修改
             EditorUtility.SetDirty(cfg);
             AssetDatabase.SaveAssets();
-            // 优化：通常在 Editor 脚本中频繁 SetDirty 后只需 SaveAssets。
-            // 除非是 CreateAsset 等操作，否则不需要立即 Refresh。
-            // AssetDatabase.Refresh(); 
+
+            // 检查完整性并触发事件
+            bool complete = IsComplete(cfg, out _);
+            CompletenessChanged?.Invoke(complete);
+        }
+
+        public static void SetNormalDirection(MrTerrainPainterConfig cfg, bool value)
+        {
+            if (cfg == null) return;
+            cfg.normalDirection = value;
+            Save(cfg); // Save 中包含了 SetDirty 和 SaveAssets
+            NormalDirectionChanged?.Invoke(value);
         }
 
         /// <summary>
-        /// 检查配置是否完整（所有必需的资源引用是否已设置）
+        /// 检查配置是否完整
         /// </summary>
-        /// <param name="cfg">要检查的配置对象</param>
-        /// <param name="reason">如果不完整，返回失败原因</param>
-        /// <returns>配置是否完整</returns>
         public static bool IsComplete(MrTerrainPainterConfig cfg, out string reason)
         {
             reason = string.Empty;
-            if (cfg == null) { reason = "配置对象为空"; return false; }
+            if (cfg == null) { reason = "配置对象为空 (Config is null)"; return false; }
 
-            var reasons = new System.Collections.Generic.List<string>();
-            if (cfg.startUxml == null) reasons.Add("StartUXML 未设置");
-            if (cfg.controlUxml == null) reasons.Add("ControlUXML 未设置");
-            if (cfg.paintUxml == null) reasons.Add("PaintUXML 未设置");
-            if (cfg.generateUxml == null) reasons.Add("GenerateUXML 未设置");
-            if (cfg.vegetationSharedUxml == null) reasons.Add("VegetationSharedUXML 未设置");
-            if (cfg.stylesUss == null) reasons.Add("StylesUSS 未设置");
-            if (cfg.vegetationProfileRowUxml == null) reasons.Add("VegetationProfileRowUXML 未设置");
-            if (cfg.prefabIconUxml == null) reasons.Add("PrefabIconUXML 未设置");
-            if (cfg.draggableAreaUxml == null) reasons.Add("DraggableAreaUXML 未设置");
-            if (cfg.brushOverlayUxml == null) reasons.Add("BrushOverlayUXML 未设置");
+            // 使用 StringBuilder 优化字符串拼接
+            var sb = new StringBuilder();
 
-            if (string.IsNullOrEmpty(cfg.recipeGenerationPath)) reasons.Add("RecipeGenerationPath 为空");
-            else if (!AssetDatabase.IsValidFolder(cfg.recipeGenerationPath)) reasons.Add("RecipeGenerationPath 不是有效的项目文件夹");
-
-            if (reasons.Count > 0)
+            void Check(UnityEngine.Object obj, string name)
             {
-                reason = string.Join("\n", reasons);
+                if (obj == null) sb.AppendLine($"{name} 未设置");
+            }
+
+            Check(cfg.startUxml, "StartUXML");
+            Check(cfg.controlUxml, "ControlUXML");
+            Check(cfg.paintUxml, "PaintUXML");
+            Check(cfg.generateUxml, "GenerateUXML");
+            Check(cfg.vegetationSharedUxml, "VegetationSharedUXML");
+            Check(cfg.stylesUss, "StylesUSS");
+            Check(cfg.vegetationProfileRowUxml, "VegetationProfileRowUXML");
+            Check(cfg.prefabIconUxml, "PrefabIconUXML");
+            Check(cfg.draggableAreaUxml, "DraggableAreaUXML");
+            Check(cfg.brushOverlayUxml, "BrushOverlayUXML");
+
+            if (string.IsNullOrEmpty(cfg.recipeGenerationPath))
+                sb.AppendLine("RecipeGenerationPath 为空");
+            else if (!AssetDatabase.IsValidFolder(cfg.recipeGenerationPath))
+                sb.AppendLine($"路径无效: {cfg.recipeGenerationPath}");
+
+            // Mapping 检查逻辑
+            if (cfg.mappingEntries != null && cfg.mappingEntries.Count > 0)
+            {
+                int unbound = cfg.mappingEntries.Count(e => e == null || e.node == null);
+                if (unbound > 0) sb.AppendLine($"Mapping 存在未绑定节点: {unbound} 个");
+
+                bool hasPlantBound = cfg.mappingEntries.Any(e => e != null && e.type == Runtime.Profiles.PrefabType.Plant && e.node != null);
+                if (!hasPlantBound) sb.AppendLine("Mapping 必须绑定至少一个 Plant 类型节点");
+            }
+
+            if (sb.Length > 0)
+            {
+                reason = sb.ToString().TrimEnd(); // 移除最后的换行符
                 return false;
             }
+
             return true;
         }
 
         /// <summary>
-        /// 确保给定的 Assets 路径存在，如果不存在则创建所有必要的中间文件夹
+        /// 确保给定的 Assets 路径存在（支持多级目录创建）
         /// </summary>
         public static void EnsureFolder(string path)
         {
-            // 移除路径开头的 "Assets/" 部分，转换为相对路径
-            if (path.StartsWith("Assets/"))
+            if (string.IsNullOrEmpty(path)) return;
+
+            // 统一路径分隔符
+            path = path.Replace('\\', '/');
+
+            // 如果路径已存在，直接返回
+            if (AssetDatabase.IsValidFolder(path)) return;
+
+            // 确保路径以 Assets 开头，方便处理
+            if (!path.StartsWith("Assets"))
             {
-                path = path.Substring("Assets/".Length);
+                if (path.StartsWith("/")) path = "Assets" + path;
+                else path = "Assets/" + path;
             }
 
-            var pathParts = path.Split('/');
-            var currentPath = "Assets";
+            string[] folders = path.Split('/');
+            string currentPath = folders[0]; // "Assets"
 
-            // 从 "Assets" 开始逐级创建文件夹
-            foreach (var part in pathParts)
+            for (int i = 1; i < folders.Length; i++)
             {
-                var newPath = Path.Combine(currentPath, part).Replace('\\', '/'); // 使用 Path.Combine 保证跨平台兼容性
+                string parentPath = currentPath;
+                string newFolder = folders[i];
 
-                if (!AssetDatabase.IsValidFolder(newPath))
+                // 组合当前层级的完整路径
+                currentPath = $"{parentPath}/{newFolder}";
+
+                // 如果当前层级不存在，则创建
+                if (!AssetDatabase.IsValidFolder(currentPath))
                 {
-                    AssetDatabase.CreateFolder(currentPath, part);
+                    AssetDatabase.CreateFolder(parentPath, newFolder);
                 }
-                currentPath = newPath;
             }
+        }
+
+        /// <summary>
+        /// 统一守卫：当配置不完整时，仅打开设置页，阻止其他页面打开
+        /// </summary>
+        public static bool GuardAndOpenSettingsOnlyIfIncomplete(MrTerrainPainterWindow window)
+        {
+            if (window == null) return false;
+
+            // 确保 Config 已加载
+            var cfg = window.config;
+            if (cfg == null) cfg = LoadOrCreateAsset();
+
+            if (!IsComplete(cfg, out var reason))
+            {
+                // 如果配置不完整，记录日志并打开设置窗口
+                // Debug.LogWarning($"[MTP] Config incomplete: {reason}");
+                MrTerrainPainterSettingsWindow.Open();
+                return false;
+            }
+            return true;
         }
     }
 #endif

@@ -3,54 +3,102 @@ using MrTerrainPainter.Runtime.Core;
 using MrTerrainPainter.Runtime.Profiles;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Pool;
+using MrTerrainPainter.Editor.Config;
 
 // 编辑器对象池：避免擦除时大量销毁，支持复用与撤销
 public static class VegetationPool
 {
     public static bool ShowInHierarchy = true;
+    private static readonly Dictionary<string, ObjectPool<GameObject>> pools = new();
+    private static readonly Dictionary<int, Dictionary<(int,int), List<GameObject>>> spatial = new();
+    private const float SpatialCellSize = 2f;
+    private static (int,int) Key(Terrain t, Vector3 worldPos)
+    {
+        var lp = worldPos - t.transform.position;
+        return (Mathf.FloorToInt(lp.x / SpatialCellSize), Mathf.FloorToInt(lp.z / SpatialCellSize));
+    }
+    public static void IndexRegister(Terrain terrain, GameObject go)
+    {
+        if (terrain == null || go == null) return;
+        var tid = terrain.GetInstanceID();
+        if (!spatial.TryGetValue(tid, out var grid)) { grid = new Dictionary<(int,int), List<GameObject>>(); spatial[tid] = grid; }
+        var k = Key(terrain, go.transform.position);
+        if (!grid.TryGetValue(k, out var list)) { list = new List<GameObject>(); grid[k] = list; }
+        if (!list.Contains(go)) list.Add(go);
+    }
+    public static void IndexUnregister(Terrain terrain, GameObject go)
+    {
+        if (terrain == null || go == null) return;
+        var tid = terrain.GetInstanceID();
+        if (!spatial.TryGetValue(tid, out var grid)) return;
+        var k = Key(terrain, go.transform.position);
+        if (grid.TryGetValue(k, out var list)) { list.Remove(go); }
+    }
+    public static void QueryInRadius(Terrain terrain, Vector3 center, float radius, List<GameObject> outList)
+    {
+        if (terrain == null || outList == null) return;
+        var tid = terrain.GetInstanceID();
+        if (!spatial.TryGetValue(tid, out var grid)) return;
+        var lp = center - terrain.transform.position;
+        int rx = Mathf.CeilToInt(radius / SpatialCellSize);
+        var kc = (Mathf.FloorToInt(lp.x / SpatialCellSize), Mathf.FloorToInt(lp.z / SpatialCellSize));
+        for (int dx = -rx; dx <= rx; dx++)
+        for (int dz = -rx; dz <= rx; dz++)
+        {
+            var k = (kc.Item1 + dx, kc.Item2 + dz);
+            if (!grid.TryGetValue(k, out var list)) continue;
+            for (int i = 0; i < list.Count; i++)
+            {
+                var go = list[i];
+                if (go == null) continue;
+                var p = go.transform.position;
+                float d = Vector2.Distance(new Vector2(p.x, p.z), new Vector2(center.x, center.z));
+                if (d <= radius) outList.Add(go);
+            }
+        }
+    }
     // 获取或创建：复用池中对象；若无则实例化
     public static GameObject Get(Terrain terrain, VegetationItem item, int itemIndex, Transform targetParent, string undoLabel)
     {
         if (terrain == null || item == null || item.prefab == null) return null; // 提前返回
         var bin = GetOrCreateBin(terrain, itemIndex, item.prefab.name);
-
-        // 查找一个未激活的子物体作为复用对象
-        GameObject reused = null;
-        for (int i = 0; i < bin.childCount; i++)
+        var key = BuildKey(terrain, itemIndex, item.prefab.name);
+        if (!pools.TryGetValue(key, out var pool))
         {
-            var t = bin.GetChild(i);
-            if (t == null) continue;
-            var go = t.gameObject;
-            if (!go.activeSelf)
-            {
-                reused = go;
-                break;
-            }
+            pool = new ObjectPool<GameObject>(
+                createFunc: () =>
+                {
+                    var go = (GameObject)PrefabUtility.InstantiatePrefab(item.prefab);
+                    if (go == null) return null;
+                    Undo.RegisterCreatedObjectUndo(go, undoLabel);
+                    var vi = go.GetComponent<VegetationInstance>() ?? go.AddComponent<VegetationInstance>();
+                    vi.sourceTerrain = terrain;
+                    vi.profileItemIndex = itemIndex;
+                    Undo.SetTransformParent(go.transform, bin, undoLabel);
+                    go.SetActive(false);
+                    return go;
+                },
+                actionOnGet: null,
+                actionOnRelease: go =>
+                {
+                    if (go == null) return;
+                    Undo.SetTransformParent(go.transform, bin, undoLabel);
+                    Undo.RecordObject(go, undoLabel);
+                    go.SetActive(false);
+                },
+                actionOnDestroy: go => { if (go != null) Object.DestroyImmediate(go); },
+                defaultCapacity: 10,
+                maxSize: 100
+            );
+            pools[key] = pool;
         }
-
-        if (reused == null)
-        {
-            // 没有可复用对象，实例化新的
-            var go = (GameObject)PrefabUtility.InstantiatePrefab(item.prefab);
-            if (go == null) return null;
-            Undo.RegisterCreatedObjectUndo(go, undoLabel);
-            var vi = go.GetComponent<VegetationInstance>();
-            if (vi == null) vi = go.AddComponent<VegetationInstance>();
-            vi.sourceTerrain = terrain;
-            vi.profileItemIndex = itemIndex;
-            // 先放入bin，便于撤销与管理
-            Undo.SetTransformParent(go.transform, bin, undoLabel);
-            go.SetActive(false);
-            reused = go;
-        }
-
-        // 迁移到目标父级并激活
+        var reused = pool.Get();
+        if (reused == null) return null;
         Undo.SetTransformParent(reused.transform, targetParent, undoLabel);
         Undo.RecordObject(reused, undoLabel);
         reused.SetActive(true);
-
-        var vi2 = reused.GetComponent<VegetationInstance>();
-        if (vi2 == null) vi2 = reused.AddComponent<VegetationInstance>();
+        var vi2 = reused.GetComponent<VegetationInstance>() ?? reused.AddComponent<VegetationInstance>();
         vi2.sourceTerrain = terrain;
         vi2.profileItemIndex = itemIndex;
         return reused;
@@ -60,14 +108,20 @@ public static class VegetationPool
     public static void Recycle(Terrain terrain, GameObject go, string undoLabel)
     {
         if (terrain == null || go == null) return; // 提前返回
+        IndexUnregister(terrain, go);
         var vi = go.GetComponent<VegetationInstance>();
         var itemIndex = vi != null ? vi.profileItemIndex : -1;
         var nameHint = go.name;
-        var bin = GetOrCreateBin(terrain, itemIndex, nameHint);
-        // 迁移层级并禁用，均记录Undo，撤销时会回到原父级与激活状态
-        Undo.SetTransformParent(go.transform, bin, undoLabel);
-        Undo.RecordObject(go, undoLabel);
-        go.SetActive(false);
+        var key = BuildKey(terrain, itemIndex, nameHint);
+        if (!pools.TryGetValue(key, out var pool))
+        {
+            var bin = GetOrCreateBin(terrain, itemIndex, nameHint);
+            Undo.SetTransformParent(go.transform, bin, undoLabel);
+            Undo.RecordObject(go, undoLabel);
+            go.SetActive(false);
+            return;
+        }
+        pool.Release(go);
     }
 
     private static Transform GetOrCreatePoolRoot(Terrain terrain)
@@ -76,14 +130,12 @@ public static class VegetationPool
         var t = terrain.transform.Find(name);
         if (t != null)
         {
-            // 动态应用显示设置
             t.gameObject.hideFlags = ShowInHierarchy ? HideFlags.None : HideFlags.HideInHierarchy;
             return t;
         }
         var go = new GameObject(name);
         go.transform.SetParent(terrain.transform, false);
         go.transform.localPosition = Vector3.zero;
-        // 根据设置决定是否在层级显示
         go.hideFlags = ShowInHierarchy ? HideFlags.None : HideFlags.HideInHierarchy;
         return go.transform;
     }
@@ -101,6 +153,12 @@ public static class VegetationPool
         return go.transform;
     }
 
+    private static string BuildKey(Terrain terrain, int itemIndex, string nameHint)
+    {
+        var safeName = string.IsNullOrEmpty(nameHint) ? "Item" : nameHint;
+        return $"{terrain.GetInstanceID()}_{itemIndex}_{safeName}";
+    }
+
     // 批量回收：将地形的生成容器中所有实例迁移到对象池（可选删除空容器）
     public static void RecycleAllInstances(Terrain terrain, bool removeEmptyContainer = false, string undoLabel = "Clear Vegetation Instances")
     {
@@ -111,7 +169,9 @@ public static class VegetationPool
 
         // 2) 设置映射的父节点：按设置页中的 ObjectList 聚合（不删除这些容器）
         var mappedParents = new List<Transform>();
-        foreach (var cfg in Resources.FindObjectsOfTypeAll<MrTerrainPainter.Editor.Config.MrTerrainPainterConfig>())
+        var single = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
+        var all = single != null ? new MrTerrainPainter.Editor.Config.MrTerrainPainterConfig[] { single } : ConfigTools.GetAllConfigsCached();
+        foreach (var cfg in all)
         {
             var entries = cfg != null ? cfg.mappingEntries : null;
             if (entries == null || entries.Count == 0) continue;
@@ -162,5 +222,27 @@ public static class VegetationPool
 
         // 合并撤销操作，减少记录数量
         Undo.CollapseUndoOperations(group);
+    }
+
+    public static void ApplyShowInHierarchyAll()
+    {
+        var terrains = Terrain.activeTerrains;
+        if (terrains == null || terrains.Length == 0) return;
+        for (int i = 0; i < terrains.Length; i++)
+        {
+            var t = terrains[i];
+            if (t == null) continue;
+            var root = t.transform.Find($"VegetationPool_{t.name}");
+            if (root == null) continue;
+            var stack = new System.Collections.Generic.Stack<Transform>();
+            stack.Push(root);
+            while (stack.Count > 0)
+            {
+                var cur = stack.Pop();
+                cur.gameObject.hideFlags = ShowInHierarchy ? HideFlags.None : HideFlags.HideInHierarchy;
+                for (int ci = 0; ci < cur.childCount; ci++) stack.Push(cur.GetChild(ci));
+            }
+            EditorUtility.SetDirty(root.gameObject);
+        }
     }
 }

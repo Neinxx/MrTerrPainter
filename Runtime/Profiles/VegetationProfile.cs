@@ -6,6 +6,7 @@ namespace MrTerrainPainter.Runtime.Profiles
     [CreateAssetMenu(fileName = "VegetationProfile", menuName = "MrTerrainPainter/Vegetation Profile", order = 1)]
     public class VegetationProfile : ScriptableObject
     {
+        private const int MaxItems = 9;
         [SerializeField] private List<VegetationItem> items = new List<VegetationItem>();
         [SerializeField, Tooltip("是否已完成首次初始化（防止重复添加默认条目）")] private bool initialized = false;
 
@@ -38,6 +39,7 @@ namespace MrTerrainPainter.Runtime.Profiles
         {
             if (item == null) return; // 提前返回
             items ??= new List<VegetationItem>();
+            if (items.Count >= MaxItems) return; // 提前返回：最大9个
             items.Add(item);
         }
 
@@ -57,6 +59,7 @@ namespace MrTerrainPainter.Runtime.Profiles
         private void OnValidate()
         {
             EnsureInitialized();
+            EnforceMaxItems();
         }
 
         private void EnsureInitialized()
@@ -86,6 +89,17 @@ namespace MrTerrainPainter.Runtime.Profiles
             }
 
             initialized = true;
+            EnforceMaxItems();
+        }
+
+        private void EnforceMaxItems()
+        {
+            if (items == null) return;
+            if (items.Count <= MaxItems) return;
+            for (int i = items.Count - 1; i >= MaxItems; i--)
+            {
+                items.RemoveAt(i);
+            }
         }
     }
 }

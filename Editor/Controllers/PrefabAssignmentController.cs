@@ -45,8 +45,15 @@ namespace MrTerrainPainter.Editor.Controllers
                 slopeRange = new Vector2(0f, 90f),
                 alignToTerrainNormal = true
             };
+            var before = profile.Items.Count;
             profile.AddItem(item);
-            var newIndex = Mathf.Max(0, profile.Items.Count - 1);
+            var after = profile.Items.Count;
+            if (after == before)
+            {
+                EditorUtility.DisplayDialog("提示", "该 Profile 的预制体条目已达上限（9）。", "确定");
+                return;
+            }
+            var newIndex = Mathf.Max(0, after - 1);
             setSelectedItemIndex(newIndex);
             AssignPrefabToItem(profile, newIndex, prefab);
         }
@@ -81,8 +88,15 @@ namespace MrTerrainPainter.Editor.Controllers
                 slopeRange = new Vector2(0f, 90f),
                 alignToTerrainNormal = true
             };
+            var before = profile.Items.Count;
             profile.AddItem(item);
-            setSelectedItemIndex(Mathf.Max(0, profile.Items.Count - 1));
+            var after = profile.Items.Count;
+            if (after == before)
+            {
+                EditorUtility.DisplayDialog("提示", "该 Profile 的预制体条目已达上限（9）。", "确定");
+                return;
+            }
+            setSelectedItemIndex(Mathf.Max(0, after - 1));
             EditorUtility.SetDirty(profile);
             refreshController.RefreshAllUI();
         }
@@ -179,7 +193,13 @@ namespace MrTerrainPainter.Editor.Controllers
                     slopeRange = new Vector2(0f, 90f),
                     alignToTerrainNormal = true
                 };
+                var before = profile.Items.Count;
                 profile.AddItem(item);
+                if (profile.Items.Count == before)
+                {
+                    EditorUtility.DisplayDialog("提示", "已达到该 Profile 的预制体条目上限（9）。部分拖入的预制体未被添加。", "确定");
+                    break;
+                }
             }
             EditorUtility.SetDirty(profile);
             refreshController.RefreshAllUI();

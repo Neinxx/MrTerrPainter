@@ -15,36 +15,57 @@ MonoBehaviour:
   items:
   - prefab: {fileID: 8851015596058497697, guid: c1ae2fa300555364093d8ff1630a1756,
       type: 3}
-    weight: 0.661
+    weight: 0.828
     prefabType: 0
-    uniformScaleRange: {x: 1.2954776, y: 4.210847}
+    uniformScaleRange: {x: 1.063177, y: 2.866821}
     yRotationRange: {x: 0, y: 360}
     heightRange: {x: 0, y: 1000}
     slopeRange: {x: 0, y: 90}
-    baseDensity: 1.23
+    baseDensity: 4.56
     minSpacing: 6.57
     alignToTerrainNormal: 1
-  - prefab: {fileID: 4767550665493517415, guid: dfe64c7344248ab43aeb5cfdf74831ac,
-      type: 3}
-    weight: 0.015
-    prefabType: 0
-    uniformScaleRange: {x: 1.420723, y: 3.4373393}
-    yRotationRange: {x: 0, y: 30}
+  - prefab: {fileID: 546504482493821863, guid: fba47a23ec6d6f84e89daa4a3815ba7c, type: 3}
+    weight: 0.804
+    prefabType: 2
+    uniformScaleRange: {x: 1, y: 1.7833333}
+    yRotationRange: {x: 0, y: 224.50238}
     heightRange: {x: 0, y: 1000}
     slopeRange: {x: 0, y: 90}
-    baseDensity: 0.18
-    minSpacing: 8.94
+    baseDensity: 2.4
+    minSpacing: 7.77
     alignToTerrainNormal: 1
-  - prefab: {fileID: 5177702211549093989, guid: 3ca2a6659fde875498f107a4299d52a1,
+  - prefab: {fileID: 3874013614938278197, guid: 114d38513cbc4ae428d2de0ebee4ce25,
       type: 3}
-    weight: 0.127
-    prefabType: 0
-    uniformScaleRange: {x: 0.3784746, y: 1.6493223}
+    weight: 0.265
+    prefabType: 2
+    uniformScaleRange: {x: 1, y: 1}
     yRotationRange: {x: 0, y: 30}
     heightRange: {x: 0, y: 1000}
     slopeRange: {x: 0, y: 90}
-    baseDensity: 2.75
-    minSpacing: 5.88
+    baseDensity: 0.37
+    minSpacing: 7.03
+    alignToTerrainNormal: 1
+  - prefab: {fileID: 5165431589763082952, guid: 9bd3b0f737dc1ad4bb2c62e92df899f5,
+      type: 3}
+    weight: 0.085
+    prefabType: 2
+    uniformScaleRange: {x: 1, y: 1}
+    yRotationRange: {x: 0, y: 30}
+    heightRange: {x: 0, y: 1000}
+    slopeRange: {x: 0, y: 90}
+    baseDensity: 1
+    minSpacing: 1.5
+    alignToTerrainNormal: 1
+  - prefab: {fileID: 5649812314001702346, guid: ebf3abbd09b6a194c8df584785578d47,
+      type: 3}
+    weight: 0.156
+    prefabType: 2
+    uniformScaleRange: {x: 0.91428566, y: 2.4357145}
+    yRotationRange: {x: 0, y: 219.77142}
+    heightRange: {x: 0, y: 1000}
+    slopeRange: {x: 0, y: 90}
+    baseDensity: 0.47
+    minSpacing: 9.42
     alignToTerrainNormal: 1
   initialized: 1
   randomSeed: 12345

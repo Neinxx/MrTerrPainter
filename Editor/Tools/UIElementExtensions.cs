@@ -27,5 +27,10 @@ namespace MrTerrainPainter.Editor.Tools
             });
             return found;
         }
+        public static void SetDisplay(this VisualElement element, bool show)
+        {
+            if (element != null) element.style.display = show ? DisplayStyle.Flex : DisplayStyle.None;
+        }
     }
+
 }

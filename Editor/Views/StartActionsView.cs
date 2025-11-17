@@ -34,8 +34,8 @@ namespace MrTerrainPainter.Editor.Views
 
             // 刷新与构建
             public Action RefreshStartListUI;
-            public Action RefreshContralListUI;
-            public Action BuildContralSection;
+            public Action RefreshControlListUI;
+            public Action BuildControlSection;
         }
 
         // 统一绑定三个按钮
@@ -59,8 +59,8 @@ namespace MrTerrainPainter.Editor.Views
                 if (cb.ScanSceneTerrains == null) return; // 提前返回
                 cb.ScanSceneTerrains();
                 cb.RefreshStartListUI?.Invoke();
-                cb.RefreshContralListUI?.Invoke();
-                cb.BuildContralSection?.Invoke();
+                cb.RefreshControlListUI?.Invoke();
+                cb.BuildControlSection?.Invoke();
             };
             btnScan.AddToClassList("mt-button");
             btnScan.SetClickHandler(handler);
@@ -85,7 +85,7 @@ namespace MrTerrainPainter.Editor.Views
                     cb.ClearTerrainUIList?.Invoke();
                 }
                 cb.RefreshStartListUI?.Invoke();
-                cb.RefreshContralListUI?.Invoke();
+                cb.RefreshControlListUI?.Invoke();
             };
             btnClear.SetClickHandler(handler);
         }
@@ -102,8 +102,8 @@ namespace MrTerrainPainter.Editor.Views
                 ClearTerrainLists = cb.ClearTerrainLists,
                 AddTerrainToLists = cb.AddTerrainToLists,
                 RefreshStartListUI = cb.RefreshStartListUI,
-                RefreshContralListUI = cb.RefreshContralListUI,
-                BuildContralSection = cb.BuildContralSection
+                RefreshControlListUI = cb.RefreshControlListUI,
+                BuildControlSection = cb.BuildControlSection
             });
         }
     }

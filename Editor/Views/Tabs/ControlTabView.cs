@@ -3,15 +3,15 @@ using UnityEditor;
 
 namespace MrTerrainPainter.Editor.Views.Tabs
 {
-    public class ContralTabView
+    public class ControlTabView
     {
         private readonly MrTerrainPainterWindow window;
         private readonly VisualElement root;
 
-        public ContralTabView(MrTerrainPainterWindow window, VisualElement contralRoot)
+        public ControlTabView(MrTerrainPainterWindow window, VisualElement controlRoot)
         {
             this.window = window;
-            this.root = contralRoot;
+            this.root = controlRoot;
         }
 
         public void SetupTabEvents()
@@ -58,15 +58,15 @@ namespace MrTerrainPainter.Editor.Views.Tabs
                 };
             }
 
-            var selectionActionsContral = new SelectionActionsView(root);
-            selectionActionsContral.Bind(new SelectionActionsView.SelectionActionsCallbacks
+            var selectionActionsControl = new SelectionActionsView(root);
+            selectionActionsControl.Bind(new SelectionActionsView.SelectionActionsCallbacks
             {
                 GetSelectionObjects = () => Selection.gameObjects,
                 ClearTerrainLists = () => window.terrainController.ClearTerrainLists(window.selectedTerrains, window.terrainListUIData, window.scannedTerrainNames),
                 AddTerrainToLists = t => window.terrainController.AddTerrainToLists(t, window.selectedTerrains, window.terrainListUIData, window.scannedTerrainNames),
                 RefreshStartListUI = () => { },
-                RefreshContralListUI = () => { window.PopulateTerrianListUI(root); },
-                BuildContralSection = null
+                RefreshControlListUI = () => { window.PopulateTerrainListUI(root); },
+                BuildControlSection = null
             });
         }
 

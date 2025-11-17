@@ -1,116 +1,244 @@
-
+using System;
+using System.Linq; // 用于简化集合查询
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
+using UnityEditor.UIElements;
+using MrTerrainPainter.Runtime.Profiles;
+using MrTerrainPainter.Editor.Tools; // 引用 Profile 命名空间
 
 namespace MrTerrainPainter.Editor
 {
-    // Start 页相关逻辑（窗口只做装配与绑定）
     public partial class MrTerrainPainterWindow
     {
-        // 使用 const 或 readonly，如果值在初始化后不会改变
-        private const string HelloThereMessage = "Good Luck!";
+        // 常量定义
         private const string LogoElementName = "LOGO";
-        private const float DoubleClickInterval = 0.6f; // 双击间隔时间（秒）
+        private const string MappingGuardName = "MappingGuard";
+        private const string AnimClassPulse1 = "mt-logo--pulse1";
+        private const string AnimClassPulse2 = "mt-logo--pulse2";
+        private const string AnimClassPulse3 = "mt-logo--pulse3";
+        private const string AnimClassComplete = "mt-logo--complete";
+        private const float DoubleClickInterval = 0.6f;
 
-        private VisualElement _logoElement; // 缓存 logo 元素，方便在其他方法中使用
+        // UI 缓存
+        private Label _logoElement;
+        private VisualElement _mappingGuard;
+
+        // 双击检测状态
+        private int _clickCount;
+        private double _lastClickTime;
 
         /// <summary>
-        /// 注册 Start 页面的 UI 事件
+        /// 注册 Start 页面的 UI 事件 (入口方法)
         /// </summary>
         private void SetupStartPageEvents()
         {
-            // 早期退出检查
             if (startRoot == null) return;
 
-            // 1. 初始化空列表的 UI 容器与绑定，确保首次显示正确
-            // 假设 Refresh(null) 也能安全处理
-            startTerrainListView?.Refresh(terrainListUIData);
+            // 1. 初始化各个模块
+            SetupLogoLogic();
+            SetupNavigationButtons();
+            SetupScanLogic();
+            SetupQuickProfileLogic();
+            SetupMappingGuardLogic();
+        }
 
-            // 2. 获取并缓存 LOGO 元素
+        #region Setup Modules (初始化分块)
+
+        private void SetupLogoLogic()
+        {
             _logoElement = startRoot.Q<Label>(LogoElementName);
+            if (_logoElement == null) return;
 
-            // 3. 注册 LOGO 元素的双击和动画效果
-            if (_logoElement != null)
+            // 重置点击状态
+            _clickCount = 0;
+            _lastClickTime = 0;
+
+            _logoElement.RegisterCallback<PointerDownEvent>(evt =>
             {
-                // 初始化双击计数器
-                int clickCount = 0;
-                double lastClickTime = 0;
-
-                _logoElement.RegisterCallback<PointerDownEvent>(evt =>
+                if (CheckDoubleClick())
                 {
-                    // 使用更清晰的方法处理双击逻辑
-                    if (IsDoubleClick(ref lastClickTime, ref clickCount))
-                    {
-                        // 触发双击逻辑
-                        HandleLogoDoubleClick(_logoElement as Label);
-
-                        // 阻止事件传播，避免双击影响其他 UI
-                        evt.StopPropagation();
-                    }
-
-                    // 无论是否双击，都播放点击动画
-                    PlayClickAnimation(_logoElement);
-                });
-            }
+                    OpenSettingsTab();
+                    evt.StopPropagation();
+                }
+                PlayClickAnimation(_logoElement);
+            });
         }
 
-        /// <summary>
-        /// 检查是否为双击
-        /// </summary>
-        /// <param name="lastTime">上次点击的时间</param>
-        /// <param name="count">点击计数</param>
-        /// <returns>如果是双击则返回 true</returns>
-        private bool IsDoubleClick(ref double lastTime, ref int count)
+        private void SetupNavigationButtons()
         {
-            var now = EditorApplication.timeSinceStartup;
+            // 使用扩展方法或简单的一行绑定，保持代码整洁
+            BindClick("OpenControl", OpenPaintingSettings);
+            BindClick("OpenSettings", OpenSettingsTab);
+            BindClick("OpenSettingsGuard", OpenSettingsTab); // Guard 内部的按钮
+        }
 
-            // 如果两次点击间隔超过设定值，则重置计数器
-            if (now - lastTime > DoubleClickInterval)
+        private void SetupScanLogic()
+        {
+            var btnScan = startRoot.Q<Button>("ScanTerrains");
+            if (btnScan != null)
             {
-                count = 0;
+                btnScan.clicked += () =>
+                {
+                    terrainController?.ScanSceneTerrains(terrainListUIData, scannedTerrainNames);
+                    OpenPaintingSettings();
+                    RefreshTerrainListUI();
+                    MrTerrainPainter.Editor.Tools.MTPBrushContext.SetSelectedTerrains(selectedTerrains);
+                };
             }
-
-            lastTime = now;
-            count++;
-
-            return count >= 2;
         }
 
-        /// <summary>
-        /// 处理 LOGO 元素双击事件的逻辑
-        /// </summary>
-        /// <param name="logoLabel">LOGO 标签</param>
-        private void HandleLogoDoubleClick(Label logoLabel)
+        private void SetupQuickProfileLogic()
         {
-            if (logoLabel == null) return;
-            OpenSettingsTab();
+            var quickProfileField = startRoot.Q<ObjectField>("QuickProfile");
+            if (quickProfileField == null) return;
+
+            quickProfileField.objectType = typeof(VegetationProfile);
+            quickProfileField.allowSceneObjects = false;
+            quickProfileField.SetValueWithoutNotify(currentProfile);
+
+            quickProfileField.RegisterValueChangedCallback(evt =>
+            {
+                if (evt.newValue is VegetationProfile vp)
+                {
+                    currentProfile = vp;
+                    ReloadAvailableProfiles();
+                    RefreshAllUI();
+                }
+            });
+        }
+
+        private void SetupMappingGuardLogic()
+        {
+            _mappingGuard = startRoot.Q<VisualElement>(MappingGuardName);
+            UpdateMappingGuardState();
+        }
+
+        #endregion
+
+        #region Logic & Helpers (逻辑与辅助)
+
+        /// <summary>
+        /// 检查配置并更新 MappingGuard 的显示状态
+        /// </summary>
+        private void UpdateMappingGuardState()
+        {
+            if (_mappingGuard == null) return;
+
+            // 使用 LINQ 简化查询：检查是否存在有效的 Plant 映射
+            bool hasPlantMapping = config?.mappingEntries?
+                .Any(e => e != null && e.type == Runtime.Profiles.PrefabType.Plant && e.node != null) ?? false;
+
+            _mappingGuard.style.display = hasPlantMapping ? DisplayStyle.None : DisplayStyle.Flex;
         }
 
         /// <summary>
-        /// 为元素播放一个简单的点击动画 (例如：变色/缩小后恢复)
+        /// 绑定按钮点击事件的辅助方法
         /// </summary>
-        /// <param name="element">要播放动画的元素</param>
+        private void BindClick(string buttonName, Action action)
+        {
+            var btn = startRoot.Q<Button>(buttonName);
+            if (btn != null) btn.clicked += action;
+        }
+
+        /// <summary>
+        /// 庆祝映射完成（外部调用）
+        /// </summary>
+        public void CelebrateMappingCompleted()
+        {
+            // 1. 隐藏 Guard
+            if (_mappingGuard != null) _mappingGuard.style.display = DisplayStyle.None;
+            // 如果 _mappingGuard 还没缓存 (极端情况)，尝试重新获取
+            else
+            {
+                UIElementExtensions.SetDisplay(startRoot?.Q<VisualElement>(MappingGuardName), false);
+
+            }
+            ;
+
+            // 2. 播放 Logo 动画
+            if (_logoElement == null) _logoElement = startRoot?.Q<Label>(LogoElementName);
+            if (_logoElement == null) return;
+
+            string originalText = _logoElement.text;
+
+            // 设置完成状态
+            _logoElement.text = "Complete";
+            _logoElement.AddToClassList(AnimClassComplete);
+
+            // 播放序列动画
+            PlayPulseSequence(_logoElement, () =>
+            {
+                // 动画结束后的回调
+                _logoElement.text = originalText;
+                _logoElement.RemoveFromClassList(AnimClassComplete);
+                _logoElement.RemoveFromClassList(AnimClassPulse3);
+            }, startDelay: 60);
+        }
+
+        private bool CheckDoubleClick()
+        {
+            double now = EditorApplication.timeSinceStartup;
+            if (now - _lastClickTime > DoubleClickInterval)
+            {
+                _clickCount = 0;
+            }
+            _lastClickTime = now;
+            _clickCount++;
+            return _clickCount >= 2;
+        }
+
         private void PlayClickAnimation(VisualElement element)
+        {
+            PlayPulseSequence(element, null, 0);
+        }
+
+        /// <summary>
+        /// 执行脉冲动画序列
+        /// </summary>
+        private void PlayPulseSequence(VisualElement element, Action onComplete, long startDelay = 0)
         {
             if (element == null) return;
 
-            // 1. 定义动画参数
-            var originalColor = element.style.color.value;
-            var pressedColor = new StyleColor(new UnityEngine.Color(0.8f, 0.6f, 0.1f)); // 偏黄的按压色
-            var animationDuration = 100; // 动画时长 (毫秒)
+            // 清理旧状态
+            element.RemoveFromClassList(AnimClassPulse1);
+            element.RemoveFromClassList(AnimClassPulse2);
+            element.RemoveFromClassList(AnimClassPulse3);
 
-            // 2. 播放动画：按下效果
-            element.style.color = pressedColor; // 改变颜色
-            element.style.scale = new StyleScale(new UnityEngine.UIElements.Scale(new Vector3(0.95f, 0.95f, 0.95f))); // 缩小一点
-
-            // 3. 使用 UIElements 的 `schedule.Execute` 延迟恢复
+            // 步骤 1
             element.schedule.Execute(() =>
             {
-                // 恢复到原始状态
-                element.style.color = originalColor;
-                element.style.scale = new StyleScale(new UnityEngine.UIElements.Scale(new Vector3(1f, 1f, 1f)));
-            }).StartingIn(animationDuration); // 在指定毫秒后执行
+                element.AddToClassList(AnimClassPulse1);
+            }).StartingIn(startDelay);
+
+            // 步骤 2
+            element.schedule.Execute(() =>
+            {
+                element.RemoveFromClassList(AnimClassPulse1);
+                element.AddToClassList(AnimClassPulse2);
+            }).StartingIn(startDelay + 80);
+
+            // 步骤 3
+            element.schedule.Execute(() =>
+            {
+                element.RemoveFromClassList(AnimClassPulse2);
+                element.AddToClassList(AnimClassPulse3);
+            }).StartingIn(startDelay + 160);
+
+            // 结束 (如果有回调，或者仅移除最后一个状态)
+            if (onComplete != null)
+            {
+                element.schedule.Execute(onComplete).StartingIn(startDelay + 260);
+            }
+            else
+            {
+                element.schedule.Execute(() =>
+                {
+                    element.RemoveFromClassList(AnimClassPulse3);
+                }).StartingIn(startDelay + 240);
+            }
         }
+
+        #endregion
     }
 }

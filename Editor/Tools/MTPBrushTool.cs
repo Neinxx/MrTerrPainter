@@ -1,109 +1,82 @@
 using System.Linq;
 using MrTerrainPainter.Editor.Services;
+using UnityEditor.SceneManagement;
 using UnityEditor;
 using UnityEditor.EditorTools;
 using UnityEditor.ShortcutManagement;
 using UnityEngine;
+using MrTerrainPainter.Editor.Controllers;
 
 namespace MrTerrainPainter.Editor.Tools
 {
-    [EditorTool("Mr Terrain Brush")]
+    [EditorTool("Mr Terrain Brush", typeof(Terrain))]
     public class MTPBrushTool : EditorTool
     {
         private System.Random rnd;
-        private Vector3 lastPos;
-        private Vector3 lastNormal = Vector3.up;
+        private SceneInteractionService sceneService;
+        private TerrainController terrainController = new TerrainController();
+        private PaintingController paintingController = new PaintingController();
         public override void OnActivated()
         {
-            if (!MrTerrainPainter.Editor.MrTerrainPainterWindow.TryGet(out var _))
-            {
-                MrTerrainPainter.Editor.MrTerrainPainterWindow.GetOrOpen();
-            }
+
         }
 
         public override void OnToolGUI(EditorWindow window)
         {
             var sceneView = window as SceneView;
             if (sceneView == null) return;
-            var e = Event.current;
-            var brush = MTPBrushContext.Brush;
-
-            if (e.type == EventType.Layout)
+            if (sceneService == null)
             {
-                HandleUtility.AddDefaultControl(GUIUtility.GetControlID(FocusType.Passive));
-            }
-
-            var ray = HandleUtility.GUIPointToWorldRay(e.mousePosition);
-            Terrain hitTerrain;
-            Vector3 hitPos;
-            Vector3 hitNormal;
-            if (TryGetTerrainHit(ray, out hitTerrain, out hitPos, out hitNormal))
-            {
-                lastPos = hitPos;
-                lastNormal = hitNormal;
-            }
-
-            if (e.type == EventType.Repaint)
-            {
-                if (lastPos != Vector3.zero)
-                {
-                    BrushPainter.DrawPreview(lastPos, lastNormal, brush);
-                }
-            }
-
-            if (e.type == EventType.MouseDown || e.type == EventType.MouseDrag)
-            {
-                if (hitTerrain != null)
-                {
-                    if (rnd == null) rnd = new System.Random();
-                    if (e.button == 1)
+                var filter = new DefaultFilterStrategy(new VegetationGenerator.NoiseSettings());
+                var placement = new DefaultPlacementOverrideStrategy(
+                    () => Vector2.one,
+                    () => new Vector2(0f, 30f),
+                    () => new Vector2(0f, 1000f),
+                    () => new Vector2(0f, 90f)
+                );
+                sceneService = new SceneInteractionService(
+                    terrainController,
+                    paintingController,
+                    () => MTPBrushContext.CurrentProfile,
+                    () =>
                     {
-                        BrushPainter.Erase(hitTerrain, lastPos, brush, true);
-                        e.Use();
-                    }
-                    else if (e.button == 0)
+                        var t = Selection.activeGameObject != null ? Selection.activeGameObject.GetComponent<Terrain>() : null;
+                        var list = new System.Collections.Generic.List<Terrain>();
+                        if (t != null) list.Add(t);
+                        return list;
+                    },
+                    MTPBrushContext.Brush,
+                    filter,
+                    placement,
+                    () => false,
+                    () => true,
+                    () => MarkSceneDirty(),
+                    pos =>
                     {
-                        MrTerrainPainter.Editor.MrTerrainPainterWindow.TryGet(out var win);
-                        var profile = win != null ? win.GetCurrentProfile() : null;
-                        if (profile != null)
+                        var active = Terrain.activeTerrains;
+                        if (active == null || active.Length == 0) return null;
+                        float best = float.MaxValue; Terrain bestT = null;
+                        for (int i = 0; i < active.Length; i++)
                         {
-                            BrushPainter.Paint(hitTerrain, profile, lastPos, brush, rnd);
+                            var t = active[i];
+                            var d = Vector3.Distance(t.transform.position, pos);
+                            if (d < best) { best = d; bestT = t; }
                         }
-                        e.Use();
-                    }
-                }
+                        return bestT;
+                    },
+                    () => { if (rnd == null) rnd = new System.Random(); return rnd; },
+                    true
+                );
             }
+            sceneService.OnSceneGUI();
         }
 
-        private static bool TryGetTerrainHit(Ray ray, out Terrain terrain, out Vector3 pos, out Vector3 normal)
+        private static void MarkSceneDirty()
         {
-            terrain = null;
-            pos = Vector3.zero;
-            normal = Vector3.up;
-            float best = float.MaxValue;
-            foreach (var t in Terrain.activeTerrains)
+            if (!Application.isPlaying)
             {
-                if (t == null) continue;
-                var col = t.GetComponent<TerrainCollider>();
-                if (col != null)
-                {
-                    if (col.Raycast(ray, out var hit, 10000f))
-                    {
-                        if (hit.distance < best)
-                        {
-                            best = hit.distance;
-                            terrain = t;
-                            pos = hit.point;
-                            if (Editor.Utils.TerrainUtils.TryGetHeightAndNormal(terrain, pos, out var h, out var n))
-                            {
-                                pos.y = h;
-                                normal = n;
-                            }
-                        }
-                    }
-                }
+                EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
             }
-            return terrain != null;
         }
     }
 

@@ -1,31 +1,51 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="True">
     <Style src="project://database/Assets/MrTerrPainterV1/Editor/MrTerrainPainterStyles.uss?fileID=7433441132597879392&amp;guid=1094a64c2bc4b654486d9ae7dcc8907c&amp;type=3#MrTerrainPainterStyles" />
-    <ui:VisualElement name="GenerateParameter" style="flex-grow: 1; margin-top: 6px; margin-left: 6px; margin-right: 6px;">
+    <ui:VisualElement name="GenerateParameter" style="flex-grow: 1; min-height: 300px; margin-top: 6px; margin-left: 6px; margin-right: 6px; min-width: 400px;">
         <ui:VisualElement class="mt-frame">
-            <ui:Foldout text="TerrainList" name="TerrainList" />
+            <ui:Foldout text="TerrainList" name="TerrainList">
+                <ui:ListView name="TerrainListLV" class="mt-terrain-list mt-terrain-list--auto" />
+            </ui:Foldout>
         </ui:VisualElement>
-        <ui:VisualElement style="align-items: stretch; justify-content: space-between; height: 36px; flex-grow: 0; flex-direction: row;">
-            <ui:Button text="ScanTerrains" display-tooltip-when-elided="true" name="ScanTerrains" class="mt-button" style="flex-grow: 0; flex-shrink: 1; width: 100px;" />
-            <ui:Button text="AddSelectedTerrain" display-tooltip-when-elided="true" name="AddSelectedTerrain" class="mt-button" style="flex-grow: 1; flex-shrink: 1;" />
-            <ui:Button text="Clear" display-tooltip-when-elided="true" name="ClearTerrainList" class="mt-buttonR" style="flex-grow: 0; flex-shrink: 1; width: 100px;" />
+        <ui:VisualElement class="mt-actions">
+            <ui:Button text="ScanTerrains" display-tooltip-when-elided="true" name="ScanTerrains" class="mt-button mt-btn--w100" />
+            <ui:Button text="AddSelectedTerrain" display-tooltip-when-elided="true" name="AddSelectedTerrain" class="mt-button mt-btn--stretch" />
+            <ui:Button text="Clear" display-tooltip-when-elided="true" name="ClearTerrainList" class="mt-buttonR mt-btn--w100" />
         </ui:VisualElement>
         <ui:VisualElement class="mt-frame" style="-unity-font-style: bold; font-size: 18px; color: rgb(226, 131, 72); flex-grow: 1; max-height: 30px; min-height: 30px; height: 30px; flex-direction: row; align-items: center; margin-bottom: 2px; padding-left: 3px; padding-right: 3px; padding-top: 0; padding-bottom: 0; margin-top: 2px; margin-left: 0; min-width: auto;">
-            <ui:Button text="GenerationFilter" display-tooltip-when-elided="true" name="GenerationFilter" style="background-color: rgba(88, 88, 88, 0); flex-shrink: 1; flex-grow: 0; border-left-width: 0; border-right-width: 0; border-top-width: 0; border-bottom-width: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; border-left-color: rgba(255, 255, 255, 0); border-right-color: rgba(255, 255, 255, 0); border-top-color: rgba(255, 255, 255, 0); border-bottom-color: rgba(255, 255, 255, 0); color: rgb(226, 131, 72); font-size: 16px; -unity-text-align: middle-center; justify-content: space-between; align-items: center;" />
+            <ui:Button text="GenerationFilter" display-tooltip-when-elided="true" name="GenerationFilter" tooltip="生成过滤开关" style="background-color: rgba(88, 88, 88, 0); flex-shrink: 1; flex-grow: 0; border-left-width: 0; border-right-width: 0; border-top-width: 0; border-bottom-width: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; border-left-color: rgba(255, 255, 255, 0); border-right-color: rgba(255, 255, 255, 0); border-top-color: rgba(255, 255, 255, 0); border-bottom-color: rgba(255, 255, 255, 0); color: rgb(226, 131, 72); font-size: 16px; -unity-text-align: middle-center; justify-content: space-between; align-items: center;" />
         </ui:VisualElement>
         <ui:VisualElement name="FilterContent" class="mt-frame" style="flex-grow: 1; margin-top: 2px; display: flex;">
-            <ui:VisualElement style="flex-direction: row; justify-content: space-between;">
-                <ui:SliderInt picking-mode="Ignore" label="门限" value="42" high-value="100" show-input-field="false" name="Threshold" style="flex-shrink: 1; flex-grow: 1; height: 20px; max-height: 20px; min-height: 20px;" />
-                <ui:Toggle name="InvertThreshold" style="flex-shrink: 1; flex-grow: 1; height: 20px; max-height: 20px; min-height: 20px; max-width: 20px; min-width: 20px;" />
+            <ui:Toggle label="使用Burst Poisson生成" name="UseBurstPoissonGen" tooltip="启用Burst实现的高性能泊松采样" />
+            <ui:VisualElement picking-mode="Ignore" style="flex-direction: row; justify-content: space-between;">
+                <ui:SliderInt picking-mode="Ignore" label="门限" value="42" high-value="100" show-input-field="false" name="Threshold" tooltip="噪声门限(越大越稀疏)" style="flex-shrink: 1; flex-grow: 1; height: 20px; max-height: 20px; min-height: 20px;" />
+                <ui:Toggle name="InvertThreshold" tooltip="反转门限(保留低值区域)" style="flex-shrink: 1; flex-grow: 1; height: 20px; max-height: 20px; min-height: 20px; max-width: 20px; min-width: 20px;" />
             </ui:VisualElement>
-            <uie:IntegerField label="噪声种子" value="0" name="NoiseSeed" style="flex-shrink: 1; flex-grow: 1; height: 20px; max-height: 20px; min-height: 20px;" />
-            <uie:IntegerField label="倍频数" value="1" name="OctaveCount" style="flex-shrink: 1; flex-grow: 1; height: 20px; max-height: 20px; min-height: 20px;" />
-            <ui:SliderInt picking-mode="Ignore" label="持久" value="42" high-value="100" show-input-field="true" name="Persistence" style="flex-shrink: 1; flex-grow: 1; max-height: 20px; min-height: 20px; height: 20px;" />
-            <ui:SliderInt picking-mode="Ignore" label="空隙度" value="42" high-value="100" show-input-field="true" name="Lacunarity" style="flex-shrink: 1; flex-grow: 1; height: 20px; max-height: 20px; min-height: 20px;" />
-            <ui:SliderInt picking-mode="Ignore" label="尺度 (米)" value="42" high-value="200" show-input-field="true" name="Scale" style="flex-shrink: 1; flex-grow: 1; height: 20px; max-height: 20px; min-height: 20px;" />
+            <ui:VisualElement picking-mode="Ignore" style="flex-direction: column; justify-content: space-between;">
+                <uie:EnumField label="分布类型" name="GenDistribution" tooltip="生成采样的空间分布类型" style="flex-shrink: 1; flex-grow: 1;" />
+                <uie:EnumField label="形状" name="GenShape" tooltip="生成区域形状" style="flex-shrink: 1; flex-grow: 1;" />
+            </ui:VisualElement>
+            <ui:SliderInt picking-mode="Ignore" label="最小间距抖动" value="0" high-value="100" show-input-field="false" name="GenMinSpacingJitter" tooltip="在最小间距附近引入随机偏移" style="flex-shrink: 1; flex-grow: 1; height: 20px; max-height: 20px; min-height: 20px;" />
+            <uie:IntegerField label="最大候选" value="50000" name="GenMaxPoints" tooltip="限制候选点数量上限" style="flex-shrink: 1; flex-grow: 1; height: 20px; max-height: 20px; min-height: 20px;" />
+            <ui:VisualElement picking-mode="Ignore" style="flex-direction: column; justify-content: space-between;">
+                <ui:SliderInt picking-mode="Ignore" label="自适应最小半径系数" value="70" high-value="150" show-input-field="true" name="AdaptiveMinFactor" tooltip="AdaptivePoisson的最小半径系数(0.1-1.5)" />
+                <ui:SliderInt picking-mode="Ignore" label="自适应最大半径系数" value="180" high-value="300" show-input-field="true" name="AdaptiveMaxFactor" tooltip="AdaptivePoisson的最大半径系数(1-3)" />
+                <ui:SliderInt picking-mode="Ignore" label="自适应噪声权重" value="100" high-value="200" show-input-field="true" name="AdaptiveNoiseWeight" tooltip="AdaptivePoisson噪声权重(0.25-4)" />
+            </ui:VisualElement>
+            <ui:Foldout text="簇集参数" name="GenCluster" tooltip="用于Cluster分布的参数设置">
+                <uie:IntegerField label="簇数量" name="GenClusterCount" tooltip="生成的簇数量" />
+                <uie:IntegerField label="每簇数量" name="GenChildPerCluster" tooltip="每个簇中的子点数量" />
+                <ui:SliderInt picking-mode="Ignore" label="簇半径" value="10" high-value="100" name="GenClusterRadius" tooltip="簇内子点的最大偏移半径" />
+                <ui:SliderInt picking-mode="Ignore" label="子点抖动" value="0" high-value="100" name="GenChildJitter" tooltip="对子点位置增加的随机抖动" />
+            </ui:Foldout>
+            <uie:IntegerField label="噪声种子" value="0" name="NoiseSeed" tooltip="生成噪声的随机种子" style="flex-shrink: 1; flex-grow: 1; height: 20px; max-height: 20px; min-height: 20px;" />
+            <uie:IntegerField label="倍频数" value="1" name="OctaveCount" tooltip="FBM噪声的层数" style="flex-shrink: 1; flex-grow: 1; height: 20px; max-height: 20px; min-height: 20px;" />
+            <ui:SliderInt picking-mode="Ignore" label="持久" value="42" high-value="100" show-input-field="true" name="Persistence" tooltip="FBM每层振幅衰减率" style="flex-shrink: 1; flex-grow: 1; max-height: 20px; min-height: 20px; height: 20px;" />
+            <ui:SliderInt picking-mode="Ignore" label="空隙度" value="42" high-value="100" show-input-field="true" name="Lacunarity" tooltip="FBM每层频率增长比" style="flex-shrink: 1; flex-grow: 1; height: 20px; max-height: 20px; min-height: 20px;" />
+            <ui:SliderInt picking-mode="Ignore" label="尺度 (米)" value="42" high-value="200" show-input-field="true" name="Scale" tooltip="噪声世界坐标缩放(米)" style="flex-shrink: 1; flex-grow: 1; height: 20px; max-height: 20px; min-height: 20px;" />
         </ui:VisualElement>
-        <ui:VisualElement style="flex-direction: row; justify-content: space-between; max-height: 36px; min-height: 36px; height: 36px; margin-top: 12px;">
-            <ui:Button text="生成" display-tooltip-when-elided="true" name="GenerateTerrainObject" class="mt-buttonG" style="flex-shrink: 1; flex-grow: 1; min-width: 296px;" />
-            <ui:Button text="清除" display-tooltip-when-elided="true" name="ClearTerrainObject" class="mt-buttonR" style="flex-shrink: 1; flex-grow: 1;" />
+        <ui:VisualElement class="mt-actions" style="margin-top: 12px;">
+            <ui:Button text="生成" display-tooltip-when-elided="true" name="GenerateTerrainObject" tooltip="执行生成" class="mt-buttonG mt-btn--stretch" />
+            <ui:Button text="清除" display-tooltip-when-elided="true" name="ClearTerrainObject" tooltip="清除生成对象" class="mt-buttonR mt-btn--stretch" />
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

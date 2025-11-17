@@ -22,24 +22,25 @@ namespace MrTerrainPainter.Editor.Controllers
             if (mixExtraProfiles)
             {
                 var list = new List<VegetationProfile>();
-                list.Add(currentProfile);
                 for (int i = 0; i < extraProfiles.Count; i++)
                 {
                     var p = extraProfiles[i];
                     if (p == null || p.IsEmpty()) continue;
                     list.Add(p);
                 }
-                BrushPainter.PaintMixed(terrain, list, center, brush, rnd, ov);
-            }
-            else
-            {
-                BrushPainter.Paint(terrain, currentProfile, center, brush, rnd, ov);
-                for (int i = 0; i < extraProfiles.Count; i++)
+                if (list.Count >= 2)
                 {
-                    var p = extraProfiles[i];
-                    if (p == null || p.IsEmpty()) continue;
-                    BrushPainter.Paint(terrain, p, center, brush, rnd, ov);
+                    list.Insert(0, currentProfile);
+                    BrushPainter.PaintMixed(terrain, list, center, brush, rnd, ov);
+                    return;
                 }
+            }
+            BrushPainter.Paint(terrain, currentProfile, center, brush, rnd, ov);
+            for (int i = 0; i < extraProfiles.Count; i++)
+            {
+                var p = extraProfiles[i];
+                if (p == null || p.IsEmpty()) continue;
+                BrushPainter.Paint(terrain, p, center, brush, rnd, ov);
             }
         }
     }

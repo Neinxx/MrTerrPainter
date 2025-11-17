@@ -1,9 +1,11 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
-    <ui:VisualElement style="flex-grow: 1;">
-        <ui:VisualElement name="VegetationProfileList" style="flex-grow: 0;" />
+    <ui:VisualElement style="flex-grow: 1; min-width: 400px;">
+        <ui:VisualElement name="VegetationProfileList" style="flex-grow: 1;">
+            <ui:ListView name="VegetationProfileListLV" class="mt-veg-list" />
+        </ui:VisualElement>
     </ui:VisualElement>
-    <ui:Button text="Button" display-tooltip-when-elided="true" name="CreateCreateButton" class="mt-buttonG" />
-    <ui:VisualElement class="mt-frame">
+    <ui:Button text="Button" display-tooltip-when-elided="true" name="CreateCreateButton" class="mt-buttonG" style="min-width: 400px;" />
+    <ui:VisualElement class="mt-frame" style="min-width: 400px;">
         <ui:VisualElement style="flex-direction: column; margin-left: 0; margin-right: 0; margin-top: 6px; margin-bottom: 6px;" />
         <ui:VisualElement name="PrefabRange">
             <uie:ObjectField label="CurrentPrefab" name="SelectPrefab" />

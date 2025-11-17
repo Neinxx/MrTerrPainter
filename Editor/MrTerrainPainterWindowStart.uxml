@@ -1,17 +1,15 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="True">
     <Style src="project://database/Assets/MrTerrPainterV1/Editor/MrTerrainPainterStyles.uss?fileID=7433441132597879392&amp;guid=1094a64c2bc4b654486d9ae7dcc8907c&amp;type=3#MrTerrainPainterStyles" />
-    <ui:GroupBox style="flex-shrink: 1; flex-grow: 1; align-items: stretch; justify-content: space-between;">
-        <ui:VisualElement style="flex-grow: 1; justify-content: center;">
-            <ui:VisualElement class="mt-frame">
-                <ui:Label text="MrTerrPainter" display-tooltip-when-elided="true" name="LOGO" style="flex-shrink: 1; flex-grow: 1; font-size: 47px; -unity-text-align: middle-center; -unity-font-style: bold; color: rgb(226, 131, 72); padding-left: 0; padding-right: 0; padding-top: 0; padding-bottom: 0;" />
+    <ui:GroupBox style="padding-bottom: 0; padding-top: 0; min-width: 400px;">
+        <ui:VisualElement>
+            <ui:VisualElement>
+                <ui:Label text="MrTerrPainter" name="LOGO" class="mt-logo" />
             </ui:VisualElement>
-            <ui:VisualElement class="mt-frame" style="flex-grow: 1; display: none;">
-                <ui:Foldout text="TerrainList" name="TerrainList" style="flex-grow: 1;" />
-            </ui:VisualElement>
-            <ui:VisualElement style="align-items: stretch; justify-content: space-between; height: 36px; flex-grow: 0; flex-direction: row; display: none;">
-                <ui:Button text="ScanTerrains" display-tooltip-when-elided="true" name="ScanTerrains" class="mt-button" style="flex-grow: 0; flex-shrink: 1; width: 100px;" />
-                <ui:Button text="AddSelectedTerrain" display-tooltip-when-elided="true" name="AddSelectedTerrain" class="mt-button" style="flex-grow: 1; flex-shrink: 1;" />
-                <ui:Button text="Clear" display-tooltip-when-elided="true" name="ClearTerrainList" class="mt-buttonR" style="flex-grow: 0; flex-shrink: 1; width: 100px;" />
+            <ui:VisualElement name="MappingGuard" class="mt-frame" style="flex-wrap: nowrap;">
+                <ui:Label text="未找到类型 Plant 的父节点映射，请在设置窗口绑定对应的 Object + PrefabType。" class="mt-docs__p" style="flex-wrap: wrap-reverse; overflow: visible; flex-direction: column; flex-shrink: 1; flex-grow: 1;" />
+                <ui:VisualElement class="mt-actions">
+                    <ui:Button text="Open Settings To Configure" name="OpenSettingsGuard" class="mt-button mt-btn--stretch" />
+                </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>
     </ui:GroupBox>

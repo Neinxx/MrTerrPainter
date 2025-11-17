@@ -1,6 +1,6 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="True">
     <Style src="project://database/Assets/MrTerrPainterV1/Editor/MrTerrainPainterStyles.uss?fileID=7433441132597879392&amp;guid=1094a64c2bc4b654486d9ae7dcc8907c&amp;type=3#MrTerrainPainterStyles" />
-    <ui:GroupBox style="flex-shrink: 1; flex-grow: 1;">
+    <ui:GroupBox style="flex-shrink: 1; flex-grow: 1; min-height: 300px; min-width: 400px;">
         <ui:VisualElement class="mt-frame" style="flex-grow: 0;">
             <ui:Label text="MTP Settings" display-tooltip-when-elided="true" name="LOGO" style="flex-shrink: 1; flex-grow: 0; font-size: 18px; -unity-text-align: middle-left; -unity-font-style: bold; color: rgb(226, 131, 72); padding-left: 0; padding-right: 0; padding-top: 0; padding-bottom: 0; margin-left: 7px;" />
         </ui:VisualElement>
@@ -12,12 +12,11 @@
             <ui:VisualElement class="mt-frame">
                 <ui:Toggle label="ShowPool" name="ShowPool" style="margin-left: 20px; height: 20px; max-height: 20px; min-height: 20px; align-items: center;" />
                 <ui:TextField picking-mode="Ignore" label="RecipeGenerationPath" name="RecipeGenerationPath" style="margin-left: 19px; max-height: 20px; min-height: 20px; height: 20px;" />
-                <ui:TextField picking-mode="Ignore" label="PreviewCacheSize" name="PreviewCacheSize" style="margin-left: 19px; max-height: 20px; min-height: 20px; height: 20px;" />
-                <ui:TextField picking-mode="Ignore" label="UpdateThrottle" name="UpdateThrottle" style="margin-left: 19px; max-height: 20px; min-height: 20px; height: 20px;" />
+                <ui:Toggle label="NormalDirection" name="NormalDirection" style="margin-left: 20px; height: 20px; max-height: 20px; min-height: 20px; align-items: center;" />
             </ui:VisualElement>
         </ui:GroupBox>
     </ui:GroupBox>
-    <ui:VisualElement style="align-items: flex-end; justify-content: space-between; flex-grow: 1; max-height: 42px; min-height: 42px; height: 42px; margin-left: 0; flex-direction: row-reverse;">
+    <ui:VisualElement style="align-items: flex-end; justify-content: space-between; flex-grow: 1; max-height: 42px; min-height: 42px; height: 42px; margin-left: 0; flex-direction: row-reverse; min-width: 400px;">
         <ui:Button text="保存配置" display-tooltip-when-elided="true" name="SaveConfiguration" class="mt-button" style="flex-shrink: 1; flex-grow: 1; width: 217px;" />
     </ui:VisualElement>
 </ui:UXML>

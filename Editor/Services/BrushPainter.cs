@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using MrTerrainPainter.Editor.Config;
 using MrTerrainPainter.Editor.Utils;
 using MrTerrainPainter.Runtime.Core;
 using MrTerrainPainter.Runtime.Profiles;
@@ -9,25 +10,180 @@ using UnityEngine;
 namespace MrTerrainPainter.Editor.Services
 {
     public enum BrushShape { Circle, Square }
+    public enum BrushSettingKey { Shape, Size, Strength, DensityScale, Hardness, Preview, FalloffCurve, MinSpacingJitter, Distribution, StrokeSeed, MaxPoints, Cluster, MixItemsWeighted, LimitPerItem, GlobalSpacingFactor, MixExtraProfiles, UseBurstPoisson, PreviewStyle, StrokeSpacingFactor, StrokeSpacingAbsolute, UseAbsoluteStrokeSpacing }
+
+    public struct BrushPreviewStyle
+    {
+        public Color fillColor;
+        public Color ringColor;
+        public Color innerColor;
+        public float ringWidth;
+        public float innerWidth;
+        public bool showLabel;
+        public Color labelColor;
+        public Vector2 labelOffset;
+        public static BrushPreviewStyle Default => new BrushPreviewStyle
+        {
+            fillColor = new Color(0.24f, 0.65f, 1f, 0.15f),
+            ringColor = new Color(1f, 1f, 1f, 0.9f),
+            innerColor = new Color(0.24f, 0.65f, 1f, 0.35f),
+            ringWidth = 4f,
+            innerWidth = 4f,
+            showLabel = true,
+            labelColor = Color.white,
+            labelOffset = new Vector2(0f, 0f)
+        };
+    }
 
     public class BrushSettings
     {
-        public BrushShape shape = BrushShape.Circle;
-        public float size = 5f;
-        public float strength = 1f;
-        public float densityScale = 1f;
-        public float hardness = 1f;
-        public bool preview = true;
-        public AnimationCurve falloffCurve = AnimationCurve.Linear(0f, 1f, 1f, 0f);
-        public float minSpacingJitter = 0f;
-        public DistributionType distribution = DistributionType.Uniform;
-        public int strokeSeed = 0;
-        public int maxPoints = 1000;
-        public ClusterSettings cluster = new ClusterSettings { clusterCount = 10, childPerCluster = 5, clusterRadius = 2f, childJitter = 0.2f };
-        public bool mixItemsWeighted = true;
-        public bool limitPerItem = true;
-        public float globalSpacingFactor = 0f;
-        public bool mixExtraProfiles = false;
+        public event System.Action<string> Changed;
+        public event System.Action<BrushSettingKey> ChangedKey;
+
+        private static readonly System.Collections.Generic.Dictionary<BrushSettingKey, string> s_nameMap = new System.Collections.Generic.Dictionary<BrushSettingKey, string>
+        {
+            { BrushSettingKey.Shape, nameof(shape) },
+            { BrushSettingKey.Size, nameof(size) },
+            { BrushSettingKey.Strength, nameof(strength) },
+            { BrushSettingKey.DensityScale, nameof(densityScale) },
+            { BrushSettingKey.Hardness, nameof(hardness) },
+            { BrushSettingKey.Preview, nameof(preview) },
+            { BrushSettingKey.FalloffCurve, nameof(falloffCurve) },
+            { BrushSettingKey.MinSpacingJitter, nameof(minSpacingJitter) },
+            { BrushSettingKey.Distribution, nameof(distribution) },
+            { BrushSettingKey.StrokeSeed, nameof(strokeSeed) },
+            { BrushSettingKey.MaxPoints, nameof(maxPoints) },
+            { BrushSettingKey.Cluster, nameof(cluster) },
+            { BrushSettingKey.MixItemsWeighted, nameof(mixItemsWeighted) },
+            { BrushSettingKey.LimitPerItem, nameof(limitPerItem) },
+            { BrushSettingKey.GlobalSpacingFactor, nameof(globalSpacingFactor) },
+            { BrushSettingKey.MixExtraProfiles, nameof(mixExtraProfiles) },
+            { BrushSettingKey.UseBurstPoisson, nameof(useBurstPoisson) },
+            { BrushSettingKey.PreviewStyle, nameof(previewStyle) },
+            { BrushSettingKey.StrokeSpacingFactor, nameof(strokeSpacingFactor) },
+            { BrushSettingKey.StrokeSpacingAbsolute, nameof(strokeSpacingAbsolute) },
+            { BrushSettingKey.UseAbsoluteStrokeSpacing, nameof(useAbsoluteStrokeSpacing) },
+            { (BrushSettingKey)1001, nameof(adaptiveMinFactor) },
+            { (BrushSettingKey)1002, nameof(adaptiveMaxFactor) },
+            { (BrushSettingKey)1003, nameof(adaptiveNoiseWeight) },
+        };
+
+        private bool Notify(BrushSettingKey key)
+        {
+            ChangedKey?.Invoke(key);
+            if (s_nameMap.TryGetValue(key, out var n)) Changed?.Invoke(n);
+            return true;
+        }
+
+        private bool SetFloat(ref float field, float value, BrushSettingKey key, float? min = null, float? max = null, bool approximately = true, bool clamp01 = false)
+        {
+            var v = clamp01 ? Mathf.Clamp01(value) : value;
+            if (min.HasValue) v = Mathf.Max(v, min.Value);
+            if (max.HasValue) v = Mathf.Min(v, max.Value);
+            if ((approximately && Mathf.Approximately(field, v)) || (!approximately && field == v)) return false;
+            field = v;
+            return Notify(key);
+        }
+
+        private bool SetInt(ref int field, int value, BrushSettingKey key, int min = int.MinValue)
+        {
+            var v = min != int.MinValue ? Mathf.Max(value, min) : value;
+            if (field == v) return false;
+            field = v;
+            return Notify(key);
+        }
+
+        private bool SetBool(ref bool field, bool value, BrushSettingKey key)
+        {
+            if (field == value) return false;
+            field = value;
+            return Notify(key);
+        }
+
+        private bool SetValue<T>(ref T field, T value, BrushSettingKey key) where T : struct
+        {
+            if (EqualityComparer<T>.Default.Equals(field, value)) return false;
+            field = value;
+            return Notify(key);
+        }
+
+        private bool SetRef<T>(ref T field, T value, BrushSettingKey key) where T : class
+        {
+            if (ReferenceEquals(field, value)) return false;
+            field = value;
+            return Notify(key);
+        }
+
+        private BrushShape _shape = BrushShape.Circle;
+        public BrushShape shape { get => _shape; set { SetValue(ref _shape, value, BrushSettingKey.Shape); } }
+
+        private float _size = 5f;
+        public float size { get => _size; set { SetFloat(ref _size, value, BrushSettingKey.Size, min: 0.01f); } }
+
+        private float _strength = 1f;
+        public float strength { get => _strength; set { SetFloat(ref _strength, value, BrushSettingKey.Strength, min: 0f); } }
+
+        private float _densityScale = 1f;
+        public float densityScale { get => _densityScale; set { SetFloat(ref _densityScale, value, BrushSettingKey.DensityScale, min: 0f); } }
+
+        private float _hardness = 1f;
+        public float hardness { get => _hardness; set { SetFloat(ref _hardness, value, BrushSettingKey.Hardness, clamp01: true); } }
+
+        private bool _preview = true;
+        public bool preview { get => _preview; set { SetBool(ref _preview, value, BrushSettingKey.Preview); } }
+
+        private AnimationCurve _falloffCurve = AnimationCurve.Linear(0f, 1f, 1f, 0f);
+        public AnimationCurve falloffCurve { get => _falloffCurve; set { if (value == null) return; SetRef(ref _falloffCurve, value, BrushSettingKey.FalloffCurve); } }
+
+        private float _minSpacingJitter = 0f;
+        public float minSpacingJitter { get => _minSpacingJitter; set { SetFloat(ref _minSpacingJitter, value, BrushSettingKey.MinSpacingJitter, min: 0f); } }
+
+        private DistributionType _distribution = DistributionType.Uniform;
+        public DistributionType distribution { get => _distribution; set { SetValue(ref _distribution, value, BrushSettingKey.Distribution); } }
+
+        private int _strokeSeed = 0;
+        public int strokeSeed { get => _strokeSeed; set { SetInt(ref _strokeSeed, value, BrushSettingKey.StrokeSeed); } }
+
+        private int _maxPoints = 1000;
+        public int maxPoints { get => _maxPoints; set { SetInt(ref _maxPoints, value, BrushSettingKey.MaxPoints, min: 1); } }
+
+        private ClusterSettings _cluster = new ClusterSettings { clusterCount = 10, childPerCluster = 5, clusterRadius = 2f, childJitter = 0.2f };
+        public ClusterSettings cluster { get => _cluster; set { SetValue(ref _cluster, value, BrushSettingKey.Cluster); } }
+
+        private bool _mixItemsWeighted = true;
+        public bool mixItemsWeighted { get => _mixItemsWeighted; set { SetBool(ref _mixItemsWeighted, value, BrushSettingKey.MixItemsWeighted); } }
+
+        private bool _limitPerItem = true;
+        public bool limitPerItem { get => _limitPerItem; set { SetBool(ref _limitPerItem, value, BrushSettingKey.LimitPerItem); } }
+
+        private float _globalSpacingFactor = 0f;
+        public float globalSpacingFactor { get => _globalSpacingFactor; set { SetFloat(ref _globalSpacingFactor, value, BrushSettingKey.GlobalSpacingFactor, min: 0f); } }
+
+        private bool _mixExtraProfiles = false;
+        public bool mixExtraProfiles { get => _mixExtraProfiles; set { SetBool(ref _mixExtraProfiles, value, BrushSettingKey.MixExtraProfiles); } }
+
+        private bool _useBurstPoisson = true;
+        public bool useBurstPoisson { get => _useBurstPoisson; set { SetBool(ref _useBurstPoisson, value, BrushSettingKey.UseBurstPoisson); } }
+
+        private BrushPreviewStyle _previewStyle = BrushPreviewStyle.Default;
+        public BrushPreviewStyle previewStyle { get => _previewStyle; set { SetValue(ref _previewStyle, value, BrushSettingKey.PreviewStyle); } }
+
+        private float _strokeSpacingFactor = 0.25f;
+        public float strokeSpacingFactor { get => _strokeSpacingFactor; set { SetFloat(ref _strokeSpacingFactor, value, BrushSettingKey.StrokeSpacingFactor, min: 0f, max: 2f); } }
+
+        private float _strokeSpacingAbsolute = 0f;
+        public float strokeSpacingAbsolute { get => _strokeSpacingAbsolute; set { SetFloat(ref _strokeSpacingAbsolute, value, BrushSettingKey.StrokeSpacingAbsolute, min: 0f); } }
+
+        private bool _useAbsoluteStrokeSpacing = false;
+        public bool useAbsoluteStrokeSpacing { get => _useAbsoluteStrokeSpacing; set { SetBool(ref _useAbsoluteStrokeSpacing, value, BrushSettingKey.UseAbsoluteStrokeSpacing); } }
+
+        public float adaptiveMinFactor { get => _adaptiveMinFactor; set { SetFloat(ref _adaptiveMinFactor, value, (BrushSettingKey)1001, min: 0.1f); } }
+        public float adaptiveMaxFactor { get => _adaptiveMaxFactor; set { SetFloat(ref _adaptiveMaxFactor, value, (BrushSettingKey)1002, min: 0.1f); } }
+        public float adaptiveNoiseWeight { get => _adaptiveNoiseWeight; set { SetFloat(ref _adaptiveNoiseWeight, value, (BrushSettingKey)1003, min: 0.0001f); } }
+
+        private float _adaptiveMinFactor = 0.7f;
+        private float _adaptiveMaxFactor = 1.8f;
+        private float _adaptiveNoiseWeight = 1f;
     }
 
     public static class BrushPainter
@@ -68,43 +224,116 @@ namespace MrTerrainPainter.Editor.Services
         }
         public static void DrawPreview(Vector3 center, BrushSettings bs)
         {
-            if (bs == null || !bs.preview) return; // 提前返回
-            Handles.color = new Color(0.2f, 0.7f, 1f, 0.6f);
+            if (bs == null || !bs.preview) return;
+            Handles.zTest = UnityEngine.Rendering.CompareFunction.Always;
+            var st = bs.previewStyle;
+            var fill = st.fillColor;
+            var ring = st.ringColor;
+            var inner = st.innerColor;
             if (bs.shape == BrushShape.Circle)
             {
+                Handles.color = fill;
+                Handles.DrawSolidDisc(center, Vector3.up, bs.size);
+                Handles.color = ring;
                 Handles.DrawWireDisc(center, Vector3.up, bs.size);
+                float innerR = Mathf.Clamp(bs.size * Mathf.Clamp01(1f - bs.hardness), 0f, bs.size);
+                if (innerR > 0f)
+                {
+                    Handles.color = inner;
+                    Handles.DrawWireDisc(center, Vector3.up, innerR);
+                }
+                if (st.showLabel)
+                {
+                    var sp = HandleUtility.WorldToGUIPoint(center + new Vector3(0f, 0.02f, bs.size + 0.1f));
+                    Handles.BeginGUI();
+                    var c = GUI.color;
+                    GUI.color = st.labelColor;
+                    GUI.Label(new Rect(sp.x + st.labelOffset.x, sp.y + st.labelOffset.y, 100, 20), $"Size {bs.size:F1}");
+                    GUI.color = c;
+                    Handles.EndGUI();
+                }
             }
             else
             {
                 Vector3 half = new Vector3(bs.size, 0f, bs.size);
-                Handles.DrawWireCube(center, half * 2f);
+                Handles.color = fill;
+                Handles.DrawSolidRectangleWithOutline(new[]
+                {
+                    center + new Vector3(-half.x, 0f, -half.z),
+                    center + new Vector3(-half.x, 0f, half.z),
+                    center + new Vector3(half.x, 0f, half.z),
+                    center + new Vector3(half.x, 0f, -half.z)
+                }, fill, ring);
             }
         }
 
         public static void DrawPreview(Vector3 center, Vector3 normal, BrushSettings bs)
         {
             if (bs == null || !bs.preview) return;
-            Handles.zTest = UnityEngine.Rendering.CompareFunction.LessEqual;
-            Handles.color = new Color(0.2f, 0.7f, 1f, 0.9f);
+            Handles.zTest = UnityEngine.Rendering.CompareFunction.Always;
+            var st = bs.previewStyle;
+            var fill = st.fillColor;
+            var ring = st.ringColor;
+            var inner = st.innerColor;
+            var raisedCenter = center + normal.normalized * 0.02f;
             if (bs.shape == BrushShape.Circle)
             {
+                Handles.color = fill;
+                Handles.DrawSolidDisc(raisedCenter, normal, bs.size);
+                Handles.color = ring;
                 const int segments = 64;
                 var pts = new Vector3[segments + 1];
+                var tangent = Vector3.Normalize(Vector3.Cross(normal, Vector3.right));
+                if (tangent == Vector3.zero) tangent = Vector3.Normalize(Vector3.Cross(normal, Vector3.forward));
+                var bitangent = Vector3.Normalize(Vector3.Cross(normal, tangent));
                 for (int i = 0; i <= segments; i++)
                 {
                     float a = (i / (float)segments) * Mathf.PI * 2f;
                     var dir = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a));
-                    var tangent = Vector3.Normalize(Vector3.Cross(normal, Vector3.right));
-                    var bitangent = Vector3.Normalize(Vector3.Cross(normal, tangent));
-                    var v = center + (tangent * dir.x + bitangent * dir.z) * bs.size;
-                    pts[i] = v;
+                    pts[i] = raisedCenter + (tangent * dir.x + bitangent * dir.z) * bs.size;
                 }
-                Handles.DrawAAPolyLine(4f, pts);
+                Handles.DrawAAPolyLine(st.ringWidth, pts);
+                float innerR = Mathf.Clamp(bs.size * Mathf.Clamp01(1f - bs.hardness), 0f, bs.size);
+                if (innerR > 0f)
+                {
+                    Handles.color = inner;
+                    for (int i = 0; i <= segments; i++)
+                    {
+                        float a = (i / (float)segments) * Mathf.PI * 2f;
+                        var dir = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a));
+                        pts[i] = raisedCenter + (tangent * dir.x + bitangent * dir.z) * innerR;
+                    }
+                    Handles.DrawAAPolyLine(st.innerWidth, pts);
+                }
+                if (st.showLabel)
+                {
+                    var sp = HandleUtility.WorldToGUIPoint(raisedCenter + (bitangent * (bs.size + 0.1f)));
+                    Handles.BeginGUI();
+                    var c = GUI.color;
+                    GUI.color = st.labelColor;
+                    GUI.Label(new Rect(sp.x + st.labelOffset.x, sp.y + st.labelOffset.y, 100, 20), $"Size {bs.size:F1}");
+                    GUI.color = c;
+                    Handles.EndGUI();
+                }
             }
             else
             {
                 Vector3 half = new Vector3(bs.size, 0f, bs.size);
-                Handles.DrawWireCube(center, half * 2f);
+                Handles.color = fill;
+                Handles.DrawSolidRectangleWithOutline(new[]
+                {
+                    raisedCenter + new Vector3(-half.x, 0f, -half.z),
+                    raisedCenter + new Vector3(-half.x, 0f, half.z),
+                    raisedCenter + new Vector3(half.x, 0f, half.z),
+                    raisedCenter + new Vector3(half.x, 0f, -half.z)
+                }, fill, ring);
+            }
+            var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
+            if (cfg != null && cfg.normalDirection)
+            {
+                Handles.color = new Color(1f, 1f, 1f, 0.9f);
+                var tip = raisedCenter + normal.normalized * (bs.size * 0.6f);
+                Handles.DrawAAPolyLine(6f, new Vector3[] { raisedCenter, tip });
             }
         }
 
@@ -134,13 +363,24 @@ namespace MrTerrainPainter.Editor.Services
                 switch (bs.distribution)
                 {
                     case DistributionType.PoissonDisk:
-                        candidates = BrushEngine.SamplePoisson(centerXZ, radius, bs.shape, Mathf.Min(count, bs.maxPoints), spacing, jitter, seed + it);
+                        candidates = bs.useBurstPoisson
+                            ? BrushEngine.SamplePoissonBurst(centerXZ, radius, bs.shape, Mathf.Min(count, bs.maxPoints), spacing, jitter, seed + it)
+                            : BrushEngine.SamplePoisson(centerXZ, radius, bs.shape, Mathf.Min(count, bs.maxPoints), spacing, jitter, seed + it);
                         break;
                     case DistributionType.Cluster:
                         candidates = BrushEngine.SampleCluster(centerXZ, radius, bs.shape, bs.cluster, spacing, seed + it);
                         break;
                     case DistributionType.JitteredGrid:
                         candidates = BrushEngine.SampleJittered(centerXZ, radius, bs.shape, spacing, jitter, rnd);
+                        break;
+                    case DistributionType.Natural:
+                        candidates = BrushEngine.SampleNatural(centerXZ, radius, bs.shape, Mathf.Min(count, bs.maxPoints), spacing, seed + it);
+                        break;
+                    case DistributionType.AdaptivePoisson:
+                        candidates = BrushEngine.SampleAdaptivePoisson(centerXZ, radius, bs.shape, Mathf.Min(count, bs.maxPoints), Mathf.Max(spacing * bs.adaptiveMinFactor, 0.01f), spacing * bs.adaptiveMaxFactor, jitter, Mathf.Max(0.0001f, bs.adaptiveNoiseWeight), seed + it);
+                        break;
+                    case DistributionType.Halton:
+                        candidates = BrushEngine.SampleHaltonUniform(centerXZ, radius, bs.shape, Mathf.Min(count, bs.maxPoints), seed + it);
                         break;
                     default:
                         candidates = BrushEngine.SampleUniform(centerXZ, radius, bs.shape, Mathf.Min(count, bs.maxPoints), rnd);
@@ -173,16 +413,14 @@ namespace MrTerrainPainter.Editor.Services
                     var targetParent = VegetationGenerator.ResolveTargetParent(terrain, item);
                     if (targetParent == null)
                     {
-                        if (!missingTypesLogged.Contains(item.prefabType))
-                        {
-                            missingTypesLogged.Add(item.prefabType);
-                            Debug.LogError("未找到类型 " + item.prefabType + " 的父节点映射，请在设置窗口绑定对应的 Object + PrefabType。");
-                        }
-                        continue;
+                        if (!missingTypesLogged.Contains(item.prefabType)) missingTypesLogged.Add(item.prefabType);
+                        EditorUtility.DisplayDialog("缺少映射", "未找到类型 " + item.prefabType + " 的父节点映射，请在设置窗口绑定对应的 Object + PrefabType。", "确定");
+                        return;
                     }
                     CreateInstance(item, p, n, terrain, it, targetParent, rnd, ov);
                     placed++;
                 }
+                BrushEngine.ReleaseList(candidates);
             }
         }
 
@@ -196,7 +434,13 @@ namespace MrTerrainPainter.Editor.Services
             {
                 var p = profiles[pi];
                 if (p == null || p.IsEmpty()) continue;
-                allItems.AddRange(p.Items.Where(it => it != null && it.IsValid()));
+                var items = p.Items;
+                for (int ii = 0; ii < items.Count; ii++)
+                {
+                    var it = items[ii];
+                    if (it == null || !it.IsValid()) continue;
+                    allItems.Add(it);
+                }
             }
             if (allItems.Count == 0) return;
             int seed = bs.strokeSeed != 0 ? bs.strokeSeed : profiles[0].randomSeed;
@@ -216,16 +460,63 @@ namespace MrTerrainPainter.Editor.Services
             switch (bs.distribution)
             {
                 case DistributionType.PoissonDisk:
-                {
-                    float minSpacing = allItems.Count > 0 ? Mathf.Min(allItems.Min(it => Mathf.Max(it.minSpacing, 0.01f)), bs.size) : 0.5f;
-                    candidates = BrushEngine.SamplePoisson(centerXZ, radius, bs.shape, candidateCount, minSpacing, bs.minSpacingJitter, seed);
-                    break;
-                }
+                    {
+                        float minSpacing = 0.5f;
+                        if (allItems.Count > 0)
+                        {
+                            float best = bs.size;
+                            for (int i = 0; i < allItems.Count; i++)
+                            {
+                                var s = Mathf.Max(allItems[i].minSpacing, 0.01f);
+                                if (s < best) best = s;
+                            }
+                            minSpacing = best;
+                        }
+                        candidates = bs.useBurstPoisson
+                            ? BrushEngine.SamplePoissonBurst(centerXZ, radius, bs.shape, candidateCount, minSpacing, bs.minSpacingJitter, seed)
+                            : BrushEngine.SamplePoisson(centerXZ, radius, bs.shape, candidateCount, minSpacing, bs.minSpacingJitter, seed);
+                        break;
+                    }
                 case DistributionType.Cluster:
                     candidates = BrushEngine.SampleCluster(centerXZ, radius, bs.shape, bs.cluster, 0.01f, seed);
                     break;
                 case DistributionType.JitteredGrid:
                     candidates = BrushEngine.SampleJittered(centerXZ, radius, bs.shape, 1f, bs.minSpacingJitter, rnd);
+                    break;
+                case DistributionType.Natural:
+                    {
+                        float minSpacing = 0.5f;
+                        if (allItems.Count > 0)
+                        {
+                            float best = bs.size;
+                            for (int i = 0; i < allItems.Count; i++)
+                            {
+                                var s = Mathf.Max(allItems[i].minSpacing, 0.01f);
+                                if (s < best) best = s;
+                            }
+                            minSpacing = best;
+                        }
+                        candidates = BrushEngine.SampleNatural(centerXZ, radius, bs.shape, candidateCount, minSpacing, seed);
+                        break;
+                    }
+                case DistributionType.AdaptivePoisson:
+                    {
+                        float minSpacing = 0.5f;
+                        if (allItems.Count > 0)
+                        {
+                            float best = bs.size;
+                            for (int i = 0; i < allItems.Count; i++)
+                            {
+                                var s = Mathf.Max(allItems[i].minSpacing, 0.01f);
+                                if (s < best) best = s;
+                            }
+                            minSpacing = best;
+                        }
+                        candidates = BrushEngine.SampleAdaptivePoisson(centerXZ, radius, bs.shape, candidateCount, Mathf.Max(minSpacing * bs.adaptiveMinFactor, 0.01f), minSpacing * bs.adaptiveMaxFactor, bs.minSpacingJitter, Mathf.Max(0.0001f, bs.adaptiveNoiseWeight), seed);
+                        break;
+                    }
+                case DistributionType.Halton:
+                    candidates = BrushEngine.SampleHaltonUniform(centerXZ, radius, bs.shape, candidateCount, seed);
                     break;
                 default:
                     candidates = BrushEngine.SampleUniform(centerXZ, radius, bs.shape, candidateCount, rnd);
@@ -236,7 +527,42 @@ namespace MrTerrainPainter.Editor.Services
             Grid globalGrid = null;
             float globalFactor = Mathf.Max(0f, bs.globalSpacingFactor);
             if (globalFactor > 0f) globalGrid = new Grid(globalFactor);
-            var weighted = BuildWeightedList(allItems);
+            var weightCounts = new List<int>(allItems.Count);
+            int totalWeight = 0;
+            for (int i = 0; i < allItems.Count; i++)
+            {
+                var it = allItems[i];
+                int w = Mathf.Clamp(Mathf.RoundToInt(it.weight * 10f), 1, 100);
+                weightCounts.Add(w);
+                totalWeight += w;
+            }
+            int nWeights = weightCounts.Count;
+            var prob = new float[nWeights];
+            var alias = new int[nWeights];
+            if (nWeights > 0)
+            {
+                var small = new System.Collections.Generic.Queue<int>();
+                var large = new System.Collections.Generic.Queue<int>();
+                float sum = Mathf.Max(1, totalWeight);
+                for (int i = 0; i < nWeights; i++)
+                {
+                    prob[i] = (weightCounts[i] / sum) * nWeights;
+                }
+                for (int i = 0; i < nWeights; i++)
+                {
+                    if (prob[i] < 1f) small.Enqueue(i); else large.Enqueue(i);
+                }
+                while (small.Count > 0 && large.Count > 0)
+                {
+                    int s = small.Dequeue();
+                    int l = large.Dequeue();
+                    alias[s] = l;
+                    prob[l] = (prob[l] + prob[s]) - 1f;
+                    if (prob[l] < 1f) small.Enqueue(l); else large.Enqueue(l);
+                }
+                while (large.Count > 0) { prob[large.Dequeue()] = 1f; }
+                while (small.Count > 0) { prob[small.Dequeue()] = 1f; }
+            }
             for (int ci = 0; ci < candidates.Count; ci++)
             {
                 var c = candidates[ci];
@@ -252,16 +578,18 @@ namespace MrTerrainPainter.Editor.Services
                 int tries = 3;
                 while (tries-- > 0)
                 {
-                    if (weighted.Count == 0) break;
-                    int pick = rnd.Next(0, weighted.Count);
-                    var item = weighted[pick];
-                    int idx = allItems.IndexOf(item);
+                    if (totalWeight <= 0 || allItems.Count == 0) break;
+                    if (nWeights <= 0) break;
+                    int col = rnd.Next(0, nWeights);
+                    float frac = (float)rnd.NextDouble();
+                    int idx = frac < prob[col] ? col : alias[col];
                     if (idx < 0) break;
                     if (bs.limitPerItem && perItemLimit.TryGetValue(idx, out var remain) && remain <= 0)
                     {
                         continue;
                     }
                     var p2 = new Vector2(p.x - terrain.transform.position.x, p.z - terrain.transform.position.z);
+                    var item = allItems[idx];
                     if (globalGrid != null && globalFactor > 0f)
                     {
                         float gspace = Mathf.Max(item.minSpacing, 0.01f) * globalFactor;
@@ -278,7 +606,8 @@ namespace MrTerrainPainter.Editor.Services
                     if (targetParent == null)
                     {
                         if (!missingTypesLogged.Contains(item.prefabType)) missingTypesLogged.Add(item.prefabType);
-                        continue;
+                        EditorUtility.DisplayDialog("缺少映射", "未找到类型 " + item.prefabType + " 的父节点映射，请在设置窗口绑定对应的 Object + PrefabType。", "确定");
+                        return;
                     }
                     CreateInstance(item, p, n, terrain, idx, targetParent, rnd, ov);
                     grid.Add(p2);
@@ -287,19 +616,38 @@ namespace MrTerrainPainter.Editor.Services
                         float gspace = Mathf.Max(item.minSpacing, 0.01f) * globalFactor;
                         if (gspace > 0f) globalGrid.Add(p2);
                     }
-                    if (bs.limitPerItem && perItemLimit.ContainsKey(idx)) perItemLimit[idx] = Mathf.Max(0, perItemLimit[idx] - 1);
+                    if (bs.limitPerItem && perItemLimit.ContainsKey(idx))
+                    {
+                        perItemLimit[idx] = Mathf.Max(0, perItemLimit[idx] - 1);
+                        if (perItemLimit[idx] == 0)
+                        {
+                            totalWeight -= weightCounts[idx];
+                            weightCounts[idx] = 0;
+                        }
+                    }
                     break;
                 }
             }
+            BrushEngine.ReleaseList(candidates);
         }
 
         public static void Erase(Vector3 center, BrushSettings bs, bool eraseAll, IReadOnlyList<GameObject> onlyTypes = null)
         {
             float radius = bs.size;
-            var hits = Physics.OverlapSphere(center, radius);
-            for (int i = 0; i < hits.Length; i++)
+            var candidates = new System.Collections.Generic.List<GameObject>();
+            var terrain = Terrain.activeTerrains.Length > 0 ? Terrain.activeTerrains[0] : null;
+            if (terrain != null)
             {
-                var go = hits[i].gameObject;
+                VegetationPool.QueryInRadius(terrain, center, radius, candidates);
+            }
+            if (candidates.Count == 0)
+            {
+                var hits = Physics.OverlapSphere(center, radius);
+                for (int i = 0; i < hits.Length; i++) candidates.Add(hits[i].gameObject);
+            }
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                var go = candidates[i];
                 var vi = go.GetComponent<VegetationInstance>();
                 if (vi == null) continue;
                 if (!eraseAll && onlyTypes != null && onlyTypes.Count > 0)
@@ -327,7 +675,8 @@ namespace MrTerrainPainter.Editor.Services
             if (defaultContainer != null) roots.Add(defaultContainer);
 
             // 聚合所有可用配置实例，避免拿到空数组实例导致擦除失败
-            var configs = Resources.FindObjectsOfTypeAll<MrTerrainPainter.Editor.Config.MrTerrainPainterConfig>();
+            var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
+            var configs = cfg != null ? new MrTerrainPainter.Editor.Config.MrTerrainPainterConfig[] { cfg } : MrTerrainPainter.Editor.Config.ConfigTools.GetAllConfigsCached();
             if (configs != null && configs.Length > 0)
             {
                 var set = new HashSet<Transform>();
@@ -487,6 +836,7 @@ namespace MrTerrainPainter.Editor.Services
             if (vi == null) vi = go.AddComponent<VegetationInstance>();
             vi.sourceTerrain = terrain;
             vi.profileItemIndex = itemIndex;
+            VegetationPool.IndexRegister(terrain, go);
         }
     }
 }

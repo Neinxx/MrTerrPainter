@@ -1,12 +1,29 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../../UIElementsSchema/UIElements.xsd" editor-extension-mode="True">
-    <ui:VisualElement style="padding-left:4px; padding-right:4px;">
-        <ui:Label text="Brush" style="font-size:14px; -unity-font-style:bold; color:#E28348" />
-        <ui:SliderInt label="Size" name="Size" high-value="100" />
-        <ui:SliderInt label="Strength" name="Strength" high-value="100" />
-        <ui:SliderInt label="Density" name="Density" high-value="100" />
-        <ui:SliderInt label="Hardness" name="Hardness" high-value="100" />
-        <uie:EnumField label="Distribution" name="Distribution" />
-        <ui:Toggle label="Mix Extra Profiles" name="MixExtraProfiles" />
-        <ui:Button text="Open Painting Settings" name="OpenSettings" />
-    </ui:VisualElement>
+    <Style src="project://database/Assets/MrTerrPainterV1/Editor/MrTerrainPainterStyles.uss?fileID=7433441132597879392&amp;guid=1094a64c2bc4b654486d9ae7dcc8907c&amp;type=3#MrTerrainPainterStyles" />
+    <ui:GroupBox style="max-width: 189px; min-width: 189px; width: 189px;">
+        <ui:VisualElement name="Other" style="flex-grow: 1; display: flex;">
+            <ui:VisualElement style="flex-direction: row; justify-content: space-between;">
+                <ui:Label text="Brush" style="font-size: 14px; -unity-font-style: bold; color: rgb(226, 131, 72); -unity-text-align: middle-left; min-height: 20px; max-height: 20px;" />
+                <ui:Button text="P" display-tooltip-when-elided="true" name="Painting" class="mt-buttonG" style="min-height: 20px; min-width: 20px; max-width: 20px; max-height: 20px; -unity-font-style: bold-and-italic;" />
+            </ui:VisualElement>
+            <ui:DropdownField name="Profiles" tooltip="当前使用的植被配方(Profile)" />
+            <ui:SliderInt name="Size" high-value="100" show-input-field="false" inverted="false" tooltip="笔刷大小" />
+            <ui:SliderInt name="Strength" high-value="100" tooltip="绘制强度" />
+            <ui:SliderInt name="Density" high-value="100" tooltip="绘制密度" />
+            <ui:SliderInt name="Hardness" high-value="100" tooltip="笔刷硬度" />
+            <ui:SliderInt name="StrokeSpacing" high-value="100" tooltip="笔触间距(相对大小)" />
+            <ui:VisualElement style="flex-direction: row; justify-content: space-between;">
+                <ui:Toggle name="UseAbsoluteStrokeSpacing" tooltip="使用绝对间距(世界单位)" />
+                <ui:SliderInt name="StrokeSpacingAbs" high-value="200" tooltip="绝对间距(世界单位)" />
+            </ui:VisualElement>
+            <uie:EnumField name="Distribution" tooltip="分布类型" />
+            <ui:VisualElement style="flex-direction: row;">
+                <ui:Toggle name="MixExtraProfiles" tooltip="混合额外的Profile进行绘制" />
+                <ui:Toggle name="NormalDirection" tooltip="在预览中显示法线方向指示" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement name="buttonNode" style="flex-grow: 0; display: flex; flex-direction: column-reverse; justify-content: flex-end;">
+            <ui:Button text="Mapping?" display-tooltip-when-elided="true" name="PlaseMapping" class="mt-button" style="flex-shrink: 1; flex-grow: 0; -unity-text-align: middle-center;" />
+        </ui:VisualElement>
+    </ui:GroupBox>
 </ui:UXML>
