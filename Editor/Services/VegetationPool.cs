@@ -18,6 +18,16 @@ public static class VegetationPool
         var lp = worldPos - t.transform.position;
         return (Mathf.FloorToInt(lp.x / SpatialCellSize), Mathf.FloorToInt(lp.z / SpatialCellSize));
     }
+    public static void ClearTerrainIndex(Terrain terrain)
+    {
+        if (terrain == null) return;
+        var tid = terrain.GetInstanceID();
+        spatial.Remove(tid);
+    }
+    public static void ClearAllIndexes()
+    {
+        spatial.Clear();
+    }
     public static void IndexRegister(Terrain terrain, GameObject go)
     {
         if (terrain == null || go == null) return;
@@ -53,8 +63,8 @@ public static class VegetationPool
                 var go = list[i];
                 if (go == null) continue;
                 var p = go.transform.position;
-                float d = Vector2.Distance(new Vector2(p.x, p.z), new Vector2(center.x, center.z));
-                if (d <= radius) outList.Add(go);
+                var v = new Vector3(p.x - center.x, 0f, p.z - center.z);
+                if (v.sqrMagnitude <= radius * radius) outList.Add(go);
             }
         }
     }
@@ -62,8 +72,9 @@ public static class VegetationPool
     public static GameObject Get(Terrain terrain, VegetationItem item, int itemIndex, Transform targetParent, string undoLabel)
     {
         if (terrain == null || item == null || item.prefab == null) return null; // 提前返回
-        var bin = GetOrCreateBin(terrain, itemIndex, item.prefab.name);
-        var key = BuildKey(terrain, itemIndex, item.prefab.name);
+        var nameHint = item.prefab.name;
+        var bin = GetOrCreateBin(terrain, itemIndex, nameHint);
+        var key = BuildKey(terrain, itemIndex, nameHint);
         if (!pools.TryGetValue(key, out var pool))
         {
             pool = new ObjectPool<GameObject>(
@@ -101,6 +112,7 @@ public static class VegetationPool
         var vi2 = reused.GetComponent<VegetationInstance>() ?? reused.AddComponent<VegetationInstance>();
         vi2.sourceTerrain = terrain;
         vi2.profileItemIndex = itemIndex;
+        vi2.sourcePrefabName = item.prefab.name;
         return reused;
     }
 
@@ -111,7 +123,7 @@ public static class VegetationPool
         IndexUnregister(terrain, go);
         var vi = go.GetComponent<VegetationInstance>();
         var itemIndex = vi != null ? vi.profileItemIndex : -1;
-        var nameHint = go.name;
+        var nameHint = vi != null && !string.IsNullOrEmpty(vi.sourcePrefabName) ? vi.sourcePrefabName : go.name;
         var key = BuildKey(terrain, itemIndex, nameHint);
         if (!pools.TryGetValue(key, out var pool))
         {
@@ -167,14 +179,11 @@ public static class VegetationPool
         // 1) 默认容器（旧逻辑支持）：Terrain 下的 Vegetation_{terrain.name}
         var defaultContainer = terrain.transform.Find($"Vegetation_{terrain.name}");
 
-        // 2) 设置映射的父节点：按设置页中的 ObjectList 聚合（不删除这些容器）
         var mappedParents = new List<Transform>();
-        var single = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
-        var all = single != null ? new MrTerrainPainter.Editor.Config.MrTerrainPainterConfig[] { single } : ConfigTools.GetAllConfigsCached();
-        foreach (var cfg in all)
+        var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
+        var entries = cfg != null ? cfg.mappingEntries : null;
+        if (entries != null)
         {
-            var entries = cfg != null ? cfg.mappingEntries : null;
-            if (entries == null || entries.Count == 0) continue;
             for (int i = 0; i < entries.Count; i++)
             {
                 var tf = entries[i]?.node;

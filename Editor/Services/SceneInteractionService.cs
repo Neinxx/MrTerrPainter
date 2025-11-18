@@ -13,7 +13,7 @@ namespace MrTerrainPainter.Editor.Services
         private readonly PaintingController paintingController;
         private readonly System.Func<VegetationProfile> getCurrentProfile;
         private readonly System.Func<List<Terrain>> getSelectedTerrains;
-        private readonly BrushSettings brush;
+        private BrushSettings brush;
         private readonly IFilterStrategy filterStrategy;
         private readonly IPlacementOverrideStrategy placementStrategy;
         private readonly System.Func<bool> isGenerateMode;
@@ -53,12 +53,22 @@ namespace MrTerrainPainter.Editor.Services
             this.nearestTerrain = nearestTerrain;
             this.getRandom = getRandom;
             this.allowWhenBrushToolActive = allowWhenBrushToolActive;
+            MrTerrainPainter.Editor.Tools.MTPBrushContext.BrushReplaced += OnBrushReplaced;
+        }
+
+        private void OnBrushReplaced()
+        {
+            brush = MrTerrainPainter.Editor.Tools.MTPBrushContext.Brush;
         }
 
         public void OnSceneGUI()
         {
-            if (!allowWhenBrushToolActive && UnityEditor.EditorTools.ToolManager.activeToolType == typeof(Tools.MTPBrushTool)) return;
             var e = Event.current;
+            if (e != null && (e.type == EventType.MouseLeaveWindow))
+            {
+                _hasLastPaintPos = false;
+            }
+            if (!allowWhenBrushToolActive && UnityEditor.EditorTools.ToolManager.activeToolType == typeof(Tools.MTPBrushTool)) return;
             HandleLayoutControl(e);
             var ray = HandleUtility.GUIPointToWorldRay(e.mousePosition);
             Terrain hitTerrain = null;
@@ -107,7 +117,11 @@ namespace MrTerrainPainter.Editor.Services
         // 移除Generate模式的处理逻辑，确保只有绘画模式生效
         private void HandlePaintMouse(Event e, Terrain hitTerrain, Vector3 hitPos)
         {
-            var terrain = hitTerrain != null ? hitTerrain : (terrainController != null ? nearestTerrain(hitPos) : null);
+            Terrain terrain = hitTerrain;
+            if (terrain == null && terrainController != null)
+            {
+                if (terrainController.TryFindNearestTerrain(hitPos, out var nearest)) terrain = nearest;
+            }
             if (terrain == null) return;
 
             // 严格判断：只有右键（button == 1）且无修饰键时擦除
@@ -131,11 +145,7 @@ namespace MrTerrainPainter.Editor.Services
                     return;
                 }
                 float threshold = Mathf.Max(0.01f, spacing);
-                var lp = _lastPaintPos;
-                float dx = hitPos.x - lp.x;
-                float dz = hitPos.z - lp.z;
-                float dist = Mathf.Sqrt(dx * dx + dz * dz);
-                if (dist >= threshold)
+                if ((hitPos - _lastPaintPos).sqrMagnitude >= threshold * threshold)
                 {
                     VegetationPainterOnTerrain(terrain, hitPos);
                     _lastPaintPos = hitPos;

@@ -50,3 +50,7 @@ MonoBehaviour:
     type: 0
   - node: {fileID: 0}
     type: 3
+  missingMappingLogThrottleSeconds: 3
+  autoOpenSettingsOnMissingMapping: 0
+  missingMappingLogTemplate: "\u672A\u627E\u5230\u7236\u8282\u70B9\u6620\u5C04\u7684\u7C7B\u578B:
+    {0}"

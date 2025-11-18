@@ -34,10 +34,10 @@ namespace MrTerrainPainter.Editor.Controllers
 
         public void AddPrefabAsNewItem(VegetationProfile profile, GameObject prefab)
         {
-            if (profile == null || prefab == null) return; // 提前返回
+            if (profile == null) return; // 提前返回
             var item = new VegetationItem
             {
-                // 初始不赋 prefab，通过 AssignPrefabToItem 统一处理赋值与刷新
+                prefab = null,
                 weight = 1f,
                 uniformScaleRange = new Vector2(1f, 1f),
                 yRotationRange = new Vector2(0f, 30f),
@@ -55,7 +55,15 @@ namespace MrTerrainPainter.Editor.Controllers
             }
             var newIndex = Mathf.Max(0, after - 1);
             setSelectedItemIndex(newIndex);
-            AssignPrefabToItem(profile, newIndex, prefab);
+            if (prefab != null)
+            {
+                AssignPrefabToItem(profile, newIndex, prefab);
+            }
+            else
+            {
+                EditorUtility.SetDirty(profile);
+                refreshController.RefreshAllUI();
+            }
         }
 
         public void AssignPrefabToItem(VegetationProfile profile, int index, GameObject prefab)

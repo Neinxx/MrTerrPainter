@@ -18,6 +18,7 @@ namespace MrTerrainPainter.Editor.Tools
         // 状态标记
         private bool _subscribed;
         private bool _updateQueued;
+        private double _lastUpdateTime;
 
         // UI 缓存引用 (避免频繁查询)
         private VisualElement _root;
@@ -100,6 +101,7 @@ namespace MrTerrainPainter.Editor.Tools
             EditorApplication.projectChanged += OnProjectChanged;
             Config.ConfigTools.CompletenessChanged += OnCompletenessChanged;
             MrTerrainPainterWindow.WindowStateChanged += OnWindowStateChanged;
+            MrTerrainPainter.Editor.Tools.MTPBrushContext.BrushReplaced += OnBrushReplaced;
             // 初始化时更新一次可见性
             UpdateVisibility();
         }
@@ -112,6 +114,7 @@ namespace MrTerrainPainter.Editor.Tools
             EditorApplication.projectChanged -= OnProjectChanged;
             Config.ConfigTools.CompletenessChanged -= OnCompletenessChanged;
             MrTerrainPainterWindow.WindowStateChanged -= OnWindowStateChanged;
+            MrTerrainPainter.Editor.Tools.MTPBrushContext.BrushReplaced -= OnBrushReplaced;
             _subscribed = false;
         }
 
@@ -121,11 +124,7 @@ namespace MrTerrainPainter.Editor.Tools
             {
                 _mappingBtn.clicked += () =>
                 {
-                    var win = MrTerrainPainterWindow.TryGet(out var existing) ? existing : MrTerrainPainterWindow.GetOrOpen();
-                    if (win != null)
-                    {
-                        Config.ConfigTools.GuardAndOpenSettingsOnlyIfIncomplete(win);
-                    }
+                    MrTerrainPainterSettingsWindow.Open();
                 };
             }
         }
@@ -191,7 +190,6 @@ namespace MrTerrainPainter.Editor.Tools
             {
                 // 只有当 UI 存在时才更新
                 if (_profilesDropdown != null) RefreshProfileList();
-                UpdateProfilesDropdownInteractivity();
                 RequestSceneRepaint();
             };
 
@@ -303,13 +301,11 @@ namespace MrTerrainPainter.Editor.Tools
             {
                 if (_buttonNode != null) _buttonNode.style.display = DisplayStyle.None;
                 if (_otherNode != null) _otherNode.style.display = DisplayStyle.Flex;
-                Debug.Log("MTP Brush Overlay: 配置完整，显示其他设置节点");
             }
             else
             {
                 if (_buttonNode != null) _buttonNode.style.display = DisplayStyle.Flex;
                 if (_otherNode != null) _otherNode.style.display = DisplayStyle.None;
-                Debug.Log("MTP Brush Overlay: 配置不完整，显示映射按钮节点");
             }
         }
 
@@ -422,6 +418,24 @@ namespace MrTerrainPainter.Editor.Tools
             RequestSceneRepaint();
         }
 
+        private void OnBrushReplaced()
+        {
+            var brush = MrTerrainPainter.Editor.Tools.MTPBrushContext.Brush;
+            UnsubscribeBrushChanges();
+            SubscribeBrushChanges(brush);
+            // 重建滑条绑定，确保引用最新实例
+            SetupSliders(brush);
+            SetupAdditionalSettings(brush);
+            // 刷新当前滑条显示
+            UpdateSlider("Size", 0.5f, 50f, () => brush.size);
+            UpdateSlider("Strength", 0.1f, 10f, () => brush.strength);
+            UpdateSlider("Density", 0f, 5f, () => brush.densityScale);
+            UpdateSlider("Hardness", 0f, 1f, () => brush.hardness);
+            UpdateSlider("StrokeSpacing", 0f, 1f, () => brush.strokeSpacingFactor);
+            UpdateSlider("StrokeSpacingAbs", 0f, 200f, () => brush.strokeSpacingAbsolute);
+            RequestSceneRepaint();
+        }
+
         private List<VegetationProfile> LoadProfiles()
         {
             var list = new List<VegetationProfile>();
@@ -457,6 +471,9 @@ namespace MrTerrainPainter.Editor.Tools
                 _updateQueued = false;
                 // 确保 Overlay 没有被销毁
                 if (this == null) return;
+                double now = EditorApplication.timeSinceStartup;
+                if (now - _lastUpdateTime < 0.016) return;
+                _lastUpdateTime = now;
 
                 bool isActive = ToolManager.activeToolType == typeof(MTPBrushTool);
                 bool hasTerrain = HasTerrainSelection();

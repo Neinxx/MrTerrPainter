@@ -188,6 +188,13 @@ namespace MrTerrainPainter.Editor.Services
 
     public static class BrushPainter
     {
+        private static bool s_configCompleteCached;
+        static BrushPainter()
+        {
+            var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
+            s_configCompleteCached = cfg != null && MrTerrainPainter.Editor.Config.ConfigTools.IsComplete(cfg, out _);
+            MrTerrainPainter.Editor.Config.ConfigTools.CompletenessChanged += v => { s_configCompleteCached = v; };
+        }
         private class Grid
         {
             private readonly float cellSize;
@@ -230,6 +237,12 @@ namespace MrTerrainPainter.Editor.Services
             var fill = st.fillColor;
             var ring = st.ringColor;
             var inner = st.innerColor;
+            if (!s_configCompleteCached)
+            {
+                fill = new Color(1f, 0f, 0f, 0.15f);
+                ring = new Color(1f, 0f, 0f, 0.9f);
+                inner = new Color(1f, 0.4f, 0.4f, 0.35f);
+            }
             if (bs.shape == BrushShape.Circle)
             {
                 Handles.color = fill;
@@ -275,6 +288,12 @@ namespace MrTerrainPainter.Editor.Services
             var fill = st.fillColor;
             var ring = st.ringColor;
             var inner = st.innerColor;
+            if (!s_configCompleteCached)
+            {
+                fill = new Color(1f, 0f, 0f, 0.15f);
+                ring = new Color(1f, 0f, 0f, 0.9f);
+                inner = new Color(1f, 0.4f, 0.4f, 0.35f);
+            }
             var raisedCenter = center + normal.normalized * 0.02f;
             if (bs.shape == BrushShape.Circle)
             {
@@ -328,8 +347,8 @@ namespace MrTerrainPainter.Editor.Services
                     raisedCenter + new Vector3(half.x, 0f, -half.z)
                 }, fill, ring);
             }
-            var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
-            if (cfg != null && cfg.normalDirection)
+            var cfg1 = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
+            if (cfg1 != null && cfg1.normalDirection)
             {
                 Handles.color = new Color(1f, 1f, 1f, 0.9f);
                 var tip = raisedCenter + normal.normalized * (bs.size * 0.6f);
@@ -344,7 +363,7 @@ namespace MrTerrainPainter.Editor.Services
             if (td == null) return; // 提前返回
 
             float radius = bs.size;
-            var missingTypesLogged = new HashSet<Runtime.Profiles.PrefabType>();
+            var typeToNode = VegetationGenerator.BuildTypeToNodeMapping();
 
             var items = profile.Items;
             for (int it = 0; it < items.Count; it++)
@@ -359,33 +378,22 @@ namespace MrTerrainPainter.Editor.Services
                 float jitter = Mathf.Max(bs.minSpacingJitter, 0f);
                 int seed = bs.strokeSeed != 0 ? bs.strokeSeed : profile.randomSeed;
                 var centerXZ = new Vector2(center.x, center.z);
-                List<Vector2> candidates = null;
-                switch (bs.distribution)
-                {
-                    case DistributionType.PoissonDisk:
-                        candidates = bs.useBurstPoisson
-                            ? BrushEngine.SamplePoissonBurst(centerXZ, radius, bs.shape, Mathf.Min(count, bs.maxPoints), spacing, jitter, seed + it)
-                            : BrushEngine.SamplePoisson(centerXZ, radius, bs.shape, Mathf.Min(count, bs.maxPoints), spacing, jitter, seed + it);
-                        break;
-                    case DistributionType.Cluster:
-                        candidates = BrushEngine.SampleCluster(centerXZ, radius, bs.shape, bs.cluster, spacing, seed + it);
-                        break;
-                    case DistributionType.JitteredGrid:
-                        candidates = BrushEngine.SampleJittered(centerXZ, radius, bs.shape, spacing, jitter, rnd);
-                        break;
-                    case DistributionType.Natural:
-                        candidates = BrushEngine.SampleNatural(centerXZ, radius, bs.shape, Mathf.Min(count, bs.maxPoints), spacing, seed + it);
-                        break;
-                    case DistributionType.AdaptivePoisson:
-                        candidates = BrushEngine.SampleAdaptivePoisson(centerXZ, radius, bs.shape, Mathf.Min(count, bs.maxPoints), Mathf.Max(spacing * bs.adaptiveMinFactor, 0.01f), spacing * bs.adaptiveMaxFactor, jitter, Mathf.Max(0.0001f, bs.adaptiveNoiseWeight), seed + it);
-                        break;
-                    case DistributionType.Halton:
-                        candidates = BrushEngine.SampleHaltonUniform(centerXZ, radius, bs.shape, Mathf.Min(count, bs.maxPoints), seed + it);
-                        break;
-                    default:
-                        candidates = BrushEngine.SampleUniform(centerXZ, radius, bs.shape, Mathf.Min(count, bs.maxPoints), rnd);
-                        break;
-                }
+                int desired = VegetationGenerator.ComputeDesiredCandidateCount(bs.shape, radius, spacing, Mathf.Min(count, bs.maxPoints), bs.maxPoints);
+                List<Vector2> candidates = VegetationGenerator.BuildCandidates(
+                    centerXZ,
+                    radius,
+                    bs.shape,
+                    desired,
+                    spacing,
+                    jitter,
+                    seed + it,
+                    bs.distribution,
+                    bs.useBurstPoisson,
+                    bs.cluster,
+                    bs.adaptiveMinFactor,
+                    bs.adaptiveMaxFactor,
+                    bs.adaptiveNoiseWeight,
+                    rnd);
                 var grid = new Grid(spacing);
                 int placed = 0;
                 for (int ci = 0; ci < candidates.Count && placed < count; ci++)
@@ -396,12 +404,13 @@ namespace MrTerrainPainter.Editor.Services
                     if (!TerrainUtils.TryGetHeightAndNormal(terrain, p, out float h, out Vector3 n)) continue;
                     p.y = h;
                     float slope = TerrainUtils.ComputeSlope(n);
-                    float d = Vector2.Distance(new Vector2(p.x, p.z), new Vector2(center.x, center.z));
-                    float t = Mathf.Clamp01(d / radius);
+                    float dx0 = p.x - center.x;
+                    float dz0 = p.z - center.z;
+                    float t = Mathf.Clamp01(Mathf.Sqrt(dx0 * dx0 + dz0 * dz0) / radius);
                     float edge = 1f - t;
                     float acceptance = bs.falloffCurve != null ? bs.falloffCurve.Evaluate(1f - t) : Mathf.Lerp(1f, edge, Mathf.Clamp01(bs.hardness));
                     if (rnd.NextDouble() > acceptance) continue;
-                    if (!MatchTerrain(item, h - terrain.transform.position.y, slope, ov)) continue;
+                    if (!VegetationGenerator.MatchTerrain(item, h - terrain.transform.position.y, slope, ov)) continue;
                     var p2 = new Vector2(p.x - terrain.transform.position.x, p.z - terrain.transform.position.z);
                     if (bs.globalSpacingFactor > 0f)
                     {
@@ -410,13 +419,8 @@ namespace MrTerrainPainter.Editor.Services
                     }
                     if (grid.HasNearby(p2, spacing)) continue;
                     grid.Add(p2);
-                    var targetParent = VegetationGenerator.ResolveTargetParent(terrain, item);
-                    if (targetParent == null)
-                    {
-                        if (!missingTypesLogged.Contains(item.prefabType)) missingTypesLogged.Add(item.prefabType);
-                        EditorUtility.DisplayDialog("缺少映射", "未找到类型 " + item.prefabType + " 的父节点映射，请在设置窗口绑定对应的 Object + PrefabType。", "确定");
-                        return;
-                    }
+                    var targetParent = typeToNode.TryGetValue(item.prefabType, out var tf) ? tf : null;
+                    if (targetParent == null) { VegetationGenerator.LogMissingMappingOnce(item.prefabType); continue; }
                     CreateInstance(item, p, n, terrain, it, targetParent, rnd, ov);
                     placed++;
                 }
@@ -430,6 +434,7 @@ namespace MrTerrainPainter.Editor.Services
             var td = terrain.terrainData;
             if (td == null) return;
             var allItems = new List<VegetationItem>();
+            var typeToNode = VegetationGenerator.BuildTypeToNodeMapping();
             for (int pi = 0; pi < profiles.Count; pi++)
             {
                 var p = profiles[pi];
@@ -455,74 +460,33 @@ namespace MrTerrainPainter.Editor.Services
                 perItemLimit[i] = c;
                 totalDesired += c;
             }
-            int candidateCount = Mathf.Min(bs.maxPoints, Mathf.Max(1, totalDesired));
-            List<Vector2> candidates;
-            switch (bs.distribution)
+            float minSpacingForAll = 0.5f;
+            if (allItems.Count > 0)
             {
-                case DistributionType.PoissonDisk:
-                    {
-                        float minSpacing = 0.5f;
-                        if (allItems.Count > 0)
-                        {
-                            float best = bs.size;
-                            for (int i = 0; i < allItems.Count; i++)
-                            {
-                                var s = Mathf.Max(allItems[i].minSpacing, 0.01f);
-                                if (s < best) best = s;
-                            }
-                            minSpacing = best;
-                        }
-                        candidates = bs.useBurstPoisson
-                            ? BrushEngine.SamplePoissonBurst(centerXZ, radius, bs.shape, candidateCount, minSpacing, bs.minSpacingJitter, seed)
-                            : BrushEngine.SamplePoisson(centerXZ, radius, bs.shape, candidateCount, minSpacing, bs.minSpacingJitter, seed);
-                        break;
-                    }
-                case DistributionType.Cluster:
-                    candidates = BrushEngine.SampleCluster(centerXZ, radius, bs.shape, bs.cluster, 0.01f, seed);
-                    break;
-                case DistributionType.JitteredGrid:
-                    candidates = BrushEngine.SampleJittered(centerXZ, radius, bs.shape, 1f, bs.minSpacingJitter, rnd);
-                    break;
-                case DistributionType.Natural:
-                    {
-                        float minSpacing = 0.5f;
-                        if (allItems.Count > 0)
-                        {
-                            float best = bs.size;
-                            for (int i = 0; i < allItems.Count; i++)
-                            {
-                                var s = Mathf.Max(allItems[i].minSpacing, 0.01f);
-                                if (s < best) best = s;
-                            }
-                            minSpacing = best;
-                        }
-                        candidates = BrushEngine.SampleNatural(centerXZ, radius, bs.shape, candidateCount, minSpacing, seed);
-                        break;
-                    }
-                case DistributionType.AdaptivePoisson:
-                    {
-                        float minSpacing = 0.5f;
-                        if (allItems.Count > 0)
-                        {
-                            float best = bs.size;
-                            for (int i = 0; i < allItems.Count; i++)
-                            {
-                                var s = Mathf.Max(allItems[i].minSpacing, 0.01f);
-                                if (s < best) best = s;
-                            }
-                            minSpacing = best;
-                        }
-                        candidates = BrushEngine.SampleAdaptivePoisson(centerXZ, radius, bs.shape, candidateCount, Mathf.Max(minSpacing * bs.adaptiveMinFactor, 0.01f), minSpacing * bs.adaptiveMaxFactor, bs.minSpacingJitter, Mathf.Max(0.0001f, bs.adaptiveNoiseWeight), seed);
-                        break;
-                    }
-                case DistributionType.Halton:
-                    candidates = BrushEngine.SampleHaltonUniform(centerXZ, radius, bs.shape, candidateCount, seed);
-                    break;
-                default:
-                    candidates = BrushEngine.SampleUniform(centerXZ, radius, bs.shape, candidateCount, rnd);
-                    break;
+                float best = bs.size;
+                for (int i = 0; i < allItems.Count; i++)
+                {
+                    var s = Mathf.Max(allItems[i].minSpacing, 0.01f);
+                    if (s < best) best = s;
+                }
+                minSpacingForAll = best;
             }
-            var missingTypesLogged = new HashSet<Runtime.Profiles.PrefabType>();
+            int candidateCount = VegetationGenerator.ComputeDesiredCandidateCount(bs.shape, radius, minSpacingForAll, Mathf.Max(1, totalDesired), bs.maxPoints);
+            List<Vector2> candidates = VegetationGenerator.BuildCandidates(
+                centerXZ,
+                radius,
+                bs.shape,
+                candidateCount,
+                minSpacingForAll,
+                bs.minSpacingJitter,
+                seed,
+                bs.distribution,
+                bs.useBurstPoisson,
+                bs.cluster,
+                bs.adaptiveMinFactor,
+                bs.adaptiveMaxFactor,
+                bs.adaptiveNoiseWeight,
+                rnd);
             var itemGrids = new Dictionary<int, Grid>();
             Grid globalGrid = null;
             float globalFactor = Mathf.Max(0f, bs.globalSpacingFactor);
@@ -571,8 +535,9 @@ namespace MrTerrainPainter.Editor.Services
                 if (!TerrainUtils.TryGetHeightAndNormal(terrain, p, out float h, out Vector3 n)) continue;
                 p.y = h;
                 float slope = TerrainUtils.ComputeSlope(n);
-                float d = Vector2.Distance(new Vector2(p.x, p.z), new Vector2(center.x, center.z));
-                float t = Mathf.Clamp01(d / radius);
+                float dx0 = p.x - center.x;
+                float dz0 = p.z - center.z;
+                float t = Mathf.Clamp01(Mathf.Sqrt(dx0 * dx0 + dz0 * dz0) / radius);
                 float acceptance = bs.falloffCurve != null ? bs.falloffCurve.Evaluate(1f - t) : 1f;
                 if (rnd.NextDouble() > acceptance) continue;
                 int tries = 3;
@@ -601,14 +566,9 @@ namespace MrTerrainPainter.Editor.Services
                         itemGrids[idx] = grid;
                     }
                     if (grid.HasNearby(p2, Mathf.Max(item.minSpacing, 0.01f))) { continue; }
-                    if (!MatchTerrain(item, h - terrain.transform.position.y, slope, ov)) { continue; }
-                    var targetParent = VegetationGenerator.ResolveTargetParent(terrain, item);
-                    if (targetParent == null)
-                    {
-                        if (!missingTypesLogged.Contains(item.prefabType)) missingTypesLogged.Add(item.prefabType);
-                        EditorUtility.DisplayDialog("缺少映射", "未找到类型 " + item.prefabType + " 的父节点映射，请在设置窗口绑定对应的 Object + PrefabType。", "确定");
-                        return;
-                    }
+                    if (!VegetationGenerator.MatchTerrain(item, h - terrain.transform.position.y, slope, ov)) { continue; }
+                    var targetParent = typeToNode.TryGetValue(item.prefabType, out var tf) ? tf : null;
+                    if (targetParent == null) { VegetationGenerator.LogMissingMappingOnce(item.prefabType); continue; }
                     CreateInstance(item, p, n, terrain, idx, targetParent, rnd, ov);
                     grid.Add(p2);
                     if (globalGrid != null && globalFactor > 0f)
@@ -735,8 +695,9 @@ namespace MrTerrainPainter.Editor.Services
                 if (vi != null)
                 {
                     var p = t.position;
-                    float d = Vector2.Distance(new Vector2(p.x, p.z), new Vector2(center.x, center.z));
-                    if (d <= radius)
+                    float dx = p.x - center.x;
+                    float dz = p.z - center.z;
+                    if (dx * dx + dz * dz <= radius * radius)
                     {
                         if (!eraseAll && onlyTypes != null && onlyTypes.Count > 0)
                         {
@@ -745,16 +706,17 @@ namespace MrTerrainPainter.Editor.Services
                             {
                                 if (go.name.StartsWith(onlyTypes[i].name)) { match = true; break; }
                             }
-                            if (!match)
+                            if (match)
                             {
-                                // 不匹配类型则跳过
-                                goto SkipAdd;
+                                outList.Add(go);
                             }
                         }
-                        outList.Add(go);
+                        else
+                        {
+                            outList.Add(go);
+                        }
                     }
                 }
-            SkipAdd:
                 for (int i = 0; i < t.childCount; i++)
                 {
                     stack.Push(t.GetChild(i));
@@ -762,52 +724,9 @@ namespace MrTerrainPainter.Editor.Services
             }
         }
 
-        private static Vector3 RandomPointInBrush(Vector3 center, float size, BrushShape shape, System.Random rnd)
-        {
-            if (shape == BrushShape.Circle)
-            {
-                float r = Mathf.Sqrt((float)rnd.NextDouble()) * size; // 均匀分布
-                float a = (float)rnd.NextDouble() * Mathf.PI * 2f;
-                return center + new Vector3(Mathf.Cos(a) * r, 0f, Mathf.Sin(a) * r);
-            }
-            float x = (float)rnd.NextDouble() * 2f - 1f;
-            float z = (float)rnd.NextDouble() * 2f - 1f;
-            return center + new Vector3(x * size, 0f, z * size);
-        }
 
-        private static List<VegetationItem> BuildWeightedList(IReadOnlyList<VegetationItem> items)
-        {
-            var list = new List<VegetationItem>();
-            if (items == null || items.Count == 0) return list; // 提前返回
-            foreach (var it in items)
-            {
-                if (it == null || !it.IsValid()) continue;
-                int count = Mathf.Clamp(Mathf.RoundToInt(it.weight * 10f), 1, 100);
-                for (int i = 0; i < count; i++) list.Add(it);
-            }
-            return list;
-        }
 
-        private static bool MatchTerrain(VegetationItem item, float heightLocal, float slope, VegetationGenerator.PlacementOverrides? ov)
-        {
-            if (item == null) return false;
-            var hr = ov.HasValue ? ov.Value.heightRange : item.heightRange;
-            var sr = ov.HasValue ? ov.Value.slopeRange : item.slopeRange;
-            if (heightLocal < hr.x || heightLocal > hr.y) return false;
-            if (slope < sr.x || slope > sr.y) return false;
-            return true;
-        }
 
-        private static Transform GetOrCreateContainer(Terrain terrain)
-        {
-            var name = $"Vegetation_{terrain.name}";
-            var t = terrain.transform.Find(name);
-            if (t != null) return t;
-            var go = new GameObject(name);
-            go.transform.SetParent(terrain.transform, false);
-            go.transform.localPosition = Vector3.zero;
-            return go.transform;
-        }
 
         private static float SampleRange(Vector2 range, System.Random rnd)
         {
@@ -827,7 +746,9 @@ namespace MrTerrainPainter.Editor.Services
             // 强制使用条目级Y旋转范围
             float yRot = item.SampleYRotation(rnd);
             var rot = Quaternion.Euler(0f, yRot, 0f);
-            if (item.alignToTerrainNormal)
+            var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
+            bool useNormal = cfg != null ? (cfg.normalDirection || item.alignToTerrainNormal) : item.alignToTerrainNormal;
+            if (useNormal)
             {
                 rot = Quaternion.LookRotation(Vector3.Cross(Vector3.right, normal), normal) * Quaternion.Euler(0f, yRot, 0f);
             }
@@ -836,6 +757,7 @@ namespace MrTerrainPainter.Editor.Services
             if (vi == null) vi = go.AddComponent<VegetationInstance>();
             vi.sourceTerrain = terrain;
             vi.profileItemIndex = itemIndex;
+            vi.sourcePrefabName = item.prefab.name;
             VegetationPool.IndexRegister(terrain, go);
         }
     }

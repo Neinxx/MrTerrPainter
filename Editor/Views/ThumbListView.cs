@@ -183,6 +183,7 @@ namespace MrTerrainPainter.Editor.Views
                 if (e.button != 0) return;
 
                 // 1. 设置当前 Profile
+                if (profile == null) return;
                 cb.SetCurrentProfile?.Invoke(profile);
 
                 // 2. 处理选择逻辑
@@ -201,6 +202,7 @@ namespace MrTerrainPainter.Editor.Views
             {
                 if (e.button != 1) return; // 检查是否为右键
 
+                if (profile == null) return;
                 // 确保当前项被选中，如果未选中，则先选中它
                 if (!(cb.IsIndexSelected?.Invoke(index) ?? false))
                 {

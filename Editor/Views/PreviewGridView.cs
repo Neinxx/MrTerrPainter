@@ -25,6 +25,8 @@ namespace MrTerrainPainter.Editor.Views
         public ListView ListView { get; private set; }
         private int pageIndex;
         private int pageSize = 30;
+        private int lastItemsCount;
+        private int lastPageIndex;
 
         public PreviewGridView(
             VisualElement container,
@@ -88,14 +90,17 @@ namespace MrTerrainPainter.Editor.Views
                         {
                             tex = AssetPreview.GetAssetPreview(it.prefab) ?? AssetPreview.GetMiniThumbnail(it.prefab);
                             previewTexCache[id] = tex;
-                            if (tex == null) refreshPreviewListUI?.Invoke();
+                            if (tex == null) TryUpdatePreview(img, it);
                         }
                     }
                     img.image = tex;
                     elem.userData = i;
                     var sel = i == (getSelectedIndex != null ? getSelectedIndex() : -1);
                     if (sel) elem.AddToClassList("preview-item--selected"); else elem.RemoveFromClassList("preview-item--selected");
-                    elem.RegisterCallback<PointerDownEvent>(evt =>
+                    // 清理旧的事件，避免重复触发（ListView复用条目）
+                    var oldCb = img.userData as EventCallback<PointerDownEvent>;
+                    if (oldCb != null) img.UnregisterCallback(oldCb);
+                    EventCallback<PointerDownEvent> newCb = evt =>
                     {
                         if (evt.button == 0)
                         {
@@ -132,7 +137,9 @@ namespace MrTerrainPainter.Editor.Views
                             menu.ShowAsContext();
                             evt.StopPropagation();
                         }
-                    });
+                    };
+                    img.userData = newCb;
+                    img.RegisterCallback(newCb);
                 };
                 ListView = lv;
                 container.Clear();
@@ -142,10 +149,33 @@ namespace MrTerrainPainter.Editor.Views
             else
             {
                 ListView.itemsSource = items;
-                ListView.Rebuild();
+                if (lastItemsCount != items.Count || lastPageIndex != pageIndex)
+                {
+                    ListView.Rebuild();
+                }
+                // 轻量刷新绑定项，确保替换/赋值后图像与标签更新
+                ListView.RefreshItems();
                 UpdatePagerLabel(pageIndex, pageCount);
             }
+            lastItemsCount = items.Count;
+            lastPageIndex = pageIndex;
             MrTerrainPainter.Editor.Utils.UIThrottle.RunOnPanel(ListView, UpdateSelectionVisuals);
+        }
+
+        private void TryUpdatePreview(Image img, VegetationItem it)
+        {
+            if (img == null || it == null || it.prefab == null) return;
+            var pref = it.prefab;
+            EditorApplication.delayCall += () =>
+            {
+                var tex2 = AssetPreview.GetAssetPreview(pref) ?? AssetPreview.GetMiniThumbnail(pref);
+                if (img != null) img.image = tex2;
+                MrTerrainPainter.Editor.Utils.UIThrottle.RunOnPanel(ListView, () =>
+                {
+                    ListView.RefreshItems();
+                    UpdateSelectionVisuals();
+                });
+            };
         }
 
         private void EnsurePager(int index, int count)
@@ -177,13 +207,15 @@ namespace MrTerrainPainter.Editor.Views
         public void UpdateSelectionVisuals()
         {
             if (ListView == null) return;
-            var children = ListView.contentContainer.Children().ToList();
-            for (int ci = 0; ci < children.Count; ci++)
+            var cc = ListView.contentContainer;
+            int count = cc.childCount;
+            var selIdx = getSelectedIndex != null ? getSelectedIndex() : -1;
+            for (int ci = 0; ci < count; ci++)
             {
-                var ve = children[ci];
+                var ve = cc.ElementAt(ci);
                 var idx = ve.userData is int n ? n : -1;
                 if (idx < 0) continue;
-                if (idx == (getSelectedIndex != null ? getSelectedIndex() : -1)) ve.AddToClassList("preview-item--selected"); else ve.RemoveFromClassList("preview-item--selected");
+                if (idx == selIdx) ve.AddToClassList("preview-item--selected"); else ve.RemoveFromClassList("preview-item--selected");
             }
         }
     }

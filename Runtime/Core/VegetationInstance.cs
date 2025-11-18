@@ -13,5 +13,7 @@ namespace MrTerrainPainter.Runtime.Core
 
         [Tooltip("实例唯一标识（可选）")]
         public string instanceId;
+
+        public string sourcePrefabName;
     }
 }

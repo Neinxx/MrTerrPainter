@@ -78,13 +78,13 @@ namespace MrTerrainPainter.Editor
             var btnScan = startRoot.Q<Button>("ScanTerrains");
             if (btnScan != null)
             {
-                btnScan.clicked += () =>
+                btnScan.SetClickHandler(() =>
                 {
                     terrainController?.ScanSceneTerrains(terrainListUIData, scannedTerrainNames);
                     OpenPaintingSettings();
                     RefreshTerrainListUI();
                     MrTerrainPainter.Editor.Tools.MTPBrushContext.SetSelectedTerrains(selectedTerrains);
-                };
+                });
             }
         }
 
@@ -138,7 +138,7 @@ namespace MrTerrainPainter.Editor
         private void BindClick(string buttonName, Action action)
         {
             var btn = startRoot.Q<Button>(buttonName);
-            if (btn != null) btn.clicked += action;
+            if (btn != null) btn.SetClickHandler(action);
         }
 
         /// <summary>

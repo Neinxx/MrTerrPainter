@@ -346,7 +346,7 @@ namespace MrTerrainPainter.Editor
             // 生成额外Profile的植被
             GenerateExtraProfilesVegetation(filter, placementOverrides);
 
-            MarkSceneDirty();
+            MrTerrainPainter.Editor.Utils.EditorSceneUtils.MarkSceneDirty();
         }
 
         /// <summary>
@@ -442,7 +442,7 @@ namespace MrTerrainPainter.Editor
                 VegetationPool.RecycleAllInstances(terrain, true, "Clear Vegetation Instances");
             }
 
-            MarkSceneDirty();
+            MrTerrainPainter.Editor.Utils.EditorSceneUtils.MarkSceneDirty();
 
             // mode = Mode.Generate;
             // if (controlRoot != null)
@@ -569,8 +569,13 @@ namespace MrTerrainPainter.Editor
         private void RefreshVegetationListUI()
         {
             if (uiVegetationList == null) return;
+            var current = uiVegetationList.itemsSource as System.Collections.IList;
             uiVegetationList.itemsSource = availableProfiles;
-            uiVegetationList.Rebuild();
+            if (current == null || current.Count != availableProfiles.Count)
+            {
+                uiVegetationList.Rebuild();
+            }
+            uiVegetationList.RefreshItems();
         }
 
         private void RefreshPreviewListUI()

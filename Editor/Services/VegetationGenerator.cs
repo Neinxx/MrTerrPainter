@@ -13,6 +13,85 @@ namespace MrTerrainPainter.Editor.Services
     public static class VegetationGenerator
     {
         public static bool UseBurstPoisson = true;
+        private static readonly System.Collections.Generic.Dictionary<Runtime.Profiles.PrefabType, double> s_missingLogTimes = new();
+        public static void LogMissingMappingOnce(Runtime.Profiles.PrefabType type, double throttleSecondsDefault = 3.0)
+        {
+            var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
+            double throttle = cfg != null ? cfg.missingMappingLogThrottleSeconds : throttleSecondsDefault;
+            double now = EditorApplication.timeSinceStartup;
+            if (s_missingLogTimes.TryGetValue(type, out var last))
+            {
+                if (now - last < throttle) return;
+            }
+            s_missingLogTimes[type] = now;
+            string tmpl = cfg != null && !string.IsNullOrEmpty(cfg.missingMappingLogTemplate) ? cfg.missingMappingLogTemplate : "未找到父节点映射的类型: {0}";
+            Debug.LogError(string.Format(tmpl, type));
+            if (cfg != null && cfg.autoOpenSettingsOnMissingMapping)
+            {
+                MrTerrainPainter.Editor.MrTerrainPainterSettingsWindow.Open();
+            }
+        }
+
+        public static int ComputeDesiredCandidateCount(BrushShape shape, float radius, float minSpacing, int requested, int maxPoints)
+        {
+            float area = shape == BrushShape.Circle ? (Mathf.PI * radius * radius) : ((radius * 2f) * (radius * 2f));
+            float spacing = Mathf.Max(minSpacing, 0.01f);
+            float capacity = area / (spacing * spacing);
+            // 经验系数：允许一定冗余以保证分布算法充分
+            int dynamicCap = Mathf.Clamp(Mathf.RoundToInt(capacity * 1.5f), 1, Mathf.Max(1, maxPoints));
+            return Mathf.Clamp(requested, 1, dynamicCap);
+        }
+        public static System.Collections.Generic.List<Vector2> BuildCandidates(
+            UnityEngine.Vector2 centerXZ,
+            float radius,
+            BrushShape shape,
+            int desired,
+            float minSpacing,
+            float jitter,
+            int seed,
+            DistributionType type,
+            bool useBurst,
+            ClusterSettings cluster,
+            float minFactor,
+            float maxFactor,
+            float noiseWeight,
+            System.Random rnd)
+        {
+            switch (type)
+            {
+                case DistributionType.PoissonDisk:
+                    return useBurst
+                        ? BrushEngine.SamplePoissonBurst(centerXZ, radius, shape, desired, minSpacing, jitter, seed)
+                        : BrushEngine.SamplePoisson(centerXZ, radius, shape, desired, minSpacing, jitter, seed);
+                case DistributionType.Cluster:
+                    return BrushEngine.SampleCluster(centerXZ, radius, shape, cluster, Mathf.Max(minSpacing, 0.01f), seed);
+                case DistributionType.JitteredGrid:
+                    return BrushEngine.SampleJittered(centerXZ, radius, shape, Mathf.Max(minSpacing, 0.01f), jitter, rnd);
+                case DistributionType.Natural:
+                    return BrushEngine.SampleNatural(centerXZ, radius, shape, desired, Mathf.Max(minSpacing, 0.01f), seed);
+                case DistributionType.AdaptivePoisson:
+                    return BrushEngine.SampleAdaptivePoisson(centerXZ, radius, shape, desired, Mathf.Max(minSpacing * Mathf.Max(0.1f, minFactor), 0.01f), minSpacing * Mathf.Max(minFactor, maxFactor), jitter, Mathf.Max(0.0001f, noiseWeight), seed);
+                case DistributionType.Halton:
+                    return BrushEngine.SampleHaltonUniform(centerXZ, radius, shape, desired, seed);
+                default:
+                    return BrushEngine.SampleUniform(centerXZ, radius, shape, desired, rnd);
+            }
+        }
+        public static System.Collections.Generic.Dictionary<Runtime.Profiles.PrefabType, Transform> BuildTypeToNodeMapping()
+        {
+            var dict = new System.Collections.Generic.Dictionary<Runtime.Profiles.PrefabType, Transform>();
+            var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
+            if (cfg != null && cfg.mappingEntries != null)
+            {
+                for (int i = 0; i < cfg.mappingEntries.Count; i++)
+                {
+                    var e = cfg.mappingEntries[i];
+                    if (e == null || e.node == null) continue;
+                    dict[e.type] = e.node;
+                }
+            }
+            return dict;
+        }
         // 生成过滤参数：仅噪声（贴图过滤已移除）
         public class NoiseSettings
         {
@@ -200,7 +279,7 @@ namespace MrTerrainPainter.Editor.Services
             float areaZ = area.HasValue ? area.Value.size.z : size.z;
 
             // 缺少映射的类型仅报错一次，避免刷屏
-            var missingTypesLogged = new HashSet<Runtime.Profiles.PrefabType>();
+            // 统一日志入口：去重与节流
             for (int it = 0; it < items.Count; it++)
             {
                 var item = items[it];
@@ -232,39 +311,27 @@ namespace MrTerrainPainter.Editor.Services
                 var dShape = filter != null ? filter.shape : BrushShape.Square;
                 var dType = filter != null ? filter.distribution : DistributionType.PoissonDisk;
                 var jitter = filter != null ? filter.minSpacingJitter : 0f;
-                int desired = Mathf.Min(count, filter != null ? Mathf.Max(1, filter.maxPoints) : 50000);
-                List<Vector2> candidates;
-                switch (dType)
-                {
-                    case DistributionType.PoissonDisk:
-                        candidates = UseBurstPoisson
-                            ? BrushEngine.SamplePoissonBurst(centerLocal, radiusLocal, dShape, desired, spacing, jitter, profile.randomSeed + it)
-                            : BrushEngine.SamplePoisson(centerLocal, radiusLocal, dShape, desired, spacing, jitter, profile.randomSeed + it);
-                        break;
-                    case DistributionType.Cluster:
-                        candidates = BrushEngine.SampleCluster(centerLocal, radiusLocal, dShape, filter != null ? filter.cluster : new ClusterSettings { clusterCount = 10, childPerCluster = 5, clusterRadius = 2f, childJitter = 0.2f }, spacing, profile.randomSeed + it);
-                        break;
-                    case DistributionType.JitteredGrid:
-                        candidates = BrushEngine.SampleJittered(centerLocal, radiusLocal, dShape, Mathf.Max(spacing, 0.01f), jitter, rnd);
-                        break;
-                    case DistributionType.Natural:
-                        candidates = BrushEngine.SampleNatural(centerLocal, radiusLocal, dShape, desired, spacing, profile.randomSeed + it);
-                        break;
-                    case DistributionType.AdaptivePoisson:
-                        {
-                            float minF = filter != null ? Mathf.Max(0.1f, filter.adaptiveMinFactor) : 0.7f;
-                            float maxF = filter != null ? Mathf.Max(minF, filter.adaptiveMaxFactor) : 1.8f;
-                            float noiseW = filter != null ? Mathf.Max(0.0001f, filter.adaptiveNoiseWeight) : 1f;
-                            candidates = BrushEngine.SampleAdaptivePoisson(centerLocal, radiusLocal, dShape, desired, Mathf.Max(spacing * minF, 0.01f), spacing * maxF, jitter, noiseW, profile.randomSeed + it);
-                        }
-                        break;
-                    case DistributionType.Halton:
-                        candidates = BrushEngine.SampleHaltonUniform(centerLocal, radiusLocal, dShape, desired, profile.randomSeed + it);
-                        break;
-                    default:
-                        candidates = BrushEngine.SampleUniform(centerLocal, radiusLocal, dShape, desired, rnd);
-                        break;
-                }
+                int maxPts = filter != null ? Mathf.Max(1, filter.maxPoints) : 50000;
+                int requested = Mathf.Min(count, maxPts);
+                int desired = ComputeDesiredCandidateCount(dShape, radiusLocal, spacing, requested, maxPts);
+                float minFlt = filter != null ? filter.adaptiveMinFactor : 0.7f;
+                float maxFlt = filter != null ? filter.adaptiveMaxFactor : 1.8f;
+                float noiseWgt = filter != null ? filter.adaptiveNoiseWeight : 1f;
+                List<Vector2> candidates = BuildCandidates(
+                    centerLocal,
+                    radiusLocal,
+                    dShape,
+                    desired,
+                    spacing,
+                    jitter,
+                    profile.randomSeed + it,
+                    dType,
+                    UseBurstPoisson,
+                    filter != null ? filter.cluster : new ClusterSettings { clusterCount = 10, childPerCluster = 5, clusterRadius = 2f, childJitter = 0.2f },
+                    minFlt,
+                    maxFlt,
+                    noiseWgt,
+                    rnd);
                 for (int s = 0; s < candidates.Count; s++)
                 {
                     var p2 = candidates[s];
@@ -303,15 +370,7 @@ namespace MrTerrainPainter.Editor.Services
                     gridForItem.Add(p2Local);
 
                     var targetParent = ResolveTargetParent(terrain, item);
-                    if (targetParent == null)
-                    {
-                        if (!missingTypesLogged.Contains(item.prefabType))
-                        {
-                            missingTypesLogged.Add(item.prefabType);
-                            Debug.LogError($"未找到类型 {item.prefabType} 的父节点映射，请在设置窗口绑定对应的 Object + PrefabType。");
-                        }
-                        continue; // 无父节点：按需报错并跳过实例创建
-                    }
+                    if (targetParent == null) { LogMissingMappingOnce(item.prefabType); continue; }
                     CreateInstance(item, sample, n, terrain, it, targetParent, rnd, ov);
                 }
                 BrushEngine.ReleaseList(candidates);
@@ -340,7 +399,7 @@ namespace MrTerrainPainter.Editor.Services
             return Mathf.Clamp01(sum / norm);
         }
 
-        private static bool MatchTerrain(VegetationItem item, float heightLocal, float slope, PlacementOverrides? ov)
+        public static bool MatchTerrain(VegetationItem item, float heightLocal, float slope, PlacementOverrides? ov)
         {
             if (item == null) return false;
             var hr = ov.HasValue ? ov.Value.heightRange : item.heightRange;
@@ -354,22 +413,9 @@ namespace MrTerrainPainter.Editor.Services
 
         public static Transform ResolveTargetParent(Terrain terrain, VegetationItem item)
         {
-            if (terrain == null || item == null) return null; // 提前返回
-            // 查找全局配置（优先选择存在映射数据的配置实例）
-            var config = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
-            if (config != null && config.mappingEntries != null && config.mappingEntries.Count > 0)
-            {
-                for (int i = config.mappingEntries.Count - 1; i >= 0; i--)
-                {
-                    var entry = config.mappingEntries[i];
-                    if (entry == null) continue;
-                    if (entry.type != item.prefabType) continue;
-                    var tf = entry.node;
-                    if (tf != null) return tf;
-                }
-            }
-            // 未找到映射：返回空以触发调用方的错误提示与跳过
-            return null;
+            if (terrain == null || item == null) return null;
+            var dict = BuildTypeToNodeMapping();
+            return dict.TryGetValue(item.prefabType, out var tf) ? tf : null;
         }
 
         private static void CreateInstance(VegetationItem item, Vector3 pos, Vector3 normal, Terrain terrain, int itemIndex, Transform parent, System.Random rnd, PlacementOverrides? ov)
@@ -399,6 +445,7 @@ namespace MrTerrainPainter.Editor.Services
             vi.sourceTerrain = terrain;
             vi.profileItemIndex = itemIndex;
             vi.instanceId = Guid.NewGuid().ToString();
+            vi.sourcePrefabName = item.prefab.name;
             VegetationPool.IndexRegister(terrain, go);
         }
     }

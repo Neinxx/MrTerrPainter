@@ -63,6 +63,11 @@ namespace MrTerrainPainter.Editor.Config
             public Runtime.Profiles.PrefabType type = Runtime.Profiles.PrefabType.Prop;
         }
         public List<MappingEntry> mappingEntries = new List<MappingEntry>();
+
+        [Header("日志与提示")]
+        public float missingMappingLogThrottleSeconds = 3f;
+        public bool autoOpenSettingsOnMissingMapping = false;
+        public string missingMappingLogTemplate = "未找到父节点映射的类型: {0}";
     }
 
 #if UNITY_EDITOR

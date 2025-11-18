@@ -83,6 +83,7 @@ namespace MrTerrainPainter.Editor
         private bool sceneRepaintQueued;
         private bool settingsOpen;
         public static event System.Action<bool, bool, bool> WindowStateChanged;
+        private double lastSceneRepaintTime;
 
         // Control 页面命名控件绑定
         private ListView uiVegetationList;
@@ -108,22 +109,19 @@ namespace MrTerrainPainter.Editor
             EditorApplication.delayCall += () => { if (win != null) win.OpenPaintingSettings(); };
         }
 
+        private static MrTerrainPainterWindow s_Current;
+
         public static bool TryGet(out MrTerrainPainterWindow window)
         {
-            window = null;
-            if (EditorWindow.HasOpenInstances<MrTerrainPainterWindow>())
-            {
-                // 仅在已打开时检索现有实例，避免隐式创建
-                window = Resources.FindObjectsOfTypeAll<MrTerrainPainterWindow>().FirstOrDefault();
-            }
+            window = s_Current;
             return window != null;
         }
 
         public static MrTerrainPainterWindow GetOrOpen()
         {
-            var win = GetWindow<MrTerrainPainterWindow>(false, "Mr Terrain Painter");
-            win.Show();
-            return win;
+            s_Current = GetWindow<MrTerrainPainterWindow>(false, "Mr Terrain Painter");
+            s_Current.Show();
+            return s_Current;
         }
 
 
@@ -159,12 +157,13 @@ namespace MrTerrainPainter.Editor
 
         private void PruneExtraProfiles()
         {
-            var extras = MrTerrainPainter.Editor.Tools.MTPBrushContext.ExtraProfiles;
-            for (int i = extras.Count - 1; i >= 0; i--)
-            {
-                var p = extras[i];
-                if (p == null) MrTerrainPainter.Editor.Tools.MTPBrushContext.RemoveExtra(p);
-            }
+            MrTerrainPainter.Editor.Tools.MTPBrushContext.PruneExtrasNulls();
+        }
+
+        public void ClearAllExtraProfiles()
+        {
+            MrTerrainPainter.Editor.Tools.MTPBrushContext.ClearExtras();
+            RefreshAllUI();
         }
 
         private void RefreshProfileUI()
@@ -188,6 +187,7 @@ namespace MrTerrainPainter.Editor
 
         private void OnEnable()
         {
+            s_Current = this;
             // 先注销，防止重复注册
             SceneView.duringSceneGui -= OnSceneGUI;
             SceneView.duringSceneGui += OnSceneGUI;
@@ -265,7 +265,7 @@ namespace MrTerrainPainter.Editor
                 placementStrategy,
                 () => mode == Mode.Generate,
                 () => mode == Mode.Paint,
-                MarkSceneDirty,
+                MrTerrainPainter.Editor.Utils.EditorSceneUtils.MarkSceneDirty,
                 pos => NearestTerrain(pos),
                 () => { EnsureRandom(); return rnd; },
                 false
@@ -290,6 +290,8 @@ namespace MrTerrainPainter.Editor
                 profileChangedHandler = null;
             }
             WindowStateChanged?.Invoke(false, false, false);
+            if (s_Current == this) s_Current = null;
+            VegetationPool.ClearAllIndexes();
         }
 
         private void OnDestroy()
@@ -307,6 +309,15 @@ namespace MrTerrainPainter.Editor
                 profileChangedHandler = null;
             }
             WindowStateChanged?.Invoke(false, false, false);
+            if (s_Current == this) s_Current = null;
+        }
+
+        private void OnGUI()
+        {
+            if (Event.current != null && Event.current.commandName == "ObjectSelectorClosed")
+            {
+                prefabPicker?.HandleObjectPickerClosed();
+            }
         }
 
         private void CreateGUI()
@@ -331,6 +342,9 @@ namespace MrTerrainPainter.Editor
         private void RequestSceneRepaint()
         {
             if (sceneRepaintQueued) return;
+            double now = EditorApplication.timeSinceStartup;
+            if (now - lastSceneRepaintTime < 0.016) return;
+            lastSceneRepaintTime = now;
             sceneRepaintQueued = true;
             EditorApplication.delayCall += () =>
             {
@@ -538,82 +552,7 @@ namespace MrTerrainPainter.Editor
             sceneService?.OnSceneGUI();
         }
 
-        private void HandleLayoutControl(Event e)
-        {
-            if (mode == Mode.Paint || (mode == Mode.Generate && e.shift))
-            {
-                if (e.type == EventType.Layout)
-                {
-                    HandleUtility.AddDefaultControl(GUIUtility.GetControlID(FocusType.Passive));
-                }
-            }
-        }
-
-        private void RenderBrushPreview(bool hasHit, Vector3 hitPos, Vector3 hitNormal, Event e)
-        {
-            if (e.type != EventType.Repaint) return;
-            if (!hasHit || mode != Mode.Paint) return;
-            BrushPainter.DrawPreview(hitPos, hitNormal, brush);
-        }
-
-        private void HandleGenerateMouse(Event e, Vector3 hitPos)
-        {
-            if (!e.shift) return;
-            if (selectedTerrains.Count > 0 && currentProfile != null)
-            {
-                var filter = BuildFilterSettings();
-                var ov = BuildPlacementOverrides();
-                VegetationGenerator.GenerateInBrushArea(selectedTerrains, currentProfile, hitPos, brush.size, filter, ov);
-                var extras = MrTerrainPainter.Editor.Tools.MTPBrushContext.ExtraProfiles;
-                for (int i = 0; i < extras.Count; i++)
-                {
-                    var p = extras[i];
-                    if (p == null || p.IsEmpty()) continue;
-                    VegetationGenerator.GenerateInBrushArea(selectedTerrains, p, hitPos, brush.size, filter, ov);
-                }
-                MarkSceneDirty();
-            }
-            if (e.button != 2) e.Use();
-        }
-
-        private void HandlePaintMouse(Event e, Terrain hitTerrain, Vector3 hitPos)
-        {
-            var terrain = hitTerrain != null ? hitTerrain : (terrainController != null ? terrainController.NearestTerrain(hitPos, selectedTerrains) : null);
-            if (terrain != null)
-            {
-                if (e.button == 1)
-                {
-                    BrushPainter.Erase(terrain, hitPos, brush, eraseAll: true);
-                    MarkSceneDirty();
-                }
-                else if (e.button == 0)
-                {
-                    VegetationPainterOnTerrain(terrain, hitPos);
-                }
-            }
-            if (e.button != 2) e.Use();
-        }
-
-        private bool TryGetTerrainHit(Ray ray, out Terrain terrain, out Vector3 pos, out Vector3 normal)
-        {
-            if (terrainController == null)
-            {
-                terrain = null;
-                pos = Vector3.zero;
-                normal = Vector3.up;
-                return false;
-            }
-            return terrainController.TryGetTerrainHit(ray, out terrain, out pos, out normal);
-        }
-
-        private void VegetationPainterOnTerrain(Terrain terrain, Vector3 center)
-        {
-            if (terrain == null || currentProfile == null || currentProfile.IsEmpty()) return;
-            var ov = BuildPlacementOverrides();
-            var extras = new System.Collections.Generic.List<VegetationProfile>(MrTerrainPainter.Editor.Tools.MTPBrushContext.ExtraProfiles as System.Collections.Generic.IEnumerable<VegetationProfile>);
-            paintingController?.PaintOnTerrain(terrain, center, currentProfile, extras, brush, rnd, ov, brush.mixExtraProfiles);
-            MarkSceneDirty();
-        }
+        
 
         private Terrain NearestTerrain(Vector3 pos)
         {
@@ -671,13 +610,7 @@ namespace MrTerrainPainter.Editor
             // }
         }
 
-        private void MarkSceneDirty()
-        {
-            if (!Application.isPlaying)
-            {
-                EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
-            }
-        }
+        
 
 
         public bool IsSettingsOpenPublic() => settingsOpen;

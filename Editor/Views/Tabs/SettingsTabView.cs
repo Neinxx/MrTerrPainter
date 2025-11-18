@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.UIElements;
 using UnityEditor.UIElements;
 using MrTerrainPainter.Editor.Config;
+using MrTerrainPainter.Editor.Tools;
 
 namespace MrTerrainPainter.Editor.Views.Tabs
 {
@@ -22,6 +23,7 @@ namespace MrTerrainPainter.Editor.Views.Tabs
         // UI 缓存
         private Foldout _mappingFoldout;
         private VisualTreeAsset _mappingTemplate;
+        private HelpBox _mappingStatusBox;
 
         // 属性访问器：优先使用 Window 中的 Config，否则使用直接传入的 Config
         private MrTerrainPainterConfig Config => _window != null ? _window.config : _directConfig;
@@ -113,11 +115,20 @@ namespace MrTerrainPainter.Editor.Views.Tabs
             // 初始刷新
             RefreshMappingList();
 
+            // 映射状态提示框
+            if (_mappingStatusBox == null)
+            {
+                _mappingStatusBox = new HelpBox(string.Empty, HelpBoxMessageType.None);
+                _mappingStatusBox.name = "MappingStatusBox";
+                _mappingFoldout.Insert(0, _mappingStatusBox);
+            }
+            UpdateMappingStatus();
+
             // 绑定添加按钮
             var btnAdd = _root.Q<Button>("Add");
             if (btnAdd != null)
             {
-                btnAdd.clicked += () =>
+                btnAdd.SetClickHandler(() =>
                 {
                     var entry = new MrTerrainPainterConfig.MappingEntry
                     {
@@ -126,7 +137,7 @@ namespace MrTerrainPainter.Editor.Views.Tabs
                     Config.mappingEntries.Add(entry);
                     SaveConfig();
                     RefreshMappingList();
-                };
+                });
             }
         }
 
@@ -185,19 +196,20 @@ namespace MrTerrainPainter.Editor.Views.Tabs
             }
 
             // 3. 绑定删除按钮
-            var btnDel = rowRoot.Q<Button>("Delete");
-            if (btnDel != null)
-            {
-                btnDel.clicked += () =>
+                var btnDel = rowRoot.Q<Button>("Delete");
+                if (btnDel != null)
                 {
-                    if (Config.mappingEntries != null && index < Config.mappingEntries.Count)
+                    btnDel.clicked += () =>
                     {
-                        Config.mappingEntries.RemoveAt(index);
-                        SaveConfig();
-                        RefreshMappingList(); // 删除必须刷新列表
-                    }
-                };
-            }
+                        if (Config.mappingEntries != null && index < Config.mappingEntries.Count)
+                        {
+                            Config.mappingEntries.RemoveAt(index);
+                            SaveConfig();
+                            RefreshMappingList(); // 删除必须刷新列表
+                            UpdateMappingStatus();
+                        }
+                    };
+                }
 
             _mappingFoldout.Add(rowRoot);
         }
@@ -214,8 +226,8 @@ namespace MrTerrainPainter.Editor.Views.Tabs
 
             Action confirmHandler = HandleConfirmAndSave;
 
-            if (btnSave != null) btnSave.clicked += confirmHandler;
-            if (btnConfirm != null) btnConfirm.clicked += confirmHandler;
+            if (btnSave != null) btnSave.SetClickHandler(confirmHandler);
+            if (btnConfirm != null) btnConfirm.SetClickHandler(confirmHandler);
 
             // Check 按钮
             BindButtonAction("CheckConfiguration", () =>
@@ -292,12 +304,13 @@ namespace MrTerrainPainter.Editor.Views.Tabs
             EditorUtility.SetDirty(Config);
             // 如果需要频繁保存 Asset，可以在这里调用 AssetDatabase.SaveAssets(); 
             // 但通常 SetDirty 就足够编辑器行为了，ConfigTools.Save 可能会做更多事
+            UpdateMappingStatus();
         }
 
         private void BindButtonAction(string buttonName, Action action)
         {
             var btn = _root.Q<Button>(buttonName);
-            if (btn != null) btn.clicked += action;
+            if (btn != null) btn.SetClickHandler(action);
         }
 
         private void BindTextField(VisualElement root, string name, Func<string> getter, Action<string> setter)
@@ -369,6 +382,28 @@ namespace MrTerrainPainter.Editor.Views.Tabs
                     var firstRow = fold.ElementAt(0);
                     firstRow?.Q<EnumField>("PrefabType")?.Focus();
                 }
+            }
+        }
+
+        private void UpdateMappingStatus()
+        {
+            if (_mappingStatusBox == null) return;
+            int unbound = Config.mappingEntries != null ? Config.mappingEntries.Count(e => e == null || e.node == null) : 0;
+            bool hasPlantBound = Config.mappingEntries != null && Config.mappingEntries.Any(e => e != null && e.type == Runtime.Profiles.PrefabType.Plant && e.node != null);
+
+            var messages = new System.Text.StringBuilder();
+            if (unbound > 0) messages.AppendLine($"Mapping 存在未绑定节点: {unbound} 个");
+            if (!hasPlantBound) messages.AppendLine("Mapping 必须绑定至少一个 Plant 类型节点");
+
+            if (messages.Length == 0)
+            {
+                _mappingStatusBox.messageType = HelpBoxMessageType.Info;
+                _mappingStatusBox.text = "Mapping 已完成，配置完整";
+            }
+            else
+            {
+                _mappingStatusBox.messageType = HelpBoxMessageType.Warning;
+                _mappingStatusBox.text = messages.ToString().TrimEnd();
             }
         }
 

@@ -27,6 +27,19 @@ namespace MrTerrainPainter.Editor.Tools
             });
             return found;
         }
+        public static T FindByNameOrText<T>(this VisualElement root, string nameOrText) where T : VisualElement
+        {
+            if (root == null || string.IsNullOrEmpty(nameOrText)) return null;
+            var byName = root.Q<T>(nameOrText);
+            if (byName != null) return byName;
+            T found = null;
+            root.Query<T>().ForEach(el =>
+            {
+                if (found != null) return;
+                if (el is Button b && b.text == nameOrText) found = (T)(VisualElement)b;
+            });
+            return found;
+        }
         public static void SetDisplay(this VisualElement element, bool show)
         {
             if (element != null) element.style.display = show ? DisplayStyle.Flex : DisplayStyle.None;

@@ -10,30 +10,18 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: ee007c06fce6f9d42bb06f3d95cc331a, type: 3}
-  m_Name: VegetationProfile 4
+  m_Name: VegetationProfile 2
   m_EditorClassIdentifier: 
   items:
-  - prefab: {fileID: 3177427968198971240, guid: 1a9d242f72190094782ef5725ed6bf12,
-      type: 3}
-    weight: 0.364
-    prefabType: 3
-    uniformScaleRange: {x: 1, y: 2.4693358}
+  - prefab: {fileID: 0}
+    weight: 1
+    prefabType: 2
+    uniformScaleRange: {x: 1, y: 1}
     yRotationRange: {x: 0, y: 360}
     heightRange: {x: 0, y: 1000}
     slopeRange: {x: 0, y: 90}
     baseDensity: 1
     minSpacing: 1.5
-    alignToTerrainNormal: 1
-  - prefab: {fileID: 1651033132722489925, guid: 8f3afd5551a37c945864133eec666ff2,
-      type: 3}
-    weight: 0.776
-    prefabType: 0
-    uniformScaleRange: {x: 1, y: 1.4779413}
-    yRotationRange: {x: 0, y: 360}
-    heightRange: {x: 0, y: 1000}
-    slopeRange: {x: 0, y: 90}
-    baseDensity: 5.97
-    minSpacing: 7.06
     alignToTerrainNormal: 1
   initialized: 1
   randomSeed: 12345

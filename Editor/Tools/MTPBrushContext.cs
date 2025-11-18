@@ -15,6 +15,7 @@ namespace MrTerrainPainter.Editor.Tools
         private const int MaxRecent = 8;
         public static event System.Action<VegetationProfile> ProfileChanged;
         public static event System.Action ExtrasChanged;
+        public static event System.Action BrushReplaced;
         public static MrTerrainPainterConfig Config { get; private set; }
         private static readonly List<Terrain> _selectedTerrains = new();
         public static BrushSettings Brush
@@ -30,6 +31,7 @@ namespace MrTerrainPainter.Editor.Tools
         {
             if (bs == null) return;
             _brush = bs;
+            BrushReplaced?.Invoke();
         }
 
         public static void SetConfig(MrTerrainPainterConfig cfg)
@@ -79,7 +81,11 @@ namespace MrTerrainPainter.Editor.Tools
 
         public static void RemoveExtra(VegetationProfile p)
         {
-            if (p == null) return;
+            if (p == null)
+            {
+                PruneExtrasNulls();
+                return;
+            }
             if (_extras.Remove(p)) ExtrasChanged?.Invoke();
         }
 
@@ -88,6 +94,20 @@ namespace MrTerrainPainter.Editor.Tools
             if (_extras.Count == 0) return;
             _extras.Clear();
             ExtrasChanged?.Invoke();
+        }
+
+        public static void PruneExtrasNulls()
+        {
+            bool changed = false;
+            for (int i = _extras.Count - 1; i >= 0; i--)
+            {
+                if (_extras[i] == null)
+                {
+                    _extras.RemoveAt(i);
+                    changed = true;
+                }
+            }
+            if (changed) ExtrasChanged?.Invoke();
         }
     }
 }

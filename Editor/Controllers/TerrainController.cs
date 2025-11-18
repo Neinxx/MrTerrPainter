@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEditor;
 using MrTerrainPainter.Editor.Utils;
 
 namespace MrTerrainPainter.Editor.Controllers
@@ -7,6 +8,7 @@ namespace MrTerrainPainter.Editor.Controllers
     // 负责场景地形的扫描、列表清理与新增，保持纯业务逻辑
     public class TerrainController
     {
+        private readonly List<Terrain> _cacheSelectedTerrains = new();
         // 扫描场景中的激活地形，填充 UI 展示数据与名称集合
         public void ScanSceneTerrains(List<Terrain> terrainListUIData, List<string> scannedTerrainNames)
         {
@@ -113,10 +115,65 @@ namespace MrTerrainPainter.Editor.Controllers
             {
                 var t = selectedTerrains[i];
                 if (t == null) continue;
-                float d = Vector3.SqrMagnitude(pos - t.transform.position);
+                float d = (pos - t.transform.position).sqrMagnitude;
                 if (d < bestDist) { bestDist = d; best = t; }
             }
             return best;
+        }
+
+        public IReadOnlyList<Terrain> GetSelectedTerrains()
+        {
+            _cacheSelectedTerrains.Clear();
+            var ctx = MrTerrainPainter.Editor.Tools.MTPBrushContext.SelectedTerrains;
+            if (ctx != null)
+            {
+                for (int i = 0; i < ctx.Count; i++)
+                {
+                    var t = ctx[i];
+                    if (t != null && !_cacheSelectedTerrains.Contains(t)) _cacheSelectedTerrains.Add(t);
+                }
+            }
+            var objs = Selection.transforms;
+            if (objs != null)
+            {
+                for (int i = 0; i < objs.Length; i++)
+                {
+                    var tf = objs[i];
+                    if (tf == null) continue;
+                    var t = tf.GetComponent<Terrain>();
+                    if (t != null && !_cacheSelectedTerrains.Contains(t)) _cacheSelectedTerrains.Add(t);
+                }
+            }
+            return _cacheSelectedTerrains;
+        }
+
+        public bool TryFindNearestTerrain(Vector3 worldPos, out Terrain nearest)
+        {
+            nearest = null;
+            var list = GetSelectedTerrains();
+            if (list == null || list.Count == 0)
+            {
+                var actives = Terrain.activeTerrains;
+                if (actives == null || actives.Length == 0) return false;
+                float best = float.MaxValue;
+                for (int i = 0; i < actives.Length; i++)
+                {
+                    var t = actives[i];
+                    if (t == null) continue;
+                    float d = (worldPos - t.transform.position).sqrMagnitude;
+                    if (d < best) { best = d; nearest = t; }
+                }
+                return nearest != null;
+            }
+            float bestSel = float.MaxValue;
+            for (int i = 0; i < list.Count; i++)
+            {
+                var t = list[i];
+                if (t == null) continue;
+                float d = (worldPos - t.transform.position).sqrMagnitude;
+                if (d < bestSel) { bestSel = d; nearest = t; }
+            }
+            return nearest != null;
         }
     }
 }

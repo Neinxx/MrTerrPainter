@@ -1,4 +1,4 @@
-using System.Linq;
+
 using MrTerrainPainter.Editor.Services;
 using UnityEditor.SceneManagement;
 using UnityEditor;
@@ -13,71 +13,56 @@ namespace MrTerrainPainter.Editor.Tools
     public class MTPBrushTool : EditorTool
     {
         private System.Random rnd;
+        private int lastSeed;
         private SceneInteractionService sceneService;
         private TerrainController terrainController = new TerrainController();
         private PaintingController paintingController = new PaintingController();
         public override void OnActivated()
         {
-
+            if (sceneService != null) return;
+            var filter = new DefaultFilterStrategy(new VegetationGenerator.NoiseSettings());
+            var placement = new DefaultPlacementOverrideStrategy(
+                () => Vector2.one,
+                () => new Vector2(0f, 30f),
+                () => new Vector2(0f, 1000f),
+                () => new Vector2(0f, 90f)
+            );
+            sceneService = new SceneInteractionService(
+                terrainController,
+                paintingController,
+                () => MTPBrushContext.CurrentProfile,
+                () => new System.Collections.Generic.List<Terrain>(terrainController.GetSelectedTerrains()),
+                MTPBrushContext.Brush,
+                filter,
+                placement,
+                () => false,
+                () => true,
+                () => MrTerrainPainter.Editor.Utils.EditorSceneUtils.MarkSceneDirty(),
+                pos =>
+                {
+                    if (terrainController.TryFindNearestTerrain(pos, out var nearest)) return nearest;
+                    return null;
+                },
+                () =>
+                {
+                    var p = MTPBrushContext.CurrentProfile;
+                    var seed = p != null ? p.randomSeed : 12345;
+                    if (rnd == null || lastSeed != seed) { rnd = new System.Random(seed); lastSeed = seed; }
+                    return rnd;
+                },
+                true
+            );
         }
 
         public override void OnToolGUI(EditorWindow window)
         {
             var sceneView = window as SceneView;
             if (sceneView == null) return;
-            if (sceneService == null)
-            {
-                var filter = new DefaultFilterStrategy(new VegetationGenerator.NoiseSettings());
-                var placement = new DefaultPlacementOverrideStrategy(
-                    () => Vector2.one,
-                    () => new Vector2(0f, 30f),
-                    () => new Vector2(0f, 1000f),
-                    () => new Vector2(0f, 90f)
-                );
-                sceneService = new SceneInteractionService(
-                    terrainController,
-                    paintingController,
-                    () => MTPBrushContext.CurrentProfile,
-                    () =>
-                    {
-                        var t = Selection.activeGameObject != null ? Selection.activeGameObject.GetComponent<Terrain>() : null;
-                        var list = new System.Collections.Generic.List<Terrain>();
-                        if (t != null) list.Add(t);
-                        return list;
-                    },
-                    MTPBrushContext.Brush,
-                    filter,
-                    placement,
-                    () => false,
-                    () => true,
-                    () => MarkSceneDirty(),
-                    pos =>
-                    {
-                        var active = Terrain.activeTerrains;
-                        if (active == null || active.Length == 0) return null;
-                        float best = float.MaxValue; Terrain bestT = null;
-                        for (int i = 0; i < active.Length; i++)
-                        {
-                            var t = active[i];
-                            var d = Vector3.Distance(t.transform.position, pos);
-                            if (d < best) { best = d; bestT = t; }
-                        }
-                        return bestT;
-                    },
-                    () => { if (rnd == null) rnd = new System.Random(); return rnd; },
-                    true
-                );
-            }
+            if (sceneService == null) OnActivated();
             sceneService.OnSceneGUI();
         }
 
-        private static void MarkSceneDirty()
-        {
-            if (!Application.isPlaying)
-            {
-                EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
-            }
-        }
+
     }
 
     public static class MTPBrushShortcuts
@@ -87,6 +72,8 @@ namespace MrTerrainPainter.Editor.Tools
         {
             var b = MTPBrushContext.Brush;
             b.size = Mathf.Min(100f, b.size + 0.5f);
+            var sv = SceneView.lastActiveSceneView;
+            if (sv != null) sv.Repaint(); else SceneView.RepaintAll();
         }
 
         [Shortcut("MTP/Brush/Decrease Size", KeyCode.LeftBracket)]
@@ -94,6 +81,8 @@ namespace MrTerrainPainter.Editor.Tools
         {
             var b = MTPBrushContext.Brush;
             b.size = Mathf.Max(0.5f, b.size - 0.5f);
+            var sv = SceneView.lastActiveSceneView;
+            if (sv != null) sv.Repaint(); else SceneView.RepaintAll();
         }
     }
 }
