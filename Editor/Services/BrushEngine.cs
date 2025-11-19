@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace MrTerrainPainter.Editor.Services
 {
-    public enum DistributionType { Uniform, PoissonDisk, Cluster, JitteredGrid, Natural, AdaptivePoisson, Halton }
+    public enum DistributionType { Uniform, PoissonDisk, Cluster, JitteredGrid, Natural, AdaptivePoisson, Halton, EdgeLine }
 
     public struct ClusterSettings
     {
@@ -16,8 +16,8 @@ namespace MrTerrainPainter.Editor.Services
 
     public static class BrushEngine
     {
-        private static readonly System.Collections.Generic.Stack<System.Collections.Generic.List<Vector2>> s_listPool = new();
-        private static System.Collections.Generic.List<Vector2> AcquireList(int capacity)
+        private static readonly Stack<List<Vector2>> s_listPool = new();
+        public static List<Vector2> AcquireList(int capacity)
         {
             if (s_listPool.Count > 0)
             {
@@ -242,7 +242,7 @@ namespace MrTerrainPainter.Editor.Services
             var list = AcquireList(desiredCount);
             float r = Mathf.Max(minSpacing, 0.0001f);
             float cell = r / Mathf.Sqrt(2f);
-            var grid = new Dictionary<(int,int), List<Vector2>>();
+            var grid = new Dictionary<(int, int), List<Vector2>>();
             var active = new List<Vector2>();
             var rnd = new System.Random(seed);
             Vector2 first = center;
@@ -330,7 +330,7 @@ namespace MrTerrainPainter.Editor.Services
             var candidates = SampleUniform(center, radius, shape, count * 2, rnd);
             float scale = 0.2f;
             int accepted = 0;
-            var grid = new Dictionary<(int,int), List<Vector2>>();
+            var grid = new Dictionary<(int, int), List<Vector2>>();
             var active = new List<Vector2>();
             float cell = spacing / Mathf.Sqrt(2f);
             for (int i = 0; i < candidates.Count && accepted < count; i++)
@@ -355,7 +355,7 @@ namespace MrTerrainPainter.Editor.Services
             float maxR = Mathf.Max(maxSpacing, minR);
             var list = AcquireList(count);
             var rnd = new System.Random(seed);
-            var grid = new Dictionary<(int,int), List<(Vector2,float)>>();
+            var grid = new Dictionary<(int, int), List<(Vector2, float)>>();
             int k = 30;
             int guard = count * k;
             Vector2 first = center;
@@ -367,7 +367,7 @@ namespace MrTerrainPainter.Editor.Services
             if (!Mathf.Approximately(noiseWeight, 1f)) t0 = Mathf.Pow(t0, Mathf.Max(0.0001f, noiseWeight));
             float frad = Mathf.Lerp(maxR, minR, t0);
             AddAdaptivePoint(first, frad, minR / Mathf.Sqrt(2f), grid, list);
-            var active = new List<(Vector2,float)>();
+            var active = new List<(Vector2, float)>();
             active.Add((first, frad));
             while (active.Count > 0 && list.Count < count && guard-- > 0)
             {
@@ -402,32 +402,32 @@ namespace MrTerrainPainter.Editor.Services
             return list;
         }
 
-        private static (int,int) KeyAdaptive(Vector2 p, float cell)
+        private static (int, int) KeyAdaptive(Vector2 p, float cell)
         {
             return (Mathf.FloorToInt(p.x / cell), Mathf.FloorToInt(p.y / cell));
         }
 
-        private static bool ValidAdaptive(Vector2 p, float r, float cell, Dictionary<(int,int), List<(Vector2,float)>> grid)
+        private static bool ValidAdaptive(Vector2 p, float r, float cell, Dictionary<(int, int), List<(Vector2, float)>> grid)
         {
             var k = KeyAdaptive(p, cell);
             for (int dx = -1; dx <= 1; dx++)
-            for (int dy = -1; dy <= 1; dy++)
-            {
-                var nk = (k.Item1 + dx, k.Item2 + dy);
-                if (!grid.TryGetValue(nk, out var l)) continue;
-                for (int i = 0; i < l.Count; i++)
+                for (int dy = -1; dy <= 1; dy++)
                 {
-                    float rr = Mathf.Max(r, l[i].Item2);
-                    if (Vector2.SqrMagnitude(l[i].Item1 - p) < rr * rr) return false;
+                    var nk = (k.Item1 + dx, k.Item2 + dy);
+                    if (!grid.TryGetValue(nk, out var l)) continue;
+                    for (int i = 0; i < l.Count; i++)
+                    {
+                        float rr = Mathf.Max(r, l[i].Item2);
+                        if (Vector2.SqrMagnitude(l[i].Item1 - p) < rr * rr) return false;
+                    }
                 }
-            }
             return true;
         }
 
-        private static void AddAdaptivePoint(Vector2 p, float r, float cell, Dictionary<(int,int), List<(Vector2,float)>> grid, List<Vector2> list)
+        private static void AddAdaptivePoint(Vector2 p, float r, float cell, Dictionary<(int, int), List<(Vector2, float)>> grid, List<Vector2> list)
         {
             var k = KeyAdaptive(p, cell);
-            if (!grid.TryGetValue(k, out var l)) { l = new List<(Vector2,float)>(); grid[k] = l; }
+            if (!grid.TryGetValue(k, out var l)) { l = new List<(Vector2, float)>(); grid[k] = l; }
             l.Add((p, r));
             list.Add(p);
         }
@@ -446,7 +446,7 @@ namespace MrTerrainPainter.Editor.Services
             return v;
         }
 
-        private static void AddPoint(Vector2 p, float cell, Dictionary<(int,int), List<Vector2>> grid, List<Vector2> active, List<Vector2> list)
+        private static void AddPoint(Vector2 p, float cell, Dictionary<(int, int), List<Vector2>> grid, List<Vector2> active, List<Vector2> list)
         {
             var k = Key(p, cell);
             if (!grid.TryGetValue(k, out var l)) { l = new List<Vector2>(); grid[k] = l; }
@@ -455,24 +455,24 @@ namespace MrTerrainPainter.Editor.Services
             list.Add(p);
         }
 
-        private static (int,int) Key(Vector2 p, float cell)
+        private static (int, int) Key(Vector2 p, float cell)
         {
             return (Mathf.FloorToInt(p.x / cell), Mathf.FloorToInt(p.y / cell));
         }
 
-        private static bool ValidPoisson(Vector2 p, float minDist, float cell, Dictionary<(int,int), List<Vector2>> grid)
+        private static bool ValidPoisson(Vector2 p, float minDist, float cell, Dictionary<(int, int), List<Vector2>> grid)
         {
             var k = Key(p, cell);
             for (int dx = -1; dx <= 1; dx++)
-            for (int dy = -1; dy <= 1; dy++)
-            {
-                var nk = (k.Item1 + dx, k.Item2 + dy);
-                if (!grid.TryGetValue(nk, out var l)) continue;
-                for (int i = 0; i < l.Count; i++)
+                for (int dy = -1; dy <= 1; dy++)
                 {
-                    if (Vector2.SqrMagnitude(l[i] - p) < minDist * minDist) return false;
+                    var nk = (k.Item1 + dx, k.Item2 + dy);
+                    if (!grid.TryGetValue(nk, out var l)) continue;
+                    for (int i = 0; i < l.Count; i++)
+                    {
+                        if (Vector2.SqrMagnitude(l[i] - p) < minDist * minDist) return false;
+                    }
                 }
-            }
             return true;
         }
     }

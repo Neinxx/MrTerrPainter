@@ -6,6 +6,7 @@ using MrTerrainPainter.Runtime.Core;
 using MrTerrainPainter.Runtime.Profiles;
 using UnityEditor;
 using UnityEngine;
+using MrTerrainPainter.Editor.Services;
 
 namespace MrTerrainPainter.Editor.Services
 {
@@ -354,6 +355,14 @@ namespace MrTerrainPainter.Editor.Services
                 var tip = raisedCenter + normal.normalized * (bs.size * 0.6f);
                 Handles.DrawAAPolyLine(6f, new Vector3[] { raisedCenter, tip });
             }
+            var fwd = normal.normalized;
+            var upProj = Vector3.ProjectOnPlane(Vector3.up, fwd);
+            if (upProj.sqrMagnitude > 1e-6f)
+            {
+                var upTip = raisedCenter + upProj.normalized * (bs.size * 0.4f);
+                Handles.color = new Color(0.6f, 1f, 0.6f, 0.9f);
+                Handles.DrawAAPolyLine(4f, new Vector3[] { raisedCenter, upTip });
+            }
         }
 
         public static void Paint(Terrain terrain, VegetationProfile profile, Vector3 center, BrushSettings bs, System.Random rnd, VegetationGenerator.PlacementOverrides? ov = null)
@@ -379,21 +388,37 @@ namespace MrTerrainPainter.Editor.Services
                 int seed = bs.strokeSeed != 0 ? bs.strokeSeed : profile.randomSeed;
                 var centerXZ = new Vector2(center.x, center.z);
                 int desired = VegetationGenerator.ComputeDesiredCandidateCount(bs.shape, radius, spacing, Mathf.Min(count, bs.maxPoints), bs.maxPoints);
-                List<Vector2> candidates = VegetationGenerator.BuildCandidates(
-                    centerXZ,
-                    radius,
-                    bs.shape,
-                    desired,
-                    spacing,
-                    jitter,
-                    seed + it,
-                    bs.distribution,
-                    bs.useBurstPoisson,
-                    bs.cluster,
-                    bs.adaptiveMinFactor,
-                    bs.adaptiveMaxFactor,
-                    bs.adaptiveNoiseWeight,
-                    rnd);
+                List<Vector2> candidates = null;
+                FacadeDetectionService.FacadeInfo facadeInfo = default;
+                bool useFacade = (bs.distribution == DistributionType.EdgeLine && item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape);
+                if (useFacade)
+                {
+                    if (!FacadeDetectionService.TryDetectFacade(terrain, center, item.edgeSlopeEnter, item.edgeSlopeExit, item.probeStep, item.probeMaxDist, out facadeInfo))
+                    {
+                        continue;
+                    }
+                    candidates = BuildFacadeStripCandidatesFromInfo(facadeInfo, bs, item);
+                }
+                else
+                {
+                    candidates = (bs.distribution == DistributionType.EdgeLine && item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape)
+                        ? BuildFacadeStripCandidates(terrain, center, radius, bs, item)
+                        : VegetationGenerator.BuildCandidates(
+                        centerXZ,
+                        radius,
+                        bs.shape,
+                        desired,
+                        spacing,
+                        jitter,
+                        seed + it,
+                        bs.distribution,
+                        bs.useBurstPoisson,
+                        bs.cluster,
+                        bs.adaptiveMinFactor,
+                        bs.adaptiveMaxFactor,
+                        bs.adaptiveNoiseWeight,
+                        rnd);
+                }
                 var grid = new Grid(spacing);
                 int placed = 0;
                 for (int ci = 0; ci < candidates.Count && placed < count; ci++)
@@ -401,9 +426,21 @@ namespace MrTerrainPainter.Editor.Services
                     var c = candidates[ci];
                     Vector3 p = new Vector3(c.x, center.y, c.y);
                     if (!TerrainUtils.IsWithinTerrainBounds(terrain, p)) continue;
-                    if (!TerrainUtils.TryGetHeightAndNormal(terrain, p, out float h, out Vector3 n)) continue;
-                    p.y = h;
-                    float slope = TerrainUtils.ComputeSlope(n);
+                    float h = p.y;
+                    Vector3 n = Vector3.up;
+                    float slope = 0f;
+                    if (useFacade)
+                    {
+                        p.y = facadeInfo.bottomPos.y;
+                        n = facadeInfo.forward.normalized;
+                        slope = 90f;
+                    }
+                    else
+                    {
+                        if (!TerrainUtils.TryGetHeightAndNormal(terrain, p, out h, out n)) continue;
+                        p.y = h;
+                        slope = TerrainUtils.ComputeSlope(n);
+                    }
                     float dx0 = p.x - center.x;
                     float dz0 = p.z - center.z;
                     float t = Mathf.Clamp01(Mathf.Sqrt(dx0 * dx0 + dz0 * dz0) / radius);
@@ -411,6 +448,28 @@ namespace MrTerrainPainter.Editor.Services
                     float acceptance = bs.falloffCurve != null ? bs.falloffCurve.Evaluate(1f - t) : Mathf.Lerp(1f, edge, Mathf.Clamp01(bs.hardness));
                     if (rnd.NextDouble() > acceptance) continue;
                     if (!VegetationGenerator.MatchTerrain(item, h - terrain.transform.position.y, slope, ov)) continue;
+                    if (item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape && !useFacade)
+                    {
+                        if (slope < Mathf.Clamp(item.edgeSlopeThreshold, 0f, 90f)) continue;
+                        var fwd = n.normalized;
+                        var upProj = Vector3.ProjectOnPlane(Vector3.up, fwd);
+                        if (upProj.sqrMagnitude < 1e-6f) upProj = Vector3.Cross(fwd, Vector3.right).normalized;
+                        var right = Vector3.Normalize(Vector3.Cross(upProj, fwd));
+                        float step = Mathf.Max(item.minSpacing, 0.01f);
+                        float u = Vector3.Dot(p - center, right);
+                        float w = Vector3.Dot(p - center, fwd);
+                        float snappedU = Mathf.Round(u / step) * step;
+                        var pDesired = center + right * snappedU + fwd * w;
+                        if (TerrainUtils.TryGetHeightAndNormal(terrain, pDesired, out float h2, out Vector3 n2)) { p = new Vector3(pDesired.x, h2, pDesired.z); n = n2; }
+                        float depth = Mathf.Clamp(item.SampleEmbedDepth(rnd), 0f, 1f);
+                        var horiz = Vector3.ProjectOnPlane(-n.normalized, Vector3.up);
+                        if (horiz.sqrMagnitude > 1e-6f)
+                        {
+                            horiz.Normalize();
+                            var offset = horiz * depth;
+                            p = new Vector3(p.x + offset.x, h, p.z + offset.z);
+                        }
+                    }
                     var p2 = new Vector2(p.x - terrain.transform.position.x, p.z - terrain.transform.position.z);
                     if (bs.globalSpacingFactor > 0f)
                     {
@@ -421,7 +480,23 @@ namespace MrTerrainPainter.Editor.Services
                     grid.Add(p2);
                     var targetParent = typeToNode.TryGetValue(item.prefabType, out var tf) ? tf : null;
                     if (targetParent == null) { VegetationGenerator.LogMissingMappingOnce(item.prefabType); continue; }
-                    CreateInstance(item, p, n, terrain, it, targetParent, rnd, ov);
+                    var ovScaled = ov;
+                    if (useFacade)
+                    {
+                        CreateFacadeInstance(item, p, n, terrain, it, targetParent, rnd, facadeInfo, ovScaled);
+                    }
+                    else
+                    {
+                        if (bs.distribution == DistributionType.EdgeLine && item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape)
+                        {
+                            float refW = Mathf.Max(item.edgeReferenceWidthMeters, 0.0001f);
+                            float scale = (radius * 2f) / refW;
+                            var o = ovScaled.HasValue ? ovScaled.Value : new VegetationGenerator.PlacementOverrides();
+                            o.scaleRange = new Vector2(scale, scale);
+                            ovScaled = o;
+                        }
+                        CreateInstance(item, p, n, terrain, it, targetParent, rnd, ovScaled);
+                    }
                     placed++;
                 }
                 BrushEngine.ReleaseList(candidates);
@@ -472,21 +547,38 @@ namespace MrTerrainPainter.Editor.Services
                 minSpacingForAll = best;
             }
             int candidateCount = VegetationGenerator.ComputeDesiredCandidateCount(bs.shape, radius, minSpacingForAll, Mathf.Max(1, totalDesired), bs.maxPoints);
-            List<Vector2> candidates = VegetationGenerator.BuildCandidates(
-                centerXZ,
-                radius,
-                bs.shape,
-                candidateCount,
-                minSpacingForAll,
-                bs.minSpacingJitter,
-                seed,
-                bs.distribution,
-                bs.useBurstPoisson,
-                bs.cluster,
-                bs.adaptiveMinFactor,
-                bs.adaptiveMaxFactor,
-                bs.adaptiveNoiseWeight,
-                rnd);
+            List<Vector2> candidates = null;
+            FacadeDetectionService.FacadeInfo facadeInfo = default;
+            bool useFacade = bs.distribution == DistributionType.EdgeLine && allItems.Any(it => it.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape);
+            if (useFacade)
+            {
+                var itemRef = allItems.First(it => it.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape);
+                if (!FacadeDetectionService.TryDetectFacade(terrain, center, itemRef.edgeSlopeEnter, itemRef.edgeSlopeExit, itemRef.probeStep, itemRef.probeMaxDist, out facadeInfo))
+                {
+                    return;
+                }
+                candidates = BuildFacadeStripCandidatesFromInfo(facadeInfo, bs, itemRef);
+            }
+            else
+            {
+                candidates = bs.distribution == DistributionType.EdgeLine
+                    ? BuildFacadeStripCandidates(terrain, center, radius, bs, null)
+                    : VegetationGenerator.BuildCandidates(
+                    centerXZ,
+                    radius,
+                    bs.shape,
+                    candidateCount,
+                    minSpacingForAll,
+                    bs.minSpacingJitter,
+                    seed,
+                    bs.distribution,
+                    bs.useBurstPoisson,
+                    bs.cluster,
+                    bs.adaptiveMinFactor,
+                    bs.adaptiveMaxFactor,
+                    bs.adaptiveNoiseWeight,
+                    rnd);
+            }
             var itemGrids = new Dictionary<int, Grid>();
             Grid globalGrid = null;
             float globalFactor = Mathf.Max(0f, bs.globalSpacingFactor);
@@ -532,9 +624,21 @@ namespace MrTerrainPainter.Editor.Services
                 var c = candidates[ci];
                 Vector3 p = new Vector3(c.x, center.y, c.y);
                 if (!TerrainUtils.IsWithinTerrainBounds(terrain, p)) continue;
-                if (!TerrainUtils.TryGetHeightAndNormal(terrain, p, out float h, out Vector3 n)) continue;
-                p.y = h;
-                float slope = TerrainUtils.ComputeSlope(n);
+                float h = p.y;
+                Vector3 n = Vector3.up;
+                float slope = 0f;
+                if (useFacade)
+                {
+                    p.y = facadeInfo.bottomPos.y;
+                    n = facadeInfo.forward.normalized;
+                    slope = 90f;
+                }
+                else
+                {
+                    if (!TerrainUtils.TryGetHeightAndNormal(terrain, p, out h, out n)) continue;
+                    p.y = h;
+                    slope = TerrainUtils.ComputeSlope(n);
+                }
                 float dx0 = p.x - center.x;
                 float dz0 = p.z - center.z;
                 float t = Mathf.Clamp01(Mathf.Sqrt(dx0 * dx0 + dz0 * dz0) / radius);
@@ -567,9 +671,47 @@ namespace MrTerrainPainter.Editor.Services
                     }
                     if (grid.HasNearby(p2, Mathf.Max(item.minSpacing, 0.01f))) { continue; }
                     if (!VegetationGenerator.MatchTerrain(item, h - terrain.transform.position.y, slope, ov)) { continue; }
+                    if (item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape && !useFacade)
+                    {
+                        if (slope < Mathf.Clamp(item.edgeSlopeThreshold, 0f, 90f)) { continue; }
+                        var fwd = n.normalized;
+                        var upProj = Vector3.ProjectOnPlane(Vector3.up, fwd);
+                        if (upProj.sqrMagnitude < 1e-6f) upProj = Vector3.Cross(fwd, Vector3.right).normalized;
+                        var right = Vector3.Normalize(Vector3.Cross(upProj, fwd));
+                        float step = Mathf.Max(item.minSpacing, 0.01f);
+                        float u = Vector3.Dot(p - center, right);
+                        float w = Vector3.Dot(p - center, fwd);
+                        float snappedU = Mathf.Round(u / step) * step;
+                        var pDesired = center + right * snappedU + fwd * w;
+                        if (TerrainUtils.TryGetHeightAndNormal(terrain, pDesired, out float h2, out Vector3 n2)) { p = new Vector3(pDesired.x, h2, pDesired.z); n = n2; }
+                        float depth = Mathf.Clamp(item.SampleEmbedDepth(rnd), 0f, 1f);
+                        var horiz = Vector3.ProjectOnPlane(-n.normalized, Vector3.up);
+                        if (horiz.sqrMagnitude > 1e-6f)
+                        {
+                            horiz.Normalize();
+                            var offset = horiz * depth;
+                            p = new Vector3(p.x + offset.x, h2, p.z + offset.z);
+                        }
+                    }
                     var targetParent = typeToNode.TryGetValue(item.prefabType, out var tf) ? tf : null;
                     if (targetParent == null) { VegetationGenerator.LogMissingMappingOnce(item.prefabType); continue; }
-                    CreateInstance(item, p, n, terrain, idx, targetParent, rnd, ov);
+                    var ovScaled = ov;
+                    if (item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape && useFacade)
+                    {
+                        CreateFacadeInstance(item, p, n, terrain, idx, targetParent, rnd, facadeInfo, ovScaled);
+                    }
+                    else
+                    {
+                        if (bs.distribution == DistributionType.EdgeLine && item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape)
+                        {
+                            float refW = Mathf.Max(item.edgeReferenceWidthMeters, 0.0001f);
+                            float scale = (radius * 2f) / refW;
+                            var o = ovScaled.HasValue ? ovScaled.Value : new VegetationGenerator.PlacementOverrides();
+                            o.scaleRange = new Vector2(scale, scale);
+                            ovScaled = o;
+                        }
+                        CreateInstance(item, p, n, terrain, idx, targetParent, rnd, ovScaled);
+                    }
                     grid.Add(p2);
                     if (globalGrid != null && globalFactor > 0f)
                     {
@@ -680,6 +822,41 @@ namespace MrTerrainPainter.Editor.Services
             }
         }
 
+        private static List<Vector2> BuildFacadeStripCandidates(Terrain terrain, Vector3 center, float radius, BrushSettings bs, VegetationItem itemOrNull)
+        {
+            var list = new List<Vector2>();
+            if (!TerrainUtils.TryGetHeightAndNormal(terrain, center, out float h, out Vector3 nCenter)) return list;
+            float slopeCenter = TerrainUtils.ComputeSlope(nCenter);
+            float thr = itemOrNull != null ? Mathf.Clamp(itemOrNull.edgeSlopeThreshold, 0f, 90f) : 75f;
+            if (slopeCenter < thr) return list;
+            var up = Vector3.up;
+            var forward = Vector3.ProjectOnPlane(nCenter, up);
+            if (forward.sqrMagnitude < 1e-6f) return list;
+            forward.Normalize();
+            var right = Vector3.Cross(up, forward).normalized;
+            float length = bs.size * 2f;
+            float step = itemOrNull != null ? Mathf.Max(itemOrNull.minSpacing, 0.01f) : Mathf.Max(0.5f, 0.01f);
+            for (float u = -length * 0.5f; u <= length * 0.5f + 0.0001f; u += step)
+            {
+                var p = center + right * u;
+                list.Add(new Vector2(p.x, p.z));
+            }
+            return list;
+        }
+
+        private static List<Vector2> BuildFacadeStripCandidatesFromInfo(FacadeDetectionService.FacadeInfo info, BrushSettings bs, VegetationItem item)
+        {
+            var list = new List<Vector2>();
+            float length = bs.size * 2f;
+            float step = Mathf.Max(item.minSpacing, 0.01f);
+            for (float u = -length * 0.5f; u <= length * 0.5f + 0.0001f; u += step)
+            {
+                var p = info.bottomPos + info.right * u;
+                list.Add(new Vector2(p.x, p.z));
+            }
+            return list;
+        }
+
         private static void CollectInRadius(Transform root, Vector3 center, float radius, bool eraseAll, IReadOnlyList<GameObject> onlyTypes, List<GameObject> outList)
         {
             if (root == null) return; // 提前返回
@@ -744,15 +921,92 @@ namespace MrTerrainPainter.Editor.Services
             float scale = item.SampleScale(rnd);
             go.transform.localScale = Vector3.one * scale;
             // 强制使用条目级Y旋转范围
-            float yRot = item.SampleYRotation(rnd);
+            float yRot = item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape ? 0f : item.SampleYRotation(rnd);
             var rot = Quaternion.Euler(0f, yRot, 0f);
             var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
-            bool useNormal = cfg != null ? (cfg.normalDirection || item.alignToTerrainNormal) : item.alignToTerrainNormal;
-            if (useNormal)
+            bool useNormal = cfg != null ? (cfg.normalDirection || item.alignToTerrainNormal || item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape) : (item.alignToTerrainNormal || item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape);
+            if (item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape)
+            {
+                var forward = normal.normalized;
+                var upOnPlane = Vector3.ProjectOnPlane(Vector3.up, forward);
+                if (upOnPlane.sqrMagnitude < 1e-6f) upOnPlane = Vector3.Cross(forward, Vector3.right).normalized;
+                var baseRot = Quaternion.LookRotation(forward, upOnPlane);
+                rot = Quaternion.AngleAxis(yRot, forward) * baseRot;
+            }
+            else if (useNormal)
             {
                 rot = Quaternion.LookRotation(Vector3.Cross(Vector3.right, normal), normal) * Quaternion.Euler(0f, yRot, 0f);
             }
             go.transform.rotation = rot;
+            if (item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape && item.edgeAutoHeight)
+            {
+                var up = Vector3.up;
+                var forward = Vector3.ProjectOnPlane(normal, up);
+                if (forward.sqrMagnitude > 1e-6f)
+                {
+                    forward.Normalize();
+                    float hFoot = go.transform.position.y;
+                    float heightMeters = 0f;
+                    float step = Mathf.Max(item.edgeLookAheadStep, 0.05f);
+                    float maxD = Mathf.Max(item.edgeMaxLookAhead, step);
+                    for (float d = step; d <= maxD + 0.0001f; d += step)
+                    {
+                        var test = go.transform.position + (-forward) * d;
+                        if (TerrainUtils.TryGetHeightAndNormal(terrain, test, out float hTop, out Vector3 nTop))
+                        {
+                            float sTop = TerrainUtils.ComputeSlope(nTop);
+                            if (sTop < Mathf.Clamp(item.edgeSlopeThreshold, 0f, 90f)) { heightMeters = Mathf.Max(0f, hTop - hFoot); break; }
+                        }
+                    }
+                    float baseScale = go.transform.localScale.x;
+                    float yScale = baseScale;
+                    if (heightMeters > 0f)
+                    {
+                        yScale = heightMeters / Mathf.Max(item.edgeReferenceHeightMeters, 0.0001f);
+                    }
+                    go.transform.localScale = new Vector3(baseScale, yScale, baseScale);
+                    var right = Vector3.Cross(up, forward).normalized;
+                    var horizFwd = forward; // 已在水平面
+                    var off = right * item.edgeOffsets.x + up * item.edgeOffsets.y + (-horizFwd) * item.edgeOffsets.z;
+                    go.transform.position += off;
+                }
+            }
+            var vi = go.GetComponent<VegetationInstance>();
+            if (vi == null) vi = go.AddComponent<VegetationInstance>();
+            vi.sourceTerrain = terrain;
+            vi.profileItemIndex = itemIndex;
+            vi.sourcePrefabName = item.prefab.name;
+            VegetationPool.IndexRegister(terrain, go);
+        }
+
+        private static void CreateFacadeInstance(VegetationItem item, Vector3 pos, Vector3 forward, Terrain terrain, int itemIndex, Transform parent, System.Random rnd, FacadeDetectionService.FacadeInfo info, VegetationGenerator.PlacementOverrides? ov)
+        {
+            if (item.prefab == null) return;
+            var go = VegetationPool.Get(terrain, item, itemIndex, parent, "Paint Vegetation Instance");
+            if (go == null) return;
+            go.transform.position = pos;
+
+            float baseScale = item.SampleScale(rnd);
+            go.transform.localScale = Vector3.one * baseScale;
+
+            float yRot = 0f;
+            var upOnPlane = Vector3.ProjectOnPlane(Vector3.up, forward);
+            if (upOnPlane.sqrMagnitude < 1e-6f) upOnPlane = Vector3.Cross(forward, Vector3.right).normalized;
+            var rot = Quaternion.LookRotation(forward, upOnPlane);
+            go.transform.rotation = rot;
+
+            if (item.edgeAutoHeight)
+            {
+                float yScale = info.heightMeters > 0f ? (info.heightMeters / Mathf.Max(item.edgeReferenceHeightMeters, 0.0001f)) : baseScale;
+                go.transform.localScale = new Vector3(baseScale, yScale, baseScale);
+                var up = Vector3.up;
+                var right = info.right;
+                var horizFwd = info.forward;
+                float depth = Mathf.Clamp(item.SampleEmbedDepth(rnd), 0f, 1f);
+                var off = right * item.offsets.x + up * item.offsets.y + (-horizFwd) * (depth + item.offsets.z);
+                go.transform.position += off;
+            }
+
             var vi = go.GetComponent<VegetationInstance>();
             if (vi == null) vi = go.AddComponent<VegetationInstance>();
             vi.sourceTerrain = terrain;

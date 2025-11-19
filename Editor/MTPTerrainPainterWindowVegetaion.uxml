@@ -16,6 +16,14 @@
             <ui:MinMaxSlider label="Y旋转范围" min-value="0" max-value="360" low-limit="0" high-limit="360" name="YrotationRange" />
             <ui:MinMaxSlider label="高度范围" min-value="1" max-value="12" low-limit="-10" high-limit="10" name="HeigthRange" />
             <ui:MinMaxSlider label="坡度范围" min-value="10" max-value="90" low-limit="-10" high-limit="20" name="SlopeRange" />
+            <uie:FloatField label="Edge Slope Threshold" name="EdgeSlopeThreshold" />
+            <ui:MinMaxSlider label="Embed Depth Range" min-value="0" max-value="1" low-limit="0" high-limit="1" name="EmbedDepthRange" />
+            <uie:FloatField label="Facade Enter Slope" name="FacadeEnterSlope" />
+            <uie:FloatField label="Facade Exit Slope" name="FacadeExitSlope" />
+            <uie:FloatField label="Probe Step (m)" name="ProbeStep" />
+            <uie:FloatField label="Probe Max Dist (m)" name="ProbeMaxDist" />
+            <uie:FloatField label="Facade Reference Height (m)" name="FacadeRefHeight" />
+            <uie:Vector3Field label="Facade Offsets (X/Y/Z)" name="FacadeOffsets" />
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>
