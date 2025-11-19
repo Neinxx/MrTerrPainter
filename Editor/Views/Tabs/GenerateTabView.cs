@@ -34,11 +34,11 @@ namespace MrTerrainPainter.Editor.Views.Tabs
             var startActions = new StartActionsView(genParam);
             startActions.BindAll(new StartActionsView.StartActionsCallbacks
             {
-                ScanSceneTerrains = () => window.terrainController.ScanSceneTerrains(window.terrainListUIData, window.scannedTerrainNames),
-                ClearTerrainUIList = () => window.terrainController.ClearTerrainUIList(window.terrainListUIData),
+                ScanSceneTerrains = () => window.terrainController.ScanSceneTerrains(window.TerrainListUIData, window.ScannedTerrainNames),
+                ClearTerrainUIList = () => window.terrainController.ClearTerrainUIList(window.TerrainListUIData),
                 GetSelectionObjects = () => Selection.gameObjects,
-                ClearTerrainLists = () => window.terrainController.ClearTerrainLists(window.selectedTerrains, window.terrainListUIData, window.scannedTerrainNames),
-                AddTerrainToLists = t => window.terrainController.AddTerrainToLists(t, window.selectedTerrains, window.terrainListUIData, window.scannedTerrainNames),
+                ClearTerrainLists = () => window.terrainController.ClearTerrainLists(window.SelectedTerrains, window.TerrainListUIData, window.ScannedTerrainNames),
+                AddTerrainToLists = t => window.terrainController.AddTerrainToLists(t, window.SelectedTerrains, window.TerrainListUIData, window.ScannedTerrainNames),
                 RefreshStartListUI = () => { },
                 RefreshControlListUI = () =>
                 {

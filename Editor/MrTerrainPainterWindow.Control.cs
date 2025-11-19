@@ -1,682 +1,397 @@
+using System.Collections.Generic;
 using System.Linq;
+using MrTerrainPainter.Editor.Config;
+using MrTerrainPainter.Editor.Utils;
+using MrTerrainPainter.Editor.Views;
+using MrTerrainPainter.Editor.Views.Tabs;
+using MrTerrainPainter.Editor.Services;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
-using MrTerrainPainter.Editor.Views;
-using MrTerrainPainter.Editor.Utils;
-using MrTerrainPainter.Editor.Views.Tabs;
-using static MrTerrainPainter.Editor.Services.VegetationGenerator;
 using UnityEditor.UIElements;
-using MrTerrainPainter.Editor.Tools;
-using MrTerrainPainter.Editor.Config;
-using MrTerrainPainter.Editor.Services;
 
 namespace MrTerrainPainter.Editor
 {
-    // Control 页相关逻辑（窗口只做装配与绑定）
     public partial class MrTerrainPainterWindow
     {
-        private void BuildControlSection()
+        // UI 引用缓存
+        private VisualElement controlRoot;
+        private Button btnTabPainting;
+        private Button btnTabGenerate;
+        private Button btnTabSettings;
+
+        private PropertyPanelView propertyPanelView;
+
+        private ListView uiVegetationList;
+        private ControlView controlView;
+
+        private void BuildControlLayout()
         {
             if (controlRoot != null) return;
+
+            var uxmlControl = ConfigTools.GetControlUxml(config);
             controlRoot = PageAssembler.Assemble(pageContainer, uxmlControl);
             controlRoot.AddToClassList("mt-frame");
 
-            // TabContent 容器
+            btnTabPainting = controlRoot.Q<Button>("Painting");
+            btnTabGenerate = controlRoot.Q<Button>("Generate");
+            btnTabSettings = controlRoot.Q<Button>("Settings");
             controlTabContent = controlRoot.Q<VisualElement>("TabContent");
-            if (controlTabContent == null)
-            {
-                controlTabContent = new VisualElement();
-                controlRoot.Add(controlTabContent);
-            }
 
-            // TabBar 与 TabButton 样式
-            var tabBar = controlRoot.Q<VisualElement>("TabBar");
-            tabBar?.AddToClassList("mt-tabbar");
-            var tabBtnPainting = controlRoot.Q<Button>("Painting");
-            var tabBtnGenerate = controlRoot.Q<Button>("Generate");
-            var tabBtnSettings = controlRoot.Q<Button>("Settings");
-            tabBtnPainting?.AddToClassList("mt-tabbutton");
-            tabBtnGenerate?.AddToClassList("mt-tabbutton");
+            if (btnTabPainting != null) btnTabPainting.clicked += () => SwitchToTab(TabType.Paint);
+            if (btnTabGenerate != null) btnTabGenerate.clicked += () => SwitchToTab(TabType.Generate);
+            if (btnTabSettings != null) btnTabSettings.clicked += () => SwitchToTab(TabType.Settings);
 
-            var controlTabView = new MrTerrainPainter.Editor.Views.Tabs.ControlTabView(this, controlRoot);
-            controlTabView.SetupTabEvents();
-            controlTabView.SetupNamedControls();
-            UpdatePropertyPanelFromSelectedItem();
-            // 地形列表刷新由 Generate 页负责，避免在控制页根上查询不存在的容器
-
-            // 默认选中 Painting 标签
-            var btnPainting = controlRoot.Q<Button>("Painting");
-            var btnGenerate = controlRoot.Q<Button>("Generate");
-            bool isComplete = ConfigTools.IsComplete(config, out var _);
-
-            if (!isComplete)
-            {
-                btnPainting?.SetEnabled(false);
-                btnGenerate?.SetEnabled(false);
-                if (tabBtnSettings != null)
-                {
-                    tabBtnSettings.AddToClassList("mt-tabbutton--active");
-                    btnPainting?.RemoveFromClassList("mt-tabbutton--active");
-                    btnGenerate?.RemoveFromClassList("mt-tabbutton--active");
-                }
-                controlTabContent?.Clear();
-                LoadSettingsTab();
-                return;
-            }
-
-            if (btnPainting != null && btnGenerate != null)
-            {
-                SetTabActive(btnPainting, btnGenerate);
-                controlTabContent?.Clear();
-                LoadPaintingTab();
-            }
+            if (!ConfigTools.IsComplete(config, out _)) SwitchToTab(TabType.Settings);
+            else SwitchToTab(TabType.Paint);
         }
 
-
-
-
-
-        public void OpenPaintingSettings()
+        public void SwitchToTab(TabType type)
         {
-            if (controlRoot == null)
-            {
-                BuildControlSection();
-            }
-            if (controlRoot != null)
-            {
-                var btnPainting = controlRoot.Q<Button>("Painting");
-                var btnGenerate = controlRoot.Q<Button>("Generate");
-                if (btnPainting != null && btnGenerate != null) SetTabActive(btnPainting, btnGenerate);
-                if (controlTabContent == null)
-                {
-                    controlTabContent = new VisualElement();
-                    controlRoot.Add(controlTabContent);
-                }
-                controlTabContent.Clear();
-                LoadPaintingTab();
-            }
-        }
+            if (controlRoot == null) BuildControlLayout();
 
-        public void SetTabActive(Button active, Button inactive)
-        {
-            if (active == null || inactive == null) return;
-            // 使用 USS 类控制激活状态，避免内联样式与主题冲突
-            active.AddToClassList("mt-tabbutton--active");
-            inactive.RemoveFromClassList("mt-tabbutton--active");
-        }
+            if (type != TabType.Settings && !ConfigTools.IsComplete(config, out _)) type = TabType.Settings;
 
-
-        public void LoadPaintingTab()
-        {
-            if (controlTabContent == null) return;
+            currentTab = type;
             controlTabContent.Clear();
-            bool isComplete = ConfigTools.IsComplete(config, out var _);
-            if (!isComplete)
-            {
-                var btnSettings1 = controlRoot?.Q<Button>("Settings");
-                var btnPaintingLocal = controlRoot?.Q<Button>("Painting");
-                var btnGenerateLocal = controlRoot?.Q<Button>("Generate");
-                btnPaintingLocal?.SetEnabled(false);
-                btnGenerateLocal?.SetEnabled(false);
-                btnSettings1?.AddToClassList("mt-tabbutton--active");
-                btnPaintingLocal?.RemoveFromClassList("mt-tabbutton--active");
-                btnGenerateLocal?.RemoveFromClassList("mt-tabbutton--active");
-                LoadSettingsTab();
-                return;
-            }
-            var btnPainting = controlRoot?.Q<Button>("Painting");
-            var btnGenerate = controlRoot?.Q<Button>("Generate");
-            var btnSettings = controlRoot?.Q<Button>("Settings");
-            if (btnPainting != null && btnGenerate != null)
-            {
-                SetTabActive(btnPainting, btnGenerate);
-                btnSettings?.RemoveFromClassList("mt-tabbutton--active");
-            }
-            settingsOpen = false;
-            mode = Mode.Paint;
-            NotifyWindowStateChanged();
-            var scroll = new ScrollView();
-            scroll.mode = ScrollViewMode.Vertical;
-            scroll.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
-            scroll.AddToClassList("mt-scroll");
-            var vegRoot = PageAssembler.Assemble(scroll, uxmlVegetationShared);
-            var paintRoot = PageAssembler.Assemble(scroll, uxmlPaint);
-            controlTabContent.Add(scroll);
-            ReloadAvailableProfiles();
-            SetupVegetationProfileListPublic(vegRoot);
-            BindPropertyPanelViewFromRoot(vegRoot);
-            var view = new MrTerrainPainter.Editor.Views.Tabs.PaintingTabView(this, paintRoot);
-            view.Setup();
-        }
+            UpdateTabButtonState(type);
 
-        public void LoadGenerateTab()
-        {
-            if (controlTabContent == null) return;
-            controlTabContent.Clear();
-            bool isComplete = ConfigTools.IsComplete(config, out var _);
-            if (!isComplete)
+            switch (type)
             {
-                var btnSettings1 = controlRoot?.Q<Button>("Settings");
-                var btnPaintingLocal = controlRoot?.Q<Button>("Painting");
-                var btnGenerateLocal = controlRoot?.Q<Button>("Generate");
-                btnPaintingLocal?.SetEnabled(false);
-                btnGenerateLocal?.SetEnabled(false);
-                btnSettings1?.AddToClassList("mt-tabbutton--active");
-                btnPaintingLocal?.RemoveFromClassList("mt-tabbutton--active");
-                btnGenerateLocal?.RemoveFromClassList("mt-tabbutton--active");
-                LoadSettingsTab();
-                return;
+                case TabType.Settings:
+                    LoadSettingsContent();
+                    break;
+                case TabType.Paint:
+                case TabType.Generate:
+                    LoadOperationContent(type);
+                    break;
             }
-            var btnPainting = controlRoot?.Q<Button>("Painting");
-            var btnGenerate = controlRoot?.Q<Button>("Generate");
-            var btnSettings = controlRoot?.Q<Button>("Settings");
-            if (btnPainting != null && btnGenerate != null)
-            {
-                SetTabActive(btnGenerate, btnPainting);
-                btnSettings?.RemoveFromClassList("mt-tabbutton--active");
-            }
-            var scroll = new ScrollView();
-            scroll.mode = ScrollViewMode.Vertical;
-            scroll.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
-            scroll.AddToClassList("mt-scroll");
-            var vegRoot = PageAssembler.Assemble(scroll, uxmlVegetationShared);
-            var genRoot = PageAssembler.Assemble(scroll, uxmlGenerate);
-            controlTabContent.Add(scroll);
-            ReloadAvailableProfiles();
-            SetupVegetationProfileListPublic(vegRoot);
-            BindPropertyPanelViewFromRoot(vegRoot);
-            var tab = new MrTerrainPainter.Editor.Views.Tabs.GenerateTabView(this, genRoot);
-            tab.Setup();
-            settingsOpen = false;
-            mode = Mode.Generate;
             NotifyWindowStateChanged();
         }
 
-        public void UpdateGenerateActionsVisibility(VisualElement genParam)
+        private void UpdateTabButtonState(TabType activeType)
         {
-            if (genParam == null) return;
-            bool hasTerrains = terrainListUIData != null && terrainListUIData.Count > 0;
-            var btnGenerate = genParam.Q<Button>("GenerateTerrainObject");
-            var btnClear = genParam.Q<Button>("ClearTerrainObject");
-            if (btnGenerate != null)
-                btnGenerate.style.display = hasTerrains ? DisplayStyle.Flex : DisplayStyle.None;
-            if (btnClear != null)
-                btnClear.style.display = hasTerrains ? DisplayStyle.Flex : DisplayStyle.None;
+            void SetActive(Button btn, bool active)
+            {
+                if (btn == null) return;
+                if (active) btn.AddToClassList("mt-tabbutton--active");
+                else btn.RemoveFromClassList("mt-tabbutton--active");
+
+                // 仅当在 Settings 页且配置不完整时禁用其他 Tab
+                if (activeType == TabType.Settings && !ConfigTools.IsComplete(config, out _))
+                {
+                    if (btn != btnTabSettings) btn.SetEnabled(false);
+                }
+                else btn.SetEnabled(true);
+            }
+
+            SetActive(btnTabPainting, activeType == TabType.Paint);
+            SetActive(btnTabGenerate, activeType == TabType.Generate);
+            SetActive(btnTabSettings, activeType == TabType.Settings);
         }
 
-        public void LoadSettingsTab()
+        private void NotifyWindowStateChanged()
         {
-            var root = controlTabContent;
-            if (root == null) return;
-            var settingsUxml = ConfigTools.GetSettingsUxml();
-            root.Clear();
-            var page = PageAssembler.Assemble(root, settingsUxml);
+            WindowStateChanged?.Invoke(true, currentTab == TabType.Settings, currentTab == TabType.Paint);
+        }
+
+        private void LoadSettingsContent()
+        {
+            var uxml = ConfigTools.GetSettingsUxml();
+            var page = PageAssembler.Assemble(controlTabContent, uxml);
             var view = new SettingsTabView(this, page);
             view.Setup();
-            settingsOpen = true;
-            NotifyWindowStateChanged();
         }
 
-        public void OpenSettingsTab()
+        private void LoadOperationContent(TabType type)
         {
-            if (controlRoot == null)
-            {
-                BuildControlSection();
-            }
-            if (controlRoot != null)
-            {
-                if (controlTabContent == null)
-                {
-                    controlTabContent = new VisualElement();
-                    controlRoot.Add(controlTabContent);
-                }
-                controlTabContent.Clear();
-                var btnSettings = controlRoot.Q<Button>("Settings");
-                var btnPainting = controlRoot.Q<Button>("Painting");
-                var btnGenerate = controlRoot.Q<Button>("Generate");
-                if (btnSettings != null)
-                {
-                    btnSettings.AddToClassList("mt-tabbutton--active");
-                    btnPainting?.RemoveFromClassList("mt-tabbutton--active");
-                    btnGenerate?.RemoveFromClassList("mt-tabbutton--active");
-                }
-                LoadSettingsTab();
-            }
-        }
+            var scroll = new ScrollView { mode = ScrollViewMode.Vertical };
+            scroll.AddToClassList("mt-scroll");
+            controlTabContent.Add(scroll);
 
-        public void OnConfigurationCompleted()
-        {
-            var btnPainting = controlRoot?.Q<Button>("Painting");
-            var btnGenerate = controlRoot?.Q<Button>("Generate");
-            if (btnPainting != null) btnPainting.SetEnabled(true);
-            if (btnGenerate != null) btnGenerate.SetEnabled(true);
-            if (controlTabContent != null)
+            // 共享部分
+            var uxmlShared = ConfigTools.GetVegetationSharedUxml(config);
+            var sharedRoot = PageAssembler.Assemble(scroll, uxmlShared);
+
+            session.ReloadAvailableProfiles();
+            SetupVegetationList(sharedRoot);
+            BindPropertyPanel(sharedRoot);
+
+            // 特定部分
+            VisualTreeAsset specificUxml = (type == TabType.Paint)
+                ? ConfigTools.GetPaintUxml(config)
+                : ConfigTools.GetGenerateUxml(config);
+
+            var specificRoot = PageAssembler.Assemble(scroll, specificUxml);
+
+            if (type == TabType.Paint)
             {
-                SetTabActive(btnPainting, btnGenerate);
-                controlTabContent.Clear();
-                LoadPaintingTab();
+                var view = new PaintingTabView(this, specificRoot);
+                view.Setup();
+            }
+            else
+            {
+                var view = new GenerateTabView(this, specificRoot);
+                view.Setup();
             }
         }
 
-        public void CreateNewVegetationAndRefresh()
+        // --- List & Binding Logic ---
+
+        private void SetupVegetationList(VisualElement root)
         {
-            prefabAssignment?.CreateNewVegetationItem();
-            refreshController?.RefreshAllUI();
-        }
+            var rowUxml = ConfigTools.GetVegetationProfileRowUxml(config);
+            controlView = new ControlView(root, rowUxml);
 
-        private PreviewGridView previewGridView;
-        public void SetPreviewListContainer(VisualElement ve)
-        {
-            uiPreviewPrefabList = ve;
-            previewGridView = new PreviewGridView(
-                uiPreviewPrefabList,
-                () => GetProfileItemsSnapshot(),
-                () => selectedItemIndex,
-                i => SetSelectedThumbIndex(i),
-                () => currentProfile,
-                idx => prefabAssignment?.RemoveItemAt(idx),
-                (idx, type) => prefabAssignment?.SetItemType(currentProfile, idx, type),
-                () => RefreshVegetationListUI(),
-                () => RefreshPreviewListUI()
-            );
-        }
-
-        public void SetupVegetationProfileListPublic(VisualElement hostRoot)
-        {
-            SetupVegetationProfileList(hostRoot);
-        }
-
-
-
-        public void BindPropertyPanelViewFromRoot(VisualElement queryRoot)
-        {
-            if (queryRoot == null) return;
-            propertyPanelView = new PropertyPanelView(queryRoot);
-            propertyPanelView.Bind(new PropertyPanelView.PropertyPanelCallbacks
-            {
-                GetSelectedItem = GetSelectedItem,
-                GetCurrentProfile = () => currentProfile,
-                GetSelectedItemIndex = () => selectedItemIndex,
-                RemoveItemAt = idx => { prefabAssignment?.RemoveItemAt(idx); },
-                AssignPrefabToItem = (profile, index, go) => { prefabAssignment?.AssignPrefabToItem(profile, index, go); currentPrefab = go; },
-                RefreshPreviewListUI = () => RefreshPreviewListUI(),
-                RefreshVegetationListUI = () => RefreshVegetationListUI(),
-                UpdatePropertyPanelFromSelectedItem = () => UpdatePropertyPanelFromSelectedItem(),
-                MarkCurrentProfileDirty = () => { if (currentProfile != null) EditorUtility.SetDirty(currentProfile); }
-            });
-        }
-
-        /// <summary>
-        /// 初始化生成标签页的UI结构
-        /// </summary>
-
-
-
-
-        /// <summary>
-        /// 处理生成植被的逻辑
-        /// </summary>
-        public void HandleGenerateAction()
-        {
-            // 自动补充选中地形
-            if (!AutoPopulateSelectedTerrains())
-            {
-                EditorUtility.DisplayDialog(
-                    "提示",
-                    "没有可用地形或未选择Profile。请先在Control页添加选中地形。",
-                    "确定"
-                );
-                return;
-            }
-
-            EnsureRandom();
-            var filter = BuildFilterSettings();
-            var placementOverrides = BuildPlacementOverrides();
-
-            // 生成主Profile的植被
-            Services.VegetationGenerator.GenerateOnTerrains(
-                selectedTerrains,
-                currentProfile,
-                null,
-                filter,
-                placementOverrides
-            );
-
-            // 生成额外Profile的植被
-            GenerateExtraProfilesVegetation(filter, placementOverrides);
-
-            MrTerrainPainter.Editor.Utils.EditorSceneUtils.MarkSceneDirty();
-        }
-
-        /// <summary>
-        /// 自动填充选中的地形
-        /// </summary>
-        /// <returns>是否有有效的选中地形和Profile</returns>
-        private bool AutoPopulateSelectedTerrains()
-        {
-            if (selectedTerrains.Count == 0)
-            {
-                AddTerrainsFromSelection();
-
-                // 如果选择中没有地形，尝试添加所有活跃地形
-                if (selectedTerrains.Count == 0)
-                {
-                    AddActiveTerrains();
-                }
-
-                // 刷新地形列表UI
-                RefreshTerrainListUI();
-            }
-
-            return selectedTerrains.Count > 0 && currentProfile != null;
-        }
-
-        /// <summary>
-        /// 从选择的对象中添加地形
-        /// </summary>
-        private void AddTerrainsFromSelection()
-        {
-            foreach (var obj in Selection.gameObjects)
-            {
-                var terrain = obj.GetComponent<Terrain>();
-                if (terrain != null && !selectedTerrains.Contains(terrain))
-                {
-                    selectedTerrains.Add(terrain);
-                }
-            }
-        }
-
-        /// <summary>
-        /// 添加所有活跃的地形
-        /// </summary>
-        private void AddActiveTerrains()
-        {
-            foreach (var terrain in Terrain.activeTerrains)
-            {
-                if (terrain != null && !selectedTerrains.Contains(terrain))
-                {
-                    selectedTerrains.Add(terrain);
-                }
-            }
-        }
-
-        /// <summary>
-        /// 刷新地形列表UI
-        /// </summary>
-        private void RefreshTerrainListUI()
-        {
-            if (controlRoot == null) return;
-            PopulateTerrainListUI(controlRoot);
-            MrTerrainPainter.Editor.Tools.MTPBrushContext.SetSelectedTerrains(selectedTerrains);
-        }
-
-        /// <summary>
-        /// 生成额外Profile的植被
-        /// </summary>
-        private void GenerateExtraProfilesVegetation(FilterSettings filter, PlacementOverrides overrides)
-        {
-            foreach (var profile in MrTerrainPainter.Editor.Tools.MTPBrushContext.ExtraProfiles)
-            {
-                if (profile == null || profile.IsEmpty()) continue;
-
-                Services.VegetationGenerator.GenerateOnTerrains(
-                    selectedTerrains,
-                    profile,
-                    null,
-                    filter,
-                    overrides
-                );
-            }
-        }
-
-        /// <summary>
-        /// 处理清除植被的逻辑
-        /// </summary>
-        public void HandleClearAction()
-        {
-            foreach (var terrain in selectedTerrains)
-            {
-                if (terrain == null) continue;
-
-                VegetationPool.RecycleAllInstances(terrain, true, "Clear Vegetation Instances");
-            }
-
-            MrTerrainPainter.Editor.Utils.EditorSceneUtils.MarkSceneDirty();
-
-            // mode = Mode.Generate;
-            // if (controlRoot != null)
-            // {
-            //     var btnPainting = controlRoot.Q<Button>("Painting");
-            //     var btnGenerate = controlRoot.Q<Button>("Generate");
-            //     btnPainting?.RemoveFromClassList("mt-tabbutton--active");
-            //     btnGenerate?.RemoveFromClassList("mt-tabbutton--active");
-            // }
-            // controlTabContent?.Clear();
-        }
-
-        // —— 绑定：Generate 页过滤控件 ——
-        public void BindGenerateFilterControls(VisualElement root)
-        {
-            if (root == null) return; // 提前返回
-            generateFilterView = new GenerateFilterView(root);
-            // 统一在窗口持有一个 FilterSettings 实例，包含噪声与分布参数
-            if (genFilter == null) genFilter = new FilterSettings();
-            genFilter.noise = noise;
-            generateFilterView.Bind(genFilter);
-            var useBurstGen = root.Q<Toggle>("UseBurstPoissonGen");
-            if (useBurstGen != null)
-            {
-                useBurstGen.SetValueWithoutNotify(Services.VegetationGenerator.UseBurstPoisson);
-                useBurstGen.RegisterValueChangedCallback(evt => { Services.VegetationGenerator.UseBurstPoisson = evt.newValue; });
-            }
-        }
-
-        // —— 绑定：Paint 页笔刷控件 ——
-        public void BindBrushControls(VisualElement root)
-        {
-            if (root == null) return; // 提前返回
-            brushView = new BrushView(root);
-            brushView.Bind(brush);
-        }
-
-
-
-        public void AddPrefabsToCurrentProfile(GameObject[] gos)
-        {
-            if (gos == null || gos.Length == 0) return;
-            prefabAssignment?.AddPrefabsToProfile(gos);
-            RefreshPreviewListUI();
-            RefreshVegetationListUI();
-            UpdatePropertyPanelFromSelectedItem();
-        }
-
-        private readonly System.Collections.Generic.List<Runtime.Profiles.VegetationProfile> availableProfiles = new();
-
-        // 统一构建 VegetationProfile 列表与交互
-        private void SetupVegetationProfileList(VisualElement hostRoot)
-        {
-            if (hostRoot == null) return;
-
-            if (controlView == null)
-            {
-                controlView = new ControlView(hostRoot, uxmlVegetationProfileRow);
-            }
-
-            var cb = new ControlViewCallbacks
-            {
-                CreateNewVegetationProfileAsset = CreateNewVegetationProfileAsset,
-                ReloadAvailableProfiles = ReloadAvailableProfiles,
-                RefreshAllUI = RefreshAllUI,
-                SetListSelectionToCurrentProfile = SetListSelectionToCurrentProfile,
-                DeleteVegetationProfileAsset = DeleteVegetationProfileAsset,
-                SetCurrentProfile = p => { currentProfile = p; MrTerrainPainter.Editor.Tools.MTPBrushContext.CurrentProfile = p; },
-                ResetSelectionForProfileChange = () => { selectedItemIndex = -1; selectedThumbIndices.Clear(); },
-                GetCurrentProfile = () => currentProfile,
-                OnListContentWidthMeasured = w => vegetationListContentWidth = w
-            };
-
-            // 使用专用视图承载缩略图与拖拽新增区域
             var thumbView = new ThumbListView(
-                uxmlVegetationProfilePrefabIcon,
-                new ThumbListView.ThumbListViewCallbacks
-                {
-                    GetCurrentProfile = () => currentProfile,
-                    SetCurrentProfile = p => { currentProfile = p; MrTerrainPainter.Editor.Tools.MTPBrushContext.CurrentProfile = p; },
-                    GetSelectedItemIndex = () => selectedItemIndex,
-                    SetSelectedItemIndex = i => selectedItemIndex = i,
-                    IsIndexSelected = i => selectedThumbIndices.Contains(i),
-                    AddSelectedIndex = i => selectedThumbIndices.Add(i),
-                    RemoveSelectedIndex = i => selectedThumbIndices.Remove(i),
-                    ClearSelectedIndices = () => selectedThumbIndices.Clear(),
-                    GetSelectedIndices = () => selectedThumbIndices.ToList(),
-                    UpdatePropertyPanelFromSelectedItem = () => UpdatePropertyPanelFromSelectedItem(),
-                    RefreshVegetationListUI = () => RefreshVegetationListUI(),
-                    RefreshPreviewListUI = () => RefreshPreviewListUI(),
-                    RemoveItemAtFromProfile = (profile, index) => prefabAssignment?.RemoveItemAtFromProfile(profile, index),
-                    RemoveItemsAtFromProfile = (profile, indices) => prefabAssignment?.RemoveItemsAtFromProfile(profile, indices),
-                    SetItemType = (profile, index, type) => prefabAssignment?.SetItemType(profile, index, type),
-                    OpenPrefabPickerForItem = (profile, index) => OpenPrefabPickerForItem(profile, index),
-                    GetAvailableTypes = () =>
-                    {
-                        var types = config?.mappingEntries?.Select(e => e.type).Distinct().ToList();
-                        return types != null && types.Count > 0 ? types : ((Runtime.Profiles.PrefabType[])System.Enum.GetValues(typeof(Runtime.Profiles.PrefabType)));
-                    }
-                }
+                ConfigTools.GetPrefabIconUxml(config),
+                CreateThumbCallbacks()
             );
 
-            var addSlotView = new DraggableAddSlotView(
-                uxmlVegetationProfileDraggableArea,
+            var dragView = new DraggableAddSlotView(
+                ConfigTools.GetDraggableAreaUxml(config),
                 new DraggableAddSlotView.DraggableAddSlotViewCallbacks
                 {
-                    OpenPrefabPickerForNewItem = p => OpenPrefabPickerForNewItem(p),
-                    AddPrefabAsNewItem = (profile, go) => prefabAssignment?.AddPrefabAsNewItem(profile, go)
+                    OpenPrefabPickerForNewItem = (p) => session.PrefabPicker?.OpenForNew(p),
+                    AddPrefabAsNewItem = (p, go) => session.PrefabAssignment?.AddPrefabAsNewItem(p, go)
                 }
             );
 
-            controlView.SetupVegetationProfileList(
-                availableProfiles,
-                new System.Collections.Generic.List<Runtime.Profiles.VegetationProfile>(MrTerrainPainter.Editor.Tools.MTPBrushContext.ExtraProfiles as System.Collections.Generic.IEnumerable<Runtime.Profiles.VegetationProfile>),
-                cb,
-                addSlotView.MakeDraggableArea,
-                thumbView.MakeThumb,
-                ThumbRows);
+            // 修复 cast 错误: 使用 ToList() 或显式转换
+            var extraProfiles = Tools.MTPBrushContext.ExtraProfiles as IEnumerable<Runtime.Profiles.VegetationProfile>;
 
-            // 兼容窗口现有刷新函数
+            controlView.SetupVegetationProfileList(
+                session.AvailableProfiles,
+                extraProfiles?.ToList() ?? new List<Runtime.Profiles.VegetationProfile>(), // 修复 CS1503
+                CreateControlViewCallbacks(),
+                dragView.MakeDraggableArea,
+                thumbView.MakeThumb,
+                CalculateThumbRows
+            );
+
             uiVegetationList = controlView.ListView;
         }
 
-        private void RefreshVegetationListUI()
-        {
-            if (uiVegetationList == null) return;
-            var current = uiVegetationList.itemsSource as System.Collections.IList;
-            uiVegetationList.itemsSource = availableProfiles;
-            if (current == null || current.Count != availableProfiles.Count)
-            {
-                uiVegetationList.Rebuild();
-            }
-            uiVegetationList.RefreshItems();
-        }
-
-        private void RefreshPreviewListUI()
-        {
-            if (uiPreviewPrefabList == null) return;
-            Utils.UIThrottle.RunOnPanel(uiPreviewPrefabList, () =>
-            {
-                previewGridView?.Render();
-                uiPreviewListView = previewGridView?.ListView;
-                UpdatePreviewSelectionVisuals();
-            });
-        }
-
-
-
-        private void UpdatePreviewSelectionVisuals()
-        {
-            if (uiPreviewListView == null) return;
-            var children = uiPreviewListView.contentContainer.Children().ToList();
-            for (int ci = 0; ci < children.Count; ci++)
-            {
-                var ve = children[ci];
-                var idx = ve.userData is int n ? n : -1;
-                if (idx < 0) continue;
-                if (idx == selectedItemIndex) ve.AddToClassList("preview-item--selected"); else ve.RemoveFromClassList("preview-item--selected");
-            }
-        }
-
-        private void UpdatePropertyPanelFromSelectedItem()
-        {
-            propertyPanelView?.UpdateFromSelectedItem();
-            var item = GetSelectedItem();
-            currentPrefab = item != null ? item.prefab : null;
-        }
-
-        private void SetSelectedThumbIndex(int index)
-        {
-            selectedItemIndex = index;
-            currentPrefab = GetSelectedItem()?.prefab;
-            Utils.UIThrottle.RunOnPanel(uiPreviewListView, UpdatePreviewSelectionVisuals);
-            UpdatePropertyPanelFromSelectedItem();
-        }
+        // --- Generate Tab 需要的辅助方法 (修复 missing method 错误) ---
 
         public void PopulateTerrainListUI(VisualElement root)
         {
             if (root == null) return;
+            // 委托给 TerrainController 处理 UI 列表构建，或者在这里实现
+            // 简单起见，我们直接在这里实现列表构建逻辑
             var container = root.Q<VisualElement>("TerrainList");
-            if (container != null)
+            if (container == null) return;
+
+            var uiData = session.TerrainListUIData;
+
+            if (container is Foldout fold)
+                fold.style.display = uiData.Count > 0 ? DisplayStyle.Flex : DisplayStyle.None;
+
+            var listView = container.Q<ListView>("TerrainListLV");
+            if (listView == null)
             {
-                if (container is Foldout fold)
+                container.Clear();
+                listView = new ListView
                 {
-                    fold.style.display = terrainListUIData.Count > 0 ? DisplayStyle.Flex : DisplayStyle.None;
-                }
-                var listView = container.Q<ListView>("TerrainListLV");
-                if (listView == null)
-                {
-                    container.Clear();
-                    listView = new ListView
-                    {
-                        name = "TerrainListLV",
-                        selectionType = SelectionType.None,
-                        virtualizationMethod = CollectionVirtualizationMethod.FixedHeight,
-                        fixedItemHeight = 24
-                    };
-                    listView.AddToClassList("mt-terrain-list");
-                    container.Add(listView);
-                }
-                listView.itemsSource = terrainListUIData;
-                if (terrainListUIData.Count <= 10)
-                {
-                    listView.RemoveFromClassList("mt-terrain-list--max10");
-                    listView.AddToClassList("mt-terrain-list--auto");
-                }
-                else
-                {
-                    listView.RemoveFromClassList("mt-terrain-list--auto");
-                    listView.AddToClassList("mt-terrain-list--max10");
-                }
-                listView.makeItem = () =>
-                {
-                    var of = new ObjectField
-                    {
-                        objectType = typeof(Terrain),
-                        allowSceneObjects = true,
-                        label = string.Empty
-                    };
-                    of.AddToClassList("mt-terrain-list__item");
-                    return of;
+                    name = "TerrainListLV",
+                    selectionType = SelectionType.None,
+                    virtualizationMethod = CollectionVirtualizationMethod.FixedHeight,
+                    fixedItemHeight = 24
                 };
-                listView.bindItem = (elem, i) =>
-                {
-                    if (elem is not ObjectField of) return;
-                    var t = (i >= 0 && i < terrainListUIData.Count) ? terrainListUIData[i] : null;
-                    of.SetValueWithoutNotify(t);
-                };
+                listView.AddToClassList("mt-terrain-list");
+                container.Add(listView);
             }
-        }
-        public void RefreshPreviewListUIPublic()
-        {
-            RefreshPreviewListUI();
+
+            listView.itemsSource = uiData;
+
+            // 样式调整
+            if (uiData.Count <= 10)
+            {
+                listView.RemoveFromClassList("mt-terrain-list--max10");
+                listView.AddToClassList("mt-terrain-list--auto");
+            }
+            else
+            {
+                listView.RemoveFromClassList("mt-terrain-list--auto");
+                listView.AddToClassList("mt-terrain-list--max10");
+            }
+
+            listView.makeItem = () =>
+            {
+                var of = new ObjectField { objectType = typeof(Terrain), allowSceneObjects = true, label = "" };
+                of.AddToClassList("mt-terrain-list__item");
+                return of;
+            };
+            listView.bindItem = (e, i) =>
+            {
+                if (e is ObjectField of && i >= 0 && i < uiData.Count) of.SetValueWithoutNotify(uiData[i]);
+            };
         }
 
+        public void UpdateGenerateActionsVisibility(VisualElement root)
+        {
+            if (root == null) return;
+            bool hasTerrains = session.TerrainListUIData.Count > 0;
+            var btnGen = root.Q<VisualElement>("GenerateTerrainObject");
+            var btnClr = root.Q<VisualElement>("ClearTerrainObject");
+            if (btnGen != null) btnGen.style.display = hasTerrains ? DisplayStyle.Flex : DisplayStyle.None;
+            if (btnClr != null) btnClr.style.display = hasTerrains ? DisplayStyle.Flex : DisplayStyle.None;
+        }
+
+        // --- View Binding Wrappers ---
+
+        public void BindBrushControls(VisualElement root)
+        {
+            new BrushView(root).Bind(session.Brush);
+        }
+
+        public void BindGenerateFilterControls(VisualElement root)
+        {
+            new GenerateFilterView(root).Bind(session.GenFilter);
+            // 修复 VegetationGenerator 引用
+            var toggle = root.Q<Toggle>("UseBurstPoissonGen");
+            if (toggle != null)
+            {
+                toggle.SetValueWithoutNotify(VegetationGenerator.UseBurstPoisson);
+                toggle.RegisterValueChangedCallback(e => VegetationGenerator.UseBurstPoisson = e.newValue);
+            }
+        }
+
+        public void SetPreviewListContainer(VisualElement ve)
+        {
+            uiPreviewPrefabList = ve;
+            RefreshPreviewUI();
+        }
+
+        // --- Callbacks Construction ---
+
+        private ControlViewCallbacks CreateControlViewCallbacks()
+        {
+            // 简化路径获取
+            string GetPath() => !string.IsNullOrEmpty(config?.recipeGenerationPath) ? config.recipeGenerationPath : "Assets/MrTerrainPainter/Data";
+
+            return new ControlViewCallbacks
+            {
+                CreateNewVegetationProfileAsset = () =>
+                {
+                    var p = session.ProfileController.CreateNewVegetationProfileAsset(GetPath());
+                    session.SetCurrentProfile(p);
+                    session.ReloadAvailableProfiles();
+                },
+                ReloadAvailableProfiles = session.ReloadAvailableProfiles,
+                RefreshAllUI = RefreshAllUI,
+                SetListSelectionToCurrentProfile = () => uiVegetationList?.ClearSelection(),
+                DeleteVegetationProfileAsset = (p) =>
+                {
+                    if (EditorUtility.DisplayDialog("删除", $"确定删除 {p.name}?", "是", "否"))
+                    {
+                        session.ProfileController.DeleteVegetationProfileAsset(p);
+                        session.ReloadAvailableProfiles();
+                    }
+                },
+                SetCurrentProfile = (p) => { session.SetCurrentProfile(p); },
+                ResetSelectionForProfileChange = () => session.UIState.ClearSelection(),
+                GetCurrentProfile = () => session.CurrentProfile,
+                OnListContentWidthMeasured = w => session.UIState.ListContentWidth = w
+            };
+        }
+
+        private ThumbListView.ThumbListViewCallbacks CreateThumbCallbacks()
+        {
+            return new ThumbListView.ThumbListViewCallbacks
+            {
+                GetCurrentProfile = () => session.CurrentProfile,
+                SetCurrentProfile = session.SetCurrentProfile,
+                GetSelectedItemIndex = () => session.UIState.SelectedItemIndex,
+                SetSelectedItemIndex = (i) =>
+                {
+                    session.UIState.SelectedItemIndex = i;
+                    UpdatePropertyPanel();
+                    RefreshPreviewUI();
+                },
+                IsIndexSelected = session.UIState.IsThumbSelected,
+                AddSelectedIndex = session.UIState.AddThumbSelection,
+                RemoveSelectedIndex = session.UIState.RemoveThumbSelection,
+                ClearSelectedIndices = session.UIState.ClearThumbSelection,
+                GetSelectedIndices = session.UIState.GetSelectedThumbIndices,
+                UpdatePropertyPanelFromSelectedItem = UpdatePropertyPanel,
+                RefreshVegetationListUI = RefreshProfileListUI,
+                RefreshPreviewListUI = RefreshPreviewUI,
+                RemoveItemAtFromProfile = session.PrefabAssignment.RemoveItemAtFromProfile,
+                RemoveItemsAtFromProfile = session.PrefabAssignment.RemoveItemsAtFromProfile,
+                SetItemType = session.PrefabAssignment.SetItemType,
+                OpenPrefabPickerForItem = (p, i) => session.PrefabPicker.OpenForItem(p, i),
+                GetAvailableTypes = () => config.mappingEntries.Select(e => e.type).Distinct().ToList()
+            };
+        }
+
+        // --- Common Refresh Logic ---
+
+        private void RefreshAllUI() { RefreshProfileListUI(); RefreshPreviewUI(); UpdatePropertyPanel(); }
+
+        private void RefreshProfileListUI()
+        {
+            if (uiVegetationList == null) return;
+            uiVegetationList.itemsSource = session.AvailableProfiles;
+            uiVegetationList.Rebuild();
+        }
+
+        private void RefreshPreviewUI()
+        {
+            if (uiPreviewPrefabList == null) return;
+            RefreshProfileListUI();
+
+        }
+
+        private void UpdatePropertyPanel() => propertyPanelView?.UpdateFromSelectedItem();
+
+        private void BindPropertyPanel(VisualElement root)
+        {
+            propertyPanelView = new PropertyPanelView(root);
+            propertyPanelView.Bind(new PropertyPanelView.PropertyPanelCallbacks
+            {
+                GetSelectedItem = GetSelectedItem,
+                GetCurrentProfile = () => session.CurrentProfile,
+                GetSelectedItemIndex = () => session.UIState.SelectedItemIndex,
+                RemoveItemAt = idx => session.PrefabAssignment?.RemoveItemAt(idx),
+                AssignPrefabToItem = (p, i, go) => session.PrefabAssignment?.AssignPrefabToItem(p, i, go),
+                RefreshPreviewListUI = RefreshPreviewUI,
+                RefreshVegetationListUI = RefreshProfileListUI,
+                UpdatePropertyPanelFromSelectedItem = UpdatePropertyPanel,
+                MarkCurrentProfileDirty = () => { if (session.CurrentProfile) EditorUtility.SetDirty(session.CurrentProfile); }
+            });
+        }
+
+
+
+        private Runtime.Profiles.VegetationItem GetSelectedItem()
+        {
+            var items = session?.CurrentProfile?.Items;
+            int idx = session?.UIState.SelectedItemIndex ?? -1;
+            if (items == null || idx < 0 || idx >= items.Count) return null;
+            return items[idx];
+        }
+
+        private int CalculateThumbRows(int count)
+        {
+            // 【修复】给一个安全的最小宽度默认值 (例如 300)，防止除以 0 或极小值
+            // 当窗口刚打开时，ListContentWidth 可能是 0
+            float width = session?.UIState.ListContentWidth ?? 0f;
+            if (width < 50f) width = uiVegetationList?.resolvedStyle.width ?? 350f;
+            if (width < 50f) width = 350f; // 最后的保底
+
+            // 减去一些 Padding (左右各约 20px)
+            float usableWidth = width - 40f;
+
+            const float itemWidth = 64f + 8f; // ThumbSize + Gap
+
+            // 计算一行能放几个
+            int perRow = Mathf.FloorToInt(Mathf.Max(1, usableWidth / itemWidth));
+
+            // 计算行数
+            return Mathf.CeilToInt(count / (float)perRow);
+        }
+
+        private VisualElement uiPreviewPrefabList;
     }
 }

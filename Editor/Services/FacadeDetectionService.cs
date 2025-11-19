@@ -73,7 +73,7 @@ namespace MrTerrainPainter.Editor.Services
             Vector3 posEnterPos, posExitPos;
             bool okNeg = ScanOneDirection(-forward, out posEnterNeg, out posExitNeg);
             foundEnter = false; foundExit = false;
-            bool okPos = ScanOneDirection(+forward, out posEnterPos, out posExitPos);
+            bool okPos = ScanOneDirection(forward, out posEnterPos, out posExitPos);
             if (!okNeg && !okPos) return false;
 
             // 选择高度差更大的区间

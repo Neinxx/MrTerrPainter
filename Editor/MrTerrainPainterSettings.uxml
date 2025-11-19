@@ -16,7 +16,9 @@
             </ui:VisualElement>
         </ui:GroupBox>
     </ui:GroupBox>
-    <ui:VisualElement style="align-items: flex-end; justify-content: space-between; flex-grow: 1; max-height: 42px; min-height: 42px; height: 42px; margin-left: 0; flex-direction: row-reverse; min-width: 400px;">
-        <ui:Button text="保存配置" display-tooltip-when-elided="true" name="SaveConfiguration" class="mt-button" style="flex-shrink: 1; flex-grow: 1; width: 217px;" />
+    <ui:VisualElement style="align-items: flex-end; justify-content: space-between; flex-grow: 1; max-height: 42px; min-height: 42px; height: 42px; margin-left: 0; flex-direction: row; min-width: 400px;">
+        <ui:Button text="SaveConfiguration" display-tooltip-when-elided="true" name="SaveConfiguration" class="mt-button" style="flex-shrink: 1; flex-grow: 1; width: 217px;" />
+        <ui:Button text="Confirm" display-tooltip-when-elided="true" name="Confirm" class="mt-button" style="flex-shrink: 1; flex-grow: 1; width: 217px;" />
+        <ui:Button text="BindDefaultResources" display-tooltip-when-elided="true" name="BindDefaultResources" class="mt-button" style="flex-shrink: 1; flex-grow: 1; width: 217px;" />
     </ui:VisualElement>
 </ui:UXML>

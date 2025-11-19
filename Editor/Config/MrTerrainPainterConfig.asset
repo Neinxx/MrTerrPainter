@@ -45,6 +45,8 @@ MonoBehaviour:
   exampleScenePath: 
   mappingEntries:
   - node: {fileID: 0}
+    type: 4
+  - node: {fileID: 0}
     type: 2
   - node: {fileID: 0}
     type: 0

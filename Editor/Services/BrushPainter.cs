@@ -192,9 +192,14 @@ namespace MrTerrainPainter.Editor.Services
         private static bool s_configCompleteCached;
         static BrushPainter()
         {
-            var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
+            var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
             s_configCompleteCached = cfg != null && MrTerrainPainter.Editor.Config.ConfigTools.IsComplete(cfg, out _);
             MrTerrainPainter.Editor.Config.ConfigTools.CompletenessChanged += v => { s_configCompleteCached = v; };
+            MrTerrainPainter.Editor.Config.ConfigTools.ConfigUpdated += () =>
+            {
+                var c = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+                s_configCompleteCached = c != null && MrTerrainPainter.Editor.Config.ConfigTools.IsComplete(c, out _);
+            };
         }
         private class Grid
         {

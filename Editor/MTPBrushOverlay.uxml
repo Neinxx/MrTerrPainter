@@ -1,29 +1,54 @@
-<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../../UIElementsSchema/UIElements.xsd" editor-extension-mode="True">
-    <Style src="project://database/Assets/MrTerrPainterV1/Editor/MrTerrainPainterStyles.uss?fileID=7433441132597879392&amp;guid=1094a64c2bc4b654486d9ae7dcc8907c&amp;type=3#MrTerrainPainterStyles" />
-    <ui:GroupBox style="max-width: 189px; min-width: 189px; width: 189px;">
-        <ui:VisualElement name="Other" style="flex-grow: 1; display: flex;">
-            <ui:VisualElement style="flex-direction: row; justify-content: space-between;">
-                <ui:Label text="Brush" style="font-size: 14px; -unity-font-style: bold; color: rgb(226, 131, 72); -unity-text-align: middle-left; min-height: 20px; max-height: 20px;" />
-                <ui:Button text="P" display-tooltip-when-elided="true" name="Painting" class="mt-buttonG" style="min-height: 20px; min-width: 20px; max-width: 20px; max-height: 20px; -unity-font-style: bold-and-italic;" />
-            </ui:VisualElement>
-            <ui:DropdownField name="Profiles" tooltip="当前使用的植被配方(Profile)" />
-            <ui:SliderInt name="Size" high-value="100" show-input-field="false" inverted="false" tooltip="笔刷大小" />
-            <ui:SliderInt name="Strength" high-value="100" tooltip="绘制强度" />
-            <ui:SliderInt name="Density" high-value="100" tooltip="绘制密度" />
-            <ui:SliderInt name="Hardness" high-value="100" tooltip="笔刷硬度" />
-            <ui:SliderInt name="StrokeSpacing" high-value="100" tooltip="笔触间距(相对大小)" />
-            <ui:VisualElement style="flex-direction: row; justify-content: space-between;">
-                <ui:Toggle name="UseAbsoluteStrokeSpacing" tooltip="使用绝对间距(世界单位)" />
-                <ui:SliderInt name="StrokeSpacingAbs" high-value="200" tooltip="绝对间距(世界单位)" />
-            </ui:VisualElement>
-            <uie:EnumField name="Distribution" tooltip="分布类型" />
-            <ui:VisualElement style="flex-direction: row;">
-                <ui:Toggle name="MixExtraProfiles" tooltip="混合额外的Profile进行绘制" />
-                <ui:Toggle name="NormalDirection" tooltip="在预览中显示法线方向指示" />
-            </ui:VisualElement>
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="True">
+    <!-- 引用上面的 USS 文件 (确保路径正确) -->
+    <!-- <Style src="MTPOverlayStyles.uss" /> --> 
+    
+    <ui:VisualElement class="mtp-root">
+        <!-- 顶部标题栏 -->
+        <ui:VisualElement class="mtp-header">
+            <ui:Label text="MTP Brush" class="mtp-title" />
+            <ui:Button name="OpenSettingsBtn" text="⚙" tooltip="Open Main Window" class="mtp-icon-btn" />
         </ui:VisualElement>
-        <ui:VisualElement name="buttonNode" style="flex-grow: 0; display: flex; flex-direction: column-reverse; justify-content: flex-end;">
-            <ui:Button text="Mapping?" display-tooltip-when-elided="true" name="PlaseMapping" class="mt-button" style="flex-shrink: 1; flex-grow: 0; -unity-text-align: middle-center;" />
+
+        <!-- Mapping 警告条 (替代原来的大按钮替换逻辑) -->
+        <ui:VisualElement name="MappingWarning" class="mtp-warning-box" style="display: none;">
+            <ui:Label text="Mapping Incomplete" class="mtp-warning-label" />
+            <ui:Button name="FixMappingBtn" text="Fix" class="mtp-fix-btn" />
         </ui:VisualElement>
-    </ui:GroupBox>
+
+        <!-- 主内容区域 -->
+        <ui:VisualElement name="BrushContent">
+            
+            <ui:Label text="PROFILE" class="mtp-section-label" />
+            <ui:DropdownField name="Profiles" />
+            
+            <ui:Label text="SETTINGS" class="mtp-section-label" style="margin-top:8px;" />
+            
+            <!-- 使用 Slider 而不是 SliderInt，可以直接显示浮点数 -->
+            <ui:Slider name="Size" label="Size" low-value="0.5" high-value="50" tooltip="Brush Size (World Units)" />
+            <ui:Slider name="Strength" label="Strength" low-value="0.1" high-value="10" />
+            <ui:Slider name="Density" label="Density" low-value="0.1" high-value="5" />
+            <ui:Slider name="Hardness" label="Hardness" low-value="0" high-value="1" />
+            
+            <ui:Label text="ADVANCED" class="mtp-section-label" style="margin-top:8px;" />
+            
+            <uie:EnumField name="Distribution" label="Distribution" />
+            <ui:Slider name="StrokeSpacing" label="Spacing (Rel)" low-value="0" high-value="1" tooltip="Relative spacing based on brush size" />
+            
+            <!-- 绝对间距设置行 -->
+            <ui:VisualElement class="mtp-row">
+                <ui:Toggle name="UseAbsoluteStrokeSpacing" text="Use Abs Spacing" class="mtp-toggle-label" />
+            </ui:VisualElement>
+            <!-- 当上面 Toggle 开启时，此 Slider 有效/显示 -->
+            <ui:Slider name="StrokeSpacingAbs" label="Spacing (Abs)" low-value="0.1" high-value="50" style="margin-left: 10px;" />
+
+            <ui:VisualElement class="mtp-row" style="margin-top: 4px;">
+                <ui:Toggle name="MixExtraProfiles" text="Mix Extra Profiles" tooltip="Include multi-selected profiles" class="mtp-toggle-label" />
+            </ui:VisualElement>
+            
+            <ui:VisualElement class="mtp-row">
+                <ui:Toggle name="NormalDirection" text="Show Normals" class="mtp-toggle-label" />
+            </ui:VisualElement>
+
+        </ui:VisualElement>
+    </ui:VisualElement>
 </ui:UXML>

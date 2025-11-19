@@ -6,10 +6,10 @@ using UnityEditor.UIElements;
 
 namespace MrTerrainPainter.Editor.Views
 {
-    // 生成过滤视图：封装 Generate 页的噪声/过滤控件绑定
     public class GenerateFilterView
     {
         private readonly VisualElement root;
+
         private static float ToFloat(int i, float min, float max, int hv)
         {
             return Mathf.Lerp(min, max, Mathf.Clamp01(i / (float)Mathf.Max(1, hv)));
@@ -22,10 +22,19 @@ namespace MrTerrainPainter.Editor.Views
 
         public void Bind(VegetationGenerator.FilterSettings filter)
         {
-            if (root == null || filter == null) return; // 提前返回
+            if (root == null || filter == null) return;
 
-            var noise = filter.noise ?? (filter.noise = new VegetationGenerator.NoiseSettings());
+            // 【重要】不要在这里 new NoiseSettings，必须使用 filter 中已有的引用
+            // 否则 UI 绑定的将是一个全新的临时对象，而不是 Session 中的数据
+            if (filter.noise == null)
+            {
+                Debug.LogError("[MTP] Filter Settings has no noise object! UI binding failed.");
+                return;
+            }
+
+            var noise = filter.noise;
             noise.enabled = true;
+
             BindFilterToggle(noise);
             BindNoise(noise);
             BindDistributionAndShape(filter);
@@ -33,23 +42,17 @@ namespace MrTerrainPainter.Editor.Views
             BindCluster(filter);
         }
 
+        // ... ApplyFilterUIState 和 BindFilterToggle 保持不变 ...
         private void ApplyFilterUIState(VisualElement content, Button btn, bool enabled)
         {
             if (btn == null) return;
             var onColor = new Color(0.47f, 0.78f, 0.30f);
             var offColor = new Color(0.89f, 0.51f, 0.28f);
-            var c = enabled ? onColor : offColor;
-            btn.style.color = new StyleColor(c);
-            if (enabled)
-            {
-                btn.RemoveFromClassList("mt-button");
-                btn.AddToClassList("mt-button--activeG");
-            }
-            else
-            {
-                btn.RemoveFromClassList("mt-button--activeG");
-                btn.AddToClassList("mt-button");
-            }
+            btn.style.color = new StyleColor(enabled ? onColor : offColor);
+
+            if (enabled) { btn.RemoveFromClassList("mt-button"); btn.AddToClassList("mt-button--activeG"); }
+            else { btn.RemoveFromClassList("mt-button--activeG"); btn.AddToClassList("mt-button"); }
+
             if (content != null) content.style.display = enabled ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
@@ -58,6 +61,7 @@ namespace MrTerrainPainter.Editor.Views
             var filterBtn = root.Q<Button>("GenerationFilter");
             var filterContent = root.Q<VisualElement>("FilterContent");
             if (filterBtn == null) return;
+
             ApplyFilterUIState(filterContent, filterBtn, noise.enabled);
             filterBtn.clicked += () =>
             {
@@ -68,180 +72,107 @@ namespace MrTerrainPainter.Editor.Views
 
         private void BindNoise(VegetationGenerator.NoiseSettings noise)
         {
-            var threshold = root.Q<SliderInt>("Threshold");
-            if (threshold != null)
-            {
-                var max = Mathf.Max(1, threshold.highValue);
-                threshold.SetValueWithoutNotify(Mathf.RoundToInt(Mathf.Clamp01(noise.threshold) * max));
-                threshold.RegisterValueChangedCallback(evt => { noise.threshold = Mathf.Clamp01(evt.newValue / (float)max); });
-            }
-            var invert = root.Q<Toggle>("InvertThreshold");
-            if (invert != null)
-            {
-                invert.SetValueWithoutNotify(noise.invert);
-                invert.RegisterValueChangedCallback(evt => { noise.invert = evt.newValue; });
-            }
-            var seed = root.Q<IntegerField>("NoiseSeed");
-            if (seed != null)
-            {
-                seed.SetValueWithoutNotify(noise.seed);
-                seed.RegisterValueChangedCallback(evt => { noise.seed = evt.newValue; });
-            }
-            var persistence = root.Q<SliderInt>("Persistence");
-            if (persistence != null)
-            {
-                var hv = Mathf.Max(1, persistence.highValue);
-                persistence.SetValueWithoutNotify(Mathf.RoundToInt(Mathf.InverseLerp(0f, 1f, Mathf.Clamp(noise.persistence, 0f, 1f)) * hv));
-                persistence.RegisterValueChangedCallback(evt => { noise.persistence = ToFloat(evt.newValue, 0f, 1f, hv); });
-            }
-            var lacunarity = root.Q<SliderInt>("Lacunarity");
-            if (lacunarity != null)
-            {
-                var hv = Mathf.Max(1, lacunarity.highValue);
-                lacunarity.SetValueWithoutNotify(Mathf.RoundToInt(Mathf.InverseLerp(1f, 4f, Mathf.Clamp(noise.lacunarity, 1f, 4f)) * hv));
-                lacunarity.RegisterValueChangedCallback(evt => { noise.lacunarity = ToFloat(evt.newValue, 1f, 4f, hv); });
-            }
-            var octaves = root.Q<IntegerField>("OctaveCount");
-            if (octaves != null)
-            {
-                octaves.SetValueWithoutNotify(Mathf.Clamp(noise.octaves, 1, 6));
-                octaves.RegisterValueChangedCallback(evt =>
-                {
-                    noise.octaves = Mathf.Clamp(evt.newValue, 1, 6);
-                    octaves.SetValueWithoutNotify(noise.octaves);
-                });
-            }
-            var scale = root.Q<SliderInt>("Scale");
-            if (scale != null)
-            {
-                var hv = Mathf.Max(1, scale.highValue);
-                scale.SetValueWithoutNotify(Mathf.RoundToInt(Mathf.InverseLerp(1f, 200f, Mathf.Clamp(noise.scale, 1f, 200f)) * hv));
-                scale.RegisterValueChangedCallback(evt => { noise.scale = ToFloat(evt.newValue, 1f, 200f, hv); });
-            }
+            BindSlider("Threshold", 1, val => Mathf.RoundToInt(Mathf.Clamp01(noise.threshold) * val),
+                (val, max) => noise.threshold = Mathf.Clamp01(val / max));
+
+            BindToggle("InvertThreshold", () => noise.invert, v => noise.invert = v);
+            BindInt("NoiseSeed", () => noise.seed, v => noise.seed = v);
+
+            BindSlider("Persistence", 1, val => Mathf.RoundToInt(Mathf.InverseLerp(0f, 1f, noise.persistence) * val),
+                (val, max) => noise.persistence = ToFloat((int)val, 0f, 1f, (int)max));
+
+            BindSlider("Lacunarity", 1, val => Mathf.RoundToInt(Mathf.InverseLerp(1f, 4f, noise.lacunarity) * val),
+                (val, max) => noise.lacunarity = ToFloat((int)val, 1f, 4f, (int)max));
+
+            BindInt("OctaveCount", () => Mathf.Clamp(noise.octaves, 1, 6), v => noise.octaves = Mathf.Clamp(v, 1, 6));
+
+            BindSlider("Scale", 1, val => Mathf.RoundToInt(Mathf.InverseLerp(1f, 200f, noise.scale) * val),
+                (val, max) => noise.scale = ToFloat((int)val, 1f, 200f, (int)max));
         }
 
         private void BindDistributionAndShape(VegetationGenerator.FilterSettings filter)
         {
-            var dist = root.Q<EnumField>("GenDistribution");
-            if (dist != null)
-            {
-                if (dist.parent != null)
-                {
-                    var parent = dist.parent;
-                    int idx = parent.IndexOf(dist);
-                    var newDist = new EnumField("分布类型", filter.distribution);
-                    newDist.name = "GenDistribution";
-                    parent.Insert(idx, newDist);
-                    dist.RemoveFromHierarchy();
-                    dist = newDist;
-                }
-                dist.Init(filter.distribution);
-                dist.SetValueWithoutNotify(filter.distribution);
-                dist.focusable = true;
-                dist.SetEnabled(true);
-                dist.RegisterValueChangedCallback(evt =>
-                {
-                    var intVal = System.Convert.ToInt32(evt.newValue);
-                    filter.distribution = (DistributionType)System.Enum.ToObject(typeof(DistributionType), intVal);
-                });
-            }
-            var shape = root.Q<EnumField>("GenShape");
-            if (shape != null)
-            {
-                if (shape.parent != null)
-                {
-                    var parent = shape.parent;
-                    int idx = parent.IndexOf(shape);
-                    var newShape = new EnumField("形状", filter.shape);
-                    newShape.name = "GenShape";
-                    parent.Insert(idx, newShape);
-                    shape.RemoveFromHierarchy();
-                    shape = newShape;
-                }
-                shape.Init(filter.shape);
-                shape.SetValueWithoutNotify(filter.shape);
-                shape.focusable = true;
-                shape.SetEnabled(true);
-                shape.RegisterValueChangedCallback(evt =>
-                {
-                    var intVal = System.Convert.ToInt32(evt.newValue);
-                    filter.shape = (BrushShape)System.Enum.ToObject(typeof(BrushShape), intVal);
-                });
-            }
+            // 【优化】直接初始化 EnumField，不要销毁重建，那样会破坏布局引用的稳定性
+            BindEnum<DistributionType>("GenDistribution", filter.distribution, v => filter.distribution = v);
+            BindEnum<BrushShape>("GenShape", filter.shape, v => filter.shape = v);
         }
 
         private void BindGeneral(VegetationGenerator.FilterSettings filter)
         {
-            var jitter = root.Q<SliderInt>("GenMinSpacingJitter");
-            if (jitter != null)
-            {
-                var hv = Mathf.Max(1, jitter.highValue);
-                jitter.SetValueWithoutNotify(Mathf.RoundToInt(Mathf.Clamp01(filter.minSpacingJitter) * hv));
-                jitter.RegisterValueChangedCallback(evt => { filter.minSpacingJitter = Mathf.Clamp01(evt.newValue / (float)hv); });
-            }
-            var maxPoints = root.Q<IntegerField>("GenMaxPoints");
-            if (maxPoints != null)
-            {
-                maxPoints.SetValueWithoutNotify(Mathf.Max(filter.maxPoints, 1));
-                maxPoints.RegisterValueChangedCallback(evt => { filter.maxPoints = Mathf.Max(1, evt.newValue); });
-            }
+            BindSlider("GenMinSpacingJitter", 1, val => Mathf.RoundToInt(Mathf.Clamp01(filter.minSpacingJitter) * val),
+                (val, max) => filter.minSpacingJitter = Mathf.Clamp01(val / max));
 
-            var apMin = root.Q<SliderInt>("AdaptiveMinFactor");
-            if (apMin != null)
-            {
-                var hv = Mathf.Max(1, apMin.highValue);
-                var intVal = Mathf.RoundToInt(Mathf.InverseLerp(0.1f, 1.5f, Mathf.Clamp(filter.adaptiveMinFactor, 0.1f, 1.5f)) * hv);
-                apMin.SetValueWithoutNotify(intVal);
-                apMin.RegisterValueChangedCallback(evt => { filter.adaptiveMinFactor = ToFloat(evt.newValue, 0.1f, 1.5f, hv); });
-            }
-            var apMax = root.Q<SliderInt>("AdaptiveMaxFactor");
-            if (apMax != null)
-            {
-                var hv = Mathf.Max(1, apMax.highValue);
-                var intVal = Mathf.RoundToInt(Mathf.InverseLerp(1f, 3f, Mathf.Clamp(filter.adaptiveMaxFactor, 1f, 3f)) * hv);
-                apMax.SetValueWithoutNotify(intVal);
-                apMax.RegisterValueChangedCallback(evt => { filter.adaptiveMaxFactor = ToFloat(evt.newValue, 1f, 3f, hv); });
-            }
-            var apW = root.Q<SliderInt>("AdaptiveNoiseWeight");
-            if (apW != null)
-            {
-                var hv = Mathf.Max(1, apW.highValue);
-                var intVal = Mathf.RoundToInt(Mathf.InverseLerp(0.25f, 4f, Mathf.Clamp(filter.adaptiveNoiseWeight, 0.25f, 4f)) * hv);
-                apW.SetValueWithoutNotify(intVal);
-                apW.RegisterValueChangedCallback(evt => { filter.adaptiveNoiseWeight = ToFloat(evt.newValue, 0.25f, 4f, hv); });
-            }
+            BindInt("GenMaxPoints", () => Mathf.Max(filter.maxPoints, 1), v => filter.maxPoints = Mathf.Max(1, v));
+
+            BindSlider("AdaptiveMinFactor", 1, val => Mathf.RoundToInt(Mathf.InverseLerp(0.1f, 1.5f, filter.adaptiveMinFactor) * val),
+                (val, max) => filter.adaptiveMinFactor = ToFloat((int)val, 0.1f, 1.5f, (int)max));
+
+            BindSlider("AdaptiveMaxFactor", 1, val => Mathf.RoundToInt(Mathf.InverseLerp(1f, 3f, filter.adaptiveMaxFactor) * val),
+                (val, max) => filter.adaptiveMaxFactor = ToFloat((int)val, 1f, 3f, (int)max));
+
+            BindSlider("AdaptiveNoiseWeight", 1, val => Mathf.RoundToInt(Mathf.InverseLerp(0.25f, 4f, filter.adaptiveNoiseWeight) * val),
+                (val, max) => filter.adaptiveNoiseWeight = ToFloat((int)val, 0.25f, 4f, (int)max));
         }
 
         private void BindCluster(VegetationGenerator.FilterSettings filter)
         {
             var fc = root.Q<Foldout>("GenCluster");
             if (fc == null) return;
-            var cc = fc.Q<IntegerField>("GenClusterCount");
-            var cpc = fc.Q<IntegerField>("GenChildPerCluster");
-            var cr = fc.Q<SliderInt>("GenClusterRadius");
-            var cj = fc.Q<SliderInt>("GenChildJitter");
-            if (cc != null)
+
+            // 注意：这里需要传递 Foldout 作为 root 来查找子元素
+            BindInt("GenClusterCount", () => Mathf.Max(filter.cluster.clusterCount, 1), v => { var c = filter.cluster; c.clusterCount = Mathf.Max(1, v); filter.cluster = c; }, fc);
+            BindInt("GenChildPerCluster", () => Mathf.Max(filter.cluster.childPerCluster, 1), v => { var c = filter.cluster; c.childPerCluster = Mathf.Max(1, v); filter.cluster = c; }, fc);
+
+            BindSlider("GenClusterRadius", 1, val => Mathf.RoundToInt(Mathf.InverseLerp(0.1f, 50f, filter.cluster.clusterRadius) * val),
+                (val, max) => { var c = filter.cluster; c.clusterRadius = Mathf.Lerp(0.1f, 50f, val / max); filter.cluster = c; }, fc);
+
+            BindSlider("GenChildJitter", 1, val => Mathf.RoundToInt(Mathf.InverseLerp(0f, 5f, filter.cluster.childJitter) * val),
+                (val, max) => { var c = filter.cluster; c.childJitter = Mathf.Lerp(0f, 5f, val / max); filter.cluster = c; }, fc);
+        }
+
+        // --- 辅助绑定方法 (减少重复代码) ---
+
+        private void BindSlider(string name, int minHighVal, System.Func<float, int> getter, System.Action<float, float> setter, VisualElement searchRoot = null)
+        {
+            var container = searchRoot ?? root;
+            var slider = container.Q<SliderInt>(name);
+            if (slider == null) return;
+
+            var max = Mathf.Max(minHighVal, slider.highValue);
+            slider.SetValueWithoutNotify(getter(max));
+            slider.RegisterValueChangedCallback(evt => setter(evt.newValue, max));
+        }
+
+        private void BindInt(string name, System.Func<int> getter, System.Action<int> setter, VisualElement searchRoot = null)
+        {
+            var container = searchRoot ?? root;
+            var field = container.Q<IntegerField>(name);
+            if (field == null) return;
+            field.SetValueWithoutNotify(getter());
+            field.RegisterValueChangedCallback(evt => setter(evt.newValue));
+        }
+
+        private void BindToggle(string name, System.Func<bool> getter, System.Action<bool> setter)
+        {
+            var toggle = root.Q<Toggle>(name);
+            if (toggle == null) return;
+            toggle.SetValueWithoutNotify(getter());
+            toggle.RegisterValueChangedCallback(evt => setter(evt.newValue));
+        }
+
+        private void BindEnum<T>(string name, System.Enum initialValue, System.Action<T> setter) where T : System.Enum
+        {
+            var field = root.Q<EnumField>(name);
+            if (field == null) return;
+
+            // 初始化 EnumField 的类型，这样 UI Toolkit 才知道显示什么选项
+            field.Init(initialValue);
+            field.SetValueWithoutNotify(initialValue);
+
+            field.RegisterValueChangedCallback(evt =>
             {
-                cc.SetValueWithoutNotify(Mathf.Max(filter.cluster.clusterCount, 1));
-                cc.RegisterValueChangedCallback(evt => { var c = filter.cluster; c.clusterCount = Mathf.Max(1, evt.newValue); filter.cluster = c; });
-            }
-            if (cpc != null)
-            {
-                cpc.SetValueWithoutNotify(Mathf.Max(filter.cluster.childPerCluster, 1));
-                cpc.RegisterValueChangedCallback(evt => { var c = filter.cluster; c.childPerCluster = Mathf.Max(1, evt.newValue); filter.cluster = c; });
-            }
-            if (cr != null)
-            {
-                var hv = Mathf.Max(1, cr.highValue);
-                cr.SetValueWithoutNotify(Mathf.RoundToInt(Mathf.InverseLerp(0.1f, 50f, Mathf.Clamp(filter.cluster.clusterRadius, 0.1f, 50f)) * hv));
-                cr.RegisterValueChangedCallback(evt => { var c = filter.cluster; c.clusterRadius = Mathf.Lerp(0.1f, 50f, Mathf.Clamp01(evt.newValue / (float)hv)); filter.cluster = c; });
-            }
-            if (cj != null)
-            {
-                var hv = Mathf.Max(1, cj.highValue);
-                cj.SetValueWithoutNotify(Mathf.RoundToInt(Mathf.InverseLerp(0f, 5f, Mathf.Clamp(filter.cluster.childJitter, 0f, 5f)) * hv));
-                cj.RegisterValueChangedCallback(evt => { var c = filter.cluster; c.childJitter = Mathf.Lerp(0f, 5f, Mathf.Clamp01(evt.newValue / (float)hv)); filter.cluster = c; });
-            }
+                setter((T)evt.newValue);
+            });
         }
     }
 }

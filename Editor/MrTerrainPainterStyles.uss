@@ -1,394 +1,376 @@
-.thumb-item--selected {
-    border-width: 1px;
-    border-color: rgb(76, 76, 76);
-    translate: 0 -8px;
-    transform-origin: bottom;
-    transition-duration: 100ms;
+/* ==========================================================================
+   Variables & Theme
+   ========================================================================== */
+:root {
+    /* 基础颜色 */
+    --mt-col-bg-panel: rgba(30, 30, 30, 0.2);
+    --mt-col-bg-input: rgba(40, 40, 40, 0.8);
+    --mt-col-border: rgb(80, 80, 80);
+    --mt-col-border-hover: rgb(100, 100, 100);
+    
+    /* 文本颜色 */
+    --mt-col-text: rgb(220, 220, 220);
+    --mt-col-text-sub: rgb(160, 160, 160);
+
+    /* 状态颜色 */
+    --mt-col-accent: rgb(64, 128, 230);         /* 蓝色 - 选中/主要 */
+    --mt-col-accent-bg: rgba(64, 128, 230, 0.25);
+    
+    --mt-col-success: rgb(120, 200, 77);        /* 绿色 - 完成/激活 */
+    --mt-col-success-bg: rgba(78, 120, 60, 0.25);
+    
+    --mt-col-danger: rgb(200, 77, 106);         /* 红色 - 警告/删除 */
+    --mt-col-danger-bg: rgba(120, 60, 62, 0.25);
+    
+    --mt-col-warning: rgb(226, 131, 72);        /* 橙色 - Logo/重点 */
+
+    /* 尺寸 */
+    --mt-radius: 4px;
+    --mt-spacing: 6px;
 }
 
-.thumb-item {
-    border-width: 1px;
-    border-color: rgb(76, 76, 76);
-}
-
-.thumb-item:hover {
-    border-width: 1px;
-    border-color: rgb(76, 76, 76);
-    border-left-width: 2px;
-    border-right-width: 2px;
-    border-top-width: 2px;
-    border-bottom-width: 2px;
-    background-color: rgb(255, 255, 255);
-    border-left-color: rgb(255, 207, 107);
-    border-right-color: rgb(255, 207, 107);
-    border-top-color: rgb(255, 207, 107);
-    border-bottom-color: rgb(255, 207, 107);
-    scale: 1 1;
-    transition-duration: 100ms;
-    transform-origin: bottom;
-    transition-timing-function: ease-in-circ;
-    translate: 0 -6px;
-}
-
-.thumb-item--empty {
-    border-color: rgb(110, 110, 110);
-    background-color: rgba(90, 90, 90, 0.06);
-    margin-left: 3px;
-    margin-right: 3px;
-    margin-top: 3px;
-    margin-bottom: 3px;
-}
-
-.thumb-item__placeholder {
-    color: rgb(160, 160, 160);
-    -unity-font-style: bold;
-    font-size: 14px;
-}
-
-.mt-tabbar {
-    flex-direction: row;
-    justify-content: flex-start;
-    align-items: center;
-    padding-left: 8px;
-    padding-right: 8px;
-    padding-top: 6px;
-    padding-bottom: 6px;
-    border-bottom-width: 1px;
-    border-bottom-color: rgb(80, 80, 80);
-}
-
-.mt-tabcontent {
-    flex-grow: 1;
-}
-
-.mt-tabbutton {
-    min-height: 24px;
-    margin-right: 8px;
-    padding-left: 10px;
-    padding-right: 10px;
-    padding-top: 6px;
-    padding-bottom: 6px;
-    border-radius: 4px;
-    border-width: 1px;
-    border-color: rgb(90, 90, 90);
-    background-color: rgba(40, 40, 40, 0.6);
-    color: rgb(220, 220, 220);
-}
-
-.mt-tabbutton--active {
-    border-color: rgb(64, 128, 230);
-    background-color: rgba(64, 128, 230, 0.25);
-}
-
+/* ==========================================================================
+   General Layout
+   ========================================================================== */
 .mt-frame {
-    padding-left: 8px;
-    padding-right: 8px;
-    padding-top: 8px;
-    padding-bottom: 8px;
-    border-width: 1px;
-    border-color: rgb(80, 80, 80);
+    margin: var(--mt-spacing) 0;
+    padding: 8px;
+    border-width: 0px;
+    border-color: var(--mt-col-border);
     border-radius: 6px;
-    background-color: rgba(30, 30, 30, 0.19);
-    margin-top: 6px;
-    margin-bottom: 6px;
-    border-left-width: 0;
-    border-right-width: 0;
-    border-top-width: 0;
-    border-bottom-width: 0;
+    background-color: var(--mt-col-bg-panel);
 }
 
 .mt-scroll {
     flex-grow: 1;
-    padding-right: 16px;
+    padding-right: 12px; /* 预留滚动条空间 */
 }
 
-.mt-button {
+/* ==========================================================================
+   Buttons (Consolidated)
+   ========================================================================== */
+/* 基础按钮样式共用 */
+.mt-button, .mt-buttonG, .mt-buttonR, .mt-tabbutton {
     min-height: 24px;
-    padding-left: 10px;
-    padding-right: 10px;
-    padding-top: 6px;
-    padding-bottom: 6px;
-    border-radius: 4px;
+    padding: 6px 10px;
+    border-radius: var(--mt-radius);
     border-width: 1px;
     border-color: rgb(90, 90, 90);
     background-color: rgba(45, 45, 45, 0.8);
-    color: rgb(230, 230, 230);
+    color: var(--mt-col-text);
+    -unity-text-align: middle-center;
+    transition-duration: 0.1s;
 }
 
-.mt-button:hover {
-    border-color: rgb(120, 180, 255);
-    background-color: rgba(60, 90, 120, 0.25);
+/* 交互状态 */
+.mt-button:hover, .mt-buttonG:hover, .mt-buttonR:hover, .mt-tabbutton:hover {
+    background-color: rgba(60, 60, 60, 1);
+    border-color: rgb(110, 110, 110);
+    scale: 1.01 1.01;
 }
 
-.mt-buttonG {
-    min-height: 24px;
-    padding-left: 10px;
-    padding-right: 10px;
-    padding-top: 6px;
-    padding-bottom: 6px;
-    border-radius: 4px;
-    border-width: 1px;
-    border-color: rgb(90, 90, 90);
-    background-color: rgba(45, 45, 45, 0.8);
-    color: rgb(230, 230, 230);
+.mt-button:active, .mt-buttonG:active, .mt-buttonR:active, .mt-tabbutton:active {
+    background-color: rgba(30, 30, 30, 1);
+    opacity: 0.9;
+    scale: 0.98 0.98;
 }
 
-.mt-buttonG:hover {
-    border-color: rgb(120, 180, 255);
-    background-color: rgba(78, 120, 60, 0.25);
-    border-left-color: rgb(120, 200, 77);
-    border-right-color: rgb(120, 200, 77);
-    border-top-color: rgb(120, 200, 77);
-    border-bottom-color: rgb(120, 200, 77);
+/* 特殊颜色变种 - 绿色 (Generate/Active) */
+.mt-buttonG:hover, .mt-button--activeG {
+    border-color: var(--mt-col-success);
+    background-color: var(--mt-col-success-bg);
+    color: #fff;
 }
 
+/* 特殊颜色变种 - 红色 (Delete/Clear) */
+.mt-buttonR:hover {
+    border-color: var(--mt-col-danger);
+    background-color: var(--mt-col-danger-bg);
+    color: #fff;
+}
+
+/* Tab 按钮 */
+.mt-tabbutton {
+    margin-right: 8px;
+    background-color: rgba(40, 40, 40, 0.6);
+}
+
+.mt-tabbutton--active {
+    border-color: var(--mt-col-accent);
+    background-color: var(--mt-col-accent-bg);
+    color: #fff;
+    -unity-font-style: bold;
+}
+
+.mt-tabbar {
+    flex-direction: row;
+    align-items: center;
+    padding: 6px 8px;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--mt-col-border);
+    margin-bottom: 4px;
+}
+
+/* ==========================================================================
+   Profile & Thumb Items (Animations)
+   ========================================================================== */
 .profile-row {
-    border-radius: 4px;
-    background-color: rgba(0, 0, 0, 0.05);
-    border-top-left-radius: 8px;
-    border-bottom-left-radius: 8px;
-    border-top-right-radius: 8px;
-    border-bottom-right-radius: 8px;
-    margin-left: 6px;
-    margin-right: 3px;
-    margin-top: 3px;
-    margin-bottom: 3px;
+    border-radius: var(--mt-radius);
+    background-color: rgba(0, 0, 0, 0.1);
+    margin: 3px 6px;
+    padding-bottom: 4px;
+      overflow: hidden;       /* 关键：禁止内容溢出导致父级重算 */
+    flex-shrink: 0;         /* 关键：禁止被压缩 */
+    flex-grow: 0;     
 }
 
+/* 选中整行 Profile */
 .profile-row--selected {
     border-width: 1px;
-    border-color: rgb(64, 128, 230);
-    background-color: rgba(255, 255, 255, 0.02);
-    border-top-color: rgba(64, 128, 230, 0);
-    border-bottom-color: rgba(64, 128, 230, 0);
-    padding-left: 0;
-    padding-right: 0;
-    padding-top: 0;
-    padding-bottom: 0;
-    height: auto;
-    border-left-width: 0;
-    border-right-width: 0;
-    margin-left: 6px;
-    margin-right: 3px;
-    margin-top: 3px;
-    margin-bottom: 3px;
-    border-right-color: rgba(64, 128, 230, 0);
-    border-top-width: 0;
-    border-bottom-width: 0;
-    border-top-left-radius: 8px;
-    border-bottom-left-radius: 8px;
-    border-top-right-radius: 8px;
-    border-bottom-right-radius: 8px;
+    border-color: var(--mt-col-accent);
+    background-color: rgba(255, 255, 255, 0.03);
 }
 
+/* 在场景中被选中的 Profile (混合模式) */
 .profile-row--checked {
-    border-width: 1px;
-    border-color: rgb(120, 200, 77);
-    background-color: rgba(78, 120, 60, 0.12);
-    margin-left: 6px;
-    margin-right: 3px;
-    margin-top: 3px;
-    margin-bottom: 3px;
     border-left-width: 3px;
-    border-right-width: 0;
-    border-top-width: 0;
-    border-bottom-width: 0;
-    border-right-color: rgba(120, 200, 77, 0);
-    border-top-color: rgba(120, 200, 77, 0);
-    border-bottom-color: rgba(120, 200, 77, 0);
-}
-
-.mt-button--activeG {
-    border-color: rgb(120, 200, 77);
-    background-color: rgba(78, 120, 60, 0.25);
-}
-
-.mt-buttonR {
-    min-height: 24px;
-    padding-left: 10px;
-    padding-right: 10px;
-    padding-top: 6px;
-    padding-bottom: 6px;
-    border-radius: 4px;
-    border-width: 1px;
-    border-color: rgb(90, 90, 90);
-    background-color: rgba(45, 45, 45, 0.8);
-    color: rgb(230, 230, 230);
-}
-
-.mt-buttonR:hover {
-    border-color: rgb(120, 180, 255);
-    background-color: rgba(120, 60, 62, 0.25);
-    border-left-color: rgb(200, 77, 106);
-    border-right-color: rgb(200, 77, 106);
-    border-top-color: rgb(200, 77, 106);
-    border-bottom-color: rgb(200, 77, 106);
-}
-
-.mt-button:active {
-    opacity: 0.85;
-}
-
-.mt-buttonG:active {
-    opacity: 0.85;
-}
-
-.mt-buttonR:active {
-    opacity: 0.85;
+    border-left-color: var(--mt-col-success);
+    background-color: rgba(78, 120, 60, 0.08);
 }
 
 .profile-row__top {
     flex-direction: row;
     align-items: center;
-    margin-left: 4px;
-    margin-right: 4px;
-    margin-top: 6px;
-    margin-bottom: 1px;
+    padding: 6px 4px;
 }
 
 .profile-row__thumbs {
-    flex-shrink: 1;
-    flex-grow: 1;
-    min-height: 90px;
     flex-direction: row;
     flex-wrap: wrap;
-    padding-left: 6px;
-    padding-right: 6px;
-    padding-top: 6px;
-    padding-bottom: 6px;
-    margin-left: 6px;
-    margin-right: 6px;
-    margin-top: 6px;
-    margin-bottom: 6px;
-    background-color: rgba(0, 0, 0, 0.09);
-}
-
-.preview-item {
-    border-width: 1px;
-    border-color: rgb(80, 80, 80);
+    padding: 6px;
+    background-color: rgba(0, 0, 0, 0.15);
     border-radius: 4px;
-    margin-left: 4px;
-    margin-right: 4px;
-    margin-top: 4px;
-    margin-bottom: 4px;
-    background-color: rgba(255, 255, 255, 0.02);
+    margin: 0 6px 6px 6px;
+     overflow: hidden;       /* 关键 */
+    flex-shrink: 0;         /* 关键：宽度由父级决定，内部不要反向影响父级 */
+    width: 100%;            /* 强制占满，避免 auto 带来的计算波动 */
 }
 
-.preview-item__image {
+/* 缩略图项 */
+.thumb-item {
     width: 64px;
     height: 64px;
+    margin: 3px;
+     flex-shrink: 0;
+     
+    border-width: 0px;
+    border-color: rgb(60, 60, 60);
+    background-color: rgba(80, 80, 80, 0.2);
+    border-radius: 0px;
+    transition-duration: 0.15s;
+    transition-timing-function: ease-out-back;
 }
 
-.preview-item--selected {
-    border-color: rgb(64, 128, 230);
-    background-color: rgba(64, 128, 230, 0.10);
-}
-.mt-veg-list {
-    flex-grow: 1;
+/* 缩略图 Hover 动画 */
+.thumb-item:hover {
+    border-color: rgb(255, 207, 107);
+    border-width: 2px;
+    scale: 1.08 1.08;
+    background-color: rgba(255, 255, 255, 0.1);
 }
 
+/* 缩略图选中状态 */
+.thumb-item--selected {
+    border-color: var(--mt-col-accent);
+    border-width: 2px;
+     border-color: rgb(255, 207, 107);
+    background-color: rgba(64, 128, 230, 0.1);
+    scale: 1.05 1.05;
+}
 
+.thumb-item--empty {
+    border-color: rgb(80, 80, 80);
+    border-style: dashed;
+    background-color: transparent;
+    justify-content: center;
+    align-items: center;
+    opacity: 0.7;
+}
+
+.thumb-item--empty:hover {
+    border-color: var(--mt-col-success);
+    opacity: 1;
+}
+
+.thumb-item__placeholder {
+    color: var(--mt-col-text-sub);
+    font-size: 20px;
+    -unity-font-style: bold;
+}
+
+/* ==========================================================================
+   Terrain List & Actions
+   ========================================================================== */
 .mt-terrain-list {
-    flex-grow: 0;
+    background-color: rgba(0,0,0,0.2);
+    border-width: 1px;
+    border-color: var(--mt-col-border);
+    border-radius: 4px;
 }
 
-.mt-terrain-list--max10 {
-    height: 284px;
-    max-height: 284px;
-}
-
-.mt-terrain-list--auto {
-    height: auto;
-    max-height: none;
-}
+.mt-terrain-list--max10 { max-height: 200px; }
+.mt-terrain-list--auto { height: auto; }
 
 .mt-terrain-list__item {
-    margin-bottom: 2px;
+    padding-left: 4px;
 }
+
 .mt-actions {
     flex-direction: row;
     justify-content: space-between;
-    align-items: center;
-    min-height: 36px;
-    height: 36px;
-    flex-grow: 0;
+    gap: 6px;
+    margin-top: 8px;
 }
 
-.mt-btn--w100 { width: 100px; }
-.mt-btn--stretch { flex-grow: 1; flex-shrink: 1; }
+.mt-btn--stretch { flex-grow: 1; }
+
+/* ==========================================================================
+   Overlay Styles (New & Optimized)
+   用于 MTPBrushOverlay 的新样式，解决难看的问题
+   ========================================================================== */
+.mtp-root {
+    width: 260px;
+    background-color: rgba(35, 35, 35, 0.95);
+    border-width: 1px;
+    border-color: rgba(0, 0, 0, 0.5);
+    border-radius: 6px;
+    padding: 8px;
+    /* 增加阴影让其更有层次感 */
+    -unity-slice-left: 0; 
+    -unity-slice-top: 0;
+}
+
+.mtp-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 6px;
+    margin-bottom: 6px;
+    border-bottom-width: 1px;
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.mtp-title {
+    font-size: 13px;
+    -unity-font-style: bold;
+    color: #ddd;
+}
+
+.mtp-icon-btn {
+    background-color: transparent;
+    border-width: 0;
+    color: #aaa;
+    font-size: 14px;
+    width: 24px;
+    height: 20px;
+    padding: 0;
+}
+
+.mtp-icon-btn:hover {
+    color: #fff;
+    background-color: rgba(255,255,255,0.1);
+    border-radius: 3px;
+}
+
+.mtp-section-label {
+    font-size: 10px;
+    color: #888;
+    -unity-font-style: bold;
+    margin-top: 8px;
+    margin-bottom: 2px;
+    opacity: 0.8;
+}
+
+.mtp-warning-box {
+    background-color: rgba(180, 40, 40, 0.2);
+    border-width: 1px;
+    border-color: rgba(200, 60, 60, 0.5);
+    border-radius: 4px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px;
+    margin-bottom: 8px;
+}
+
+.mtp-warning-label {
+    color: #ffaaaa;
+    font-size: 11px;
+}
+
+.mtp-fix-btn {
+    font-size: 10px;
+    height: 18px;
+    background-color: var(--mt-col-danger);
+    color: white;
+    border-width: 0;
+    border-radius: 2px;
+    padding: 0 8px;
+}
+
+.mtp-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 4px;
+}
+
+.mtp-toggle-label {
+    flex-grow: 1;
+    font-size: 11px;
+    color: #ccc;
+}
+
+/* 统一 Overlay 内 Slider 的 Label 宽度 */
+.mtp-root .unity-base-slider__label {
+    min-width: 85px;
+    font-size: 11px;
+    color: #ccc;
+}
+
+.mtp-root .unity-base-field__label {
+    min-width: 85px;
+    font-size: 11px;
+    color: #ccc;
+}
+
+/* ==========================================================================
+   Logo & Documentation
+   ========================================================================== */
 .mt-logo {
-    font-size: 47px;
+    font-size: 42px;
     -unity-text-align: middle-center;
     -unity-font-style: bold;
-    color: rgb(226, 131, 72);
+    color: var(--mt-col-warning);
+    text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    transition-duration: 0.2s;
 }
 
-.mt-logo--complete {
-    color: rgb(60, 220, 120);
-}
+.mt-logo--complete { color: var(--mt-col-success); }
 
-.mt-logo--pulse1 {
-    scale: 1.15 1.15;
-}
+/* 脉冲动画关键帧模拟 */
+.mt-logo--pulse1 { scale: 1.1 1.1; }
+.mt-logo--pulse2 { scale: 0.95 0.95; }
+.mt-logo--pulse3 { scale: 1.05 1.05; }
 
-.mt-logo--pulse2 {
-    scale: 0.95 0.95;
-}
-
-.mt-logo--pulse3 {
-    scale: 1.08 1.08;
-}
-
-.mt-button--primary {
-    border-color: rgb(64, 128, 230);
-    background-color: rgba(64, 128, 230, 0.25);
-}
-
-.mt-button--attention {
-    border-color: rgb(120, 200, 77);
-    background-color: rgba(78, 120, 60, 0.20);
-}
-
-.mt-docs {
-    flex-grow: 1;
-    padding-left: 8px;
-    padding-right: 8px;
-    padding-top: 6px;
-    padding-bottom: 6px;
-}
-
-.mt-docs__h1 {
-    -unity-font-style: bold;
-    font-size: 20px;
-    color: rgb(230, 230, 230);
-    margin-bottom: 6px;
-}
-
-.mt-docs__h2 {
-    -unity-font-style: bold;
-    font-size: 16px;
-    color: rgb(226, 131, 72);
-    margin-top: 8px;
-    margin-bottom: 4px;
-}
-
-.mt-docs__p {
-    font-size: 13px;
-    color: rgb(210, 210, 210);
-    margin-bottom: 4px;
-}
-
+.mt-docs__h1 { font-size: 18px; -unity-font-style: bold; margin-bottom: 8px; color: #eee; }
+.mt-docs__h2 { font-size: 14px; -unity-font-style: bold; margin-top: 12px; color: var(--mt-col-warning); }
+.mt-docs__p { font-size: 12px; color: #bbb; margin-bottom: 4px; white-space: normal; }
 .mt-docs__code {
-    font-size: 12px;
-    color: rgb(200, 200, 200);
-    background-color: rgba(80, 80, 80, 0.2);
-    border-width: 1px;
-    border-color: rgb(90, 90, 90);
-    border-radius: 4px;
-    padding-left: 6px;
-    padding-right: 6px;
-    padding-top: 4px;
-    padding-bottom: 4px;
-    margin-top: 2px;
-    margin-bottom: 6px;
+    background-color: rgba(0,0,0,0.3);
+    padding: 4px;
+    border-radius: 3px;
+    font-size: 11px;
+    color: #aaa;
+    margin: 4px 0;
 }

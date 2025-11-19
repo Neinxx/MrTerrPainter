@@ -92,6 +92,8 @@ namespace MrTerrainPainter.Editor.Config
         // 事件定义
         public static event Action<bool> NormalDirectionChanged;
         public static event Action<bool> CompletenessChanged;
+        public static event Action ConfigUpdated;
+
 
         // 默认资源路径常量
         private const string DefaultBaseDir = "Assets/MrTerrPainterV1/Editor";
@@ -99,6 +101,12 @@ namespace MrTerrainPainter.Editor.Config
         private static readonly string DefaultSettingsUxmlPath = $"{DefaultBaseDir}/MrTerrainPainterSettings.uxml";
         private static readonly string DefaultSettingsMappingPath = $"{DefaultBaseDir}/MTPTerrainPainterSettingsMappinger.uxml";
 
+
+        public static void NotifyConfigUpdated()
+        {
+            ConfigUpdated?.Invoke();
+
+        }
         /// <summary>
         /// 查找或创建配置资源文件
         /// </summary>
@@ -194,13 +202,14 @@ namespace MrTerrainPainter.Editor.Config
         public static void Save(MrTerrainPainterConfig cfg)
         {
             if (cfg == null) return;
-
+            Debug.Log("1");
             EditorUtility.SetDirty(cfg);
             AssetDatabase.SaveAssets();
 
             // 检查完整性并触发事件
             bool complete = IsComplete(cfg, out _);
             CompletenessChanged?.Invoke(complete);
+            ConfigUpdated?.Invoke();
         }
 
         public static void SetNormalDirection(MrTerrainPainterConfig cfg, bool value)
