@@ -1,4 +1,4 @@
-<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="True">
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
     <Style src="project://database/Assets/MrTerrPainterV1/Editor/MrTerrainPainterStyles.uss?fileID=7433441132597879392&amp;guid=1094a64c2bc4b654486d9ae7dcc8907c&amp;type=3#MrTerrainPainterStyles" />
     <ui:VisualElement name="PaintParameter" style="flex-grow: 1; min-height: 300px; min-width: 400px;">
         <ui:VisualElement style="flex-grow: 1; min-width: auto; min-height: 30px; max-height: 30px; flex-direction: row; justify-content: space-between; align-items: center; margin-left: 3px; margin-bottom: 1px;">

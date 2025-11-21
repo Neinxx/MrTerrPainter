@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using MrTerrainPainter.Editor.Config;
 using MrTerrainPainter.Editor.Services;
-using MrTerrainPainter.Editor.Tools; // 引用 MTPBrushContext
 using MrTerrainPainter.Runtime.Profiles;
 using UnityEditor;
 using UnityEditor.EditorTools;
@@ -17,7 +16,7 @@ namespace MrTerrainPainter.Editor.Tools
     [Overlay(typeof(SceneView), "MTP Brush")]
     public class MTPBrushOverlay : Overlay
     {
-        // --- UI 引用 ---
+        // --- UI 缓存引用 (避免频繁 Q<T>) ---
         private VisualElement _root;
         private Button _openSettingsBtn;
         private VisualElement _mappingWarning;
@@ -25,16 +24,30 @@ namespace MrTerrainPainter.Editor.Tools
         private VisualElement _brushContent;
         private DropdownField _profilesDropdown;
 
-        // --- 状态 ---
+        // 笔刷参数控件缓存
+        private Slider _sizeSlider;
+        private Slider _strengthSlider;
+        private Slider _densitySlider;
+        private Slider _hardnessSlider;
+        private EnumField _distributionField;
+        private Toggle _mixExtraToggle;
+        private Slider _spacingFactorSlider;
+        private Slider _spacingAbsSlider;
+        private Toggle _useAbsSpacingToggle;
+        private Toggle _normalDirToggle;
+
+        // --- 状态与数据 ---
         private bool _subscribed;
         private bool _updateQueued;
         private bool _repaintQueued;
         private BrushSettings _boundBrush;
 
+        // 缓存 Profile 列表，避免每帧扫描 AssetDatabase
+        private List<VegetationProfile> _cachedProfiles = new List<VegetationProfile>();
+        private bool _profilesDirty = true;
+
         public override VisualElement CreatePanelContent()
         {
-            SubscribeEvents();
-
             // 1. 加载配置
             var cfg = ConfigTools.LoadOrCreateAsset();
             cfg.mappingEntries ??= new List<MrTerrainPainterConfig.MappingEntry>();
@@ -45,26 +58,24 @@ namespace MrTerrainPainter.Editor.Tools
 
             _root = vt.Instantiate();
 
-            // 加载 USS (可选，确保样式生效)
+            // 加载 USS
             var style = ConfigTools.GetStylesUss(cfg);
             if (style != null) _root.styleSheets.Add(style);
 
-            // 3. 获取 UI 元素
-            _openSettingsBtn = _root.Q<Button>("OpenSettingsBtn");
-            _mappingWarning = _root.Q<VisualElement>("MappingWarning");
-            _fixMappingBtn = _root.Q<Button>("FixMappingBtn");
-            _brushContent = _root.Q<VisualElement>("BrushContent");
-            _profilesDropdown = _root.Q<DropdownField>("Profiles");
+            // 3. 初始化并缓存 UI 引用 (核心优化)
+            CacheUiElements();
 
-            // 4. 初始化逻辑
-            SetupNavigation();
+            // 4. 绑定静态逻辑
+            SetupStaticEvents();
+            SetupProfileDropdown();
             SetupNormalToggle(cfg);
-            SetupProfiles();
 
-            // 5. 绑定笔刷数据
+            // 5. 事件订阅
+            SubscribeEvents();
+
+            // 6. 绑定数据与初始状态
             BindBrushSettings(MTPBrushContext.Brush);
-
-            // 6. 刷新初始状态
+            RefreshProfilesIfNeeded();
             RefreshVisibility(cfg);
 
             return _root;
@@ -72,10 +83,55 @@ namespace MrTerrainPainter.Editor.Tools
 
         public override void OnWillBeDestroyed()
         {
-            UnsubscribeEvents();
             UnbindBrushSettings();
+            UnsubscribeEvents();
             base.OnWillBeDestroyed();
         }
+
+        #region UI Initialization & Caching
+
+        private void CacheUiElements()
+        {
+            // 顶层结构
+            _openSettingsBtn = _root.Q<Button>("OpenSettingsBtn");
+            _mappingWarning = _root.Q<VisualElement>("MappingWarning");
+            _fixMappingBtn = _root.Q<Button>("FixMappingBtn");
+            _brushContent = _root.Q<VisualElement>("BrushContent");
+            _profilesDropdown = _root.Q<DropdownField>("Profiles");
+
+            // 笔刷参数
+            _sizeSlider = _root.Q<Slider>("Size");
+            _strengthSlider = _root.Q<Slider>("Strength");
+            _densitySlider = _root.Q<Slider>("Density");
+            _hardnessSlider = _root.Q<Slider>("Hardness");
+            _distributionField = _root.Q<EnumField>("Distribution");
+            _mixExtraToggle = _root.Q<Toggle>("MixExtraProfiles");
+
+            // 间距设置
+            _spacingFactorSlider = _root.Q<Slider>("StrokeSpacing");
+            _spacingAbsSlider = _root.Q<Slider>("StrokeSpacingAbs");
+            _useAbsSpacingToggle = _root.Q<Toggle>("UseAbsoluteStrokeSpacing");
+
+            // 辅助设置
+            _normalDirToggle = _root.Q<Toggle>("NormalDirection");
+        }
+
+        private void SetupStaticEvents()
+        {
+            if (_openSettingsBtn != null)
+            {
+                _openSettingsBtn.clicked += () =>
+                {
+                    var win = MrTerrainPainterWindow.GetOrOpen();
+                    win?.OpenPaintingSettings();
+                };
+            }
+
+            if (_fixMappingBtn != null)
+                _fixMappingBtn.clicked += MrTerrainPainterSettingsWindow.Open;
+        }
+
+        #endregion
 
         #region Event Management
 
@@ -86,13 +142,17 @@ namespace MrTerrainPainter.Editor.Tools
 
             ToolManager.activeToolChanged += OnStateChanged;
             Selection.selectionChanged += OnStateChanged;
-            EditorApplication.projectChanged += OnProjectChanged;
+            EditorApplication.projectChanged += OnProjectChanged; // 监听资源变更
+
             ConfigTools.CompletenessChanged += OnCompletenessChanged;
+            ConfigTools.ConfigUpdated += OnConfigUpdated;
+            ConfigTools.NormalDirectionChanged += OnNormalDirectionExternalChanged;
+
             MrTerrainPainterWindow.WindowStateChanged += OnWindowStateChanged;
+
             MTPBrushContext.BrushReplaced += OnBrushReplaced;
             MTPBrushContext.ProfileChanged += OnExternalProfileChanged;
             MTPBrushContext.ExtrasChanged += OnExtrasChanged;
-            ConfigTools.ConfigUpdated += OnConfigUpdated;
         }
 
         private void UnsubscribeEvents()
@@ -103,65 +163,46 @@ namespace MrTerrainPainter.Editor.Tools
             ToolManager.activeToolChanged -= OnStateChanged;
             Selection.selectionChanged -= OnStateChanged;
             EditorApplication.projectChanged -= OnProjectChanged;
+
             ConfigTools.CompletenessChanged -= OnCompletenessChanged;
+            ConfigTools.ConfigUpdated -= OnConfigUpdated;
+            ConfigTools.NormalDirectionChanged -= OnNormalDirectionExternalChanged;
+
             MrTerrainPainterWindow.WindowStateChanged -= OnWindowStateChanged;
+
             MTPBrushContext.BrushReplaced -= OnBrushReplaced;
             MTPBrushContext.ProfileChanged -= OnExternalProfileChanged;
             MTPBrushContext.ExtrasChanged -= OnExtrasChanged;
-            ConfigTools.ConfigUpdated -= OnConfigUpdated;
         }
 
         #endregion
 
-        #region Setup & Binding
-
-        private void SetupNavigation()
-        {
-            // 打开主窗口按钮
-            if (_openSettingsBtn != null)
-            {
-                _openSettingsBtn.clicked += () =>
-                {
-                    var win = MrTerrainPainterWindow.GetOrOpen();
-                    win?.OpenPaintingSettings();
-                };
-            }
-
-            // 修复映射按钮
-            if (_fixMappingBtn != null)
-            {
-                _fixMappingBtn.clicked += MrTerrainPainterSettingsWindow.Open;
-            }
-        }
+        #region Logic & Binding
 
         private void SetupNormalToggle(MrTerrainPainterConfig cfg)
         {
-            var toggle = _root.Q<Toggle>("NormalDirection");
-            if (toggle != null)
-            {
-                toggle.SetValueWithoutNotify(cfg.normalDirection);
-                toggle.RegisterValueChangedCallback(e => ConfigTools.SetNormalDirection(cfg, e.newValue));
-                // 监听外部变更
-                ConfigTools.NormalDirectionChanged += v => toggle.SetValueWithoutNotify(v);
-            }
+            if (_normalDirToggle == null) return;
+
+            _normalDirToggle.SetValueWithoutNotify(cfg.normalDirection);
+            _normalDirToggle.RegisterValueChangedCallback(e => ConfigTools.SetNormalDirection(cfg, e.newValue));
         }
 
-        private void SetupProfiles()
+        private void OnNormalDirectionExternalChanged(bool v)
+        {
+            _normalDirToggle?.SetValueWithoutNotify(v);
+        }
+
+        private void SetupProfileDropdown()
         {
             if (_profilesDropdown == null) return;
 
-            RefreshProfileDropdownList();
-
             _profilesDropdown.RegisterValueChangedCallback(evt =>
             {
-                var profiles = GetCurrentAvailableProfiles();
-                // 根据名字反查 Profile
-                var profile = profiles.FirstOrDefault(p => p != null && p.name == evt.newValue);
+                // 仅在需要时查找 Profile
+                var profile = _cachedProfiles.FirstOrDefault(p => p != null && p.name == evt.newValue);
                 if (profile != null)
                 {
-                    // 更新上下文
                     MTPBrushContext.CurrentProfile = profile;
-                    // 同步给窗口
                     if (MrTerrainPainterWindow.TryGet(out var win))
                         win.SetCurrentProfilePublic(profile);
                 }
@@ -176,33 +217,35 @@ namespace MrTerrainPainter.Editor.Tools
 
             _boundBrush.Changed += OnBrushPropertyChanged;
 
-            // 1. 绑定滑条 (使用浮点 Slider，直接绑定)
-            BindSlider("Size", () => brush.size, v => brush.size = v);
-            BindSlider("Strength", () => brush.strength, v => brush.strength = v);
-            BindSlider("Density", () => brush.densityScale, v => brush.densityScale = v);
-            BindSlider("Hardness", () => brush.hardness, v => brush.hardness = v);
-            BindSlider("StrokeSpacing", () => brush.strokeSpacingFactor, v => brush.strokeSpacingFactor = v);
-            BindSlider("StrokeSpacingAbs", () => brush.strokeSpacingAbsolute, v => brush.strokeSpacingAbsolute = v);
+            // 使用缓存的 UI 元素进行绑定
+            BindControl(_sizeSlider, () => brush.size, v => brush.size = v);
+            BindControl(_strengthSlider, () => brush.strength, v => brush.strength = v);
+            BindControl(_densitySlider, () => brush.densityScale, v => brush.densityScale = v);
+            BindControl(_hardnessSlider, () => brush.hardness, v => brush.hardness = v);
 
-            // 2. [关键修复] 绑定 Enum，修复下拉框失效
-            BindEnum<DistributionType>("Distribution", brush.distribution, v => brush.distribution = v);
+            BindControl(_spacingFactorSlider, () => brush.strokeSpacingFactor, v => brush.strokeSpacingFactor = v);
+            BindControl(_spacingAbsSlider, () => brush.strokeSpacingAbsolute, v => brush.strokeSpacingAbsolute = v);
 
-            // 3. 绑定 Toggle
-            BindToggle("MixExtraProfiles", () => brush.mixExtraProfiles, v => brush.mixExtraProfiles = v);
+            BindControl(_mixExtraToggle, () => brush.mixExtraProfiles, v => brush.mixExtraProfiles = v);
 
-            // 4. 绝对间距联动逻辑
-            var absToggle = _root.Q<Toggle>("UseAbsoluteStrokeSpacing");
-            var absSlider = _root.Q<Slider>("StrokeSpacingAbs"); // 注意这里是 Slider 不是 SliderInt
-
-            if (absToggle != null)
+            // Enum 特殊处理
+            if (_distributionField != null)
             {
-                absToggle.SetValueWithoutNotify(brush.useAbsoluteStrokeSpacing);
-                absSlider?.SetEnabled(brush.useAbsoluteStrokeSpacing);
+                _distributionField.Init(brush.distribution);
+                _distributionField.SetValueWithoutNotify(brush.distribution);
+                _distributionField.RegisterValueChangedCallback(evt => brush.distribution = (DistributionType)evt.newValue);
+            }
 
-                absToggle.RegisterValueChangedCallback(evt =>
+            // 联动逻辑：绝对间距
+            if (_useAbsSpacingToggle != null)
+            {
+                _useAbsSpacingToggle.SetValueWithoutNotify(brush.useAbsoluteStrokeSpacing);
+                _spacingAbsSlider?.SetEnabled(brush.useAbsoluteStrokeSpacing);
+
+                _useAbsSpacingToggle.RegisterValueChangedCallback(evt =>
                 {
                     brush.useAbsoluteStrokeSpacing = evt.newValue;
-                    absSlider?.SetEnabled(evt.newValue);
+                    _spacingAbsSlider?.SetEnabled(evt.newValue);
                 });
             }
         }
@@ -215,92 +258,119 @@ namespace MrTerrainPainter.Editor.Tools
                 _boundBrush = null;
             }
         }
-        private void OnConfigUpdated()
+
+        /// <summary>
+        /// UI 双向绑定响应：数据变了 -> 更新 UI
+        /// </summary>
+        private void OnBrushPropertyChanged(string propertyName)
         {
-            // 重新加载配置并刷新界面可见性
-            var cfg = ConfigTools.LoadOrCreateAsset();
-            RefreshVisibility(cfg);
-            // 如果有绑定的 Toggle (如法线方向)，也需要刷新
-            var toggle = _root.Q<Toggle>("NormalDirection");
-            if (toggle != null) toggle.SetValueWithoutNotify(cfg.normalDirection);
+            var b = _boundBrush;
+            if (b == null) return;
+
+            switch (propertyName)
+            {
+                case nameof(BrushSettings.size): UpdateValue(_sizeSlider, b.size); break;
+                case nameof(BrushSettings.strength): UpdateValue(_strengthSlider, b.strength); break;
+                case nameof(BrushSettings.densityScale): UpdateValue(_densitySlider, b.densityScale); break;
+                case nameof(BrushSettings.hardness): UpdateValue(_hardnessSlider, b.hardness); break;
+                case nameof(BrushSettings.strokeSpacingFactor): UpdateValue(_spacingFactorSlider, b.strokeSpacingFactor); break;
+                case nameof(BrushSettings.strokeSpacingAbsolute): UpdateValue(_spacingAbsSlider, b.strokeSpacingAbsolute); break;
+            }
+            RequestSceneRepaint();
         }
 
         #endregion
 
-        #region Update Logic
+        #region Profile Management (Optimized)
+
+        private void OnProjectChanged()
+        {
+            _profilesDirty = true;
+            RefreshProfilesIfNeeded();
+            RefreshVisibility();
+        }
+
+        private void RefreshProfilesIfNeeded()
+        {
+            // --- 1. 列表数据缓存逻辑 (仅在标记为 Dirty 时重新加载) ---
+            if (_profilesDirty || _cachedProfiles.Count == 0)
+            {
+                _cachedProfiles.Clear();
+
+                // 优先从 Session 获取
+                if (MrTerrainPainterWindow.TryGet(out var win) && win.Session != null)
+                {
+                    _cachedProfiles.AddRange(win.Session.AvailableProfiles);
+                }
+                else
+                {
+                    // Session 不存在时扫描资源库
+                    foreach (var guid in AssetDatabase.FindAssets("t:VegetationProfile"))
+                    {
+                        var path = AssetDatabase.GUIDToAssetPath(guid);
+                        var vp = AssetDatabase.LoadAssetAtPath<VegetationProfile>(path);
+                        if (vp != null) _cachedProfiles.Add(vp);
+                    }
+                }
+
+                _profilesDirty = false; // 重置脏标记
+
+                // 同步更新下拉框的“选项列表” (Choices)
+                if (_profilesDropdown != null)
+                {
+                    _profilesDropdown.choices = _cachedProfiles.Select(p => p ? p.name : "<Null>").ToList();
+                }
+            }
+
+            // --- 2. 选中项同步逻辑 (必须每次都执行，不能被 return 拦截) ---
+            if (_profilesDropdown != null)
+            {
+                var current = MTPBrushContext.CurrentProfile;
+
+                // 获取当前 Profile 的名字，如果在列表中找不到则为空
+                string targetName = null;
+                if (current != null)
+                {
+                    // 简单检查：如果当前 Profile 有效，就尝试显示它的名字
+                    // 注意：如果 Profile 是新创建的且 Dirty 还没来得及刷新，这里可能会暂时不显示，
+                    // 但通常创建新 Profile 会触发 ProjectChanged 从而设置 Dirty，所以直接用 name 即可。
+                    targetName = current.name;
+                }
+
+                // 仅当 UI 显示的值与实际值不同时才更新，防止光标闪烁
+                if (_profilesDropdown.value != targetName)
+                {
+                    _profilesDropdown.SetValueWithoutNotify(targetName);
+                }
+            }
+        }
+
+        #endregion
+
+        #region Visibility & Updates
 
         private void RefreshVisibility(MrTerrainPainterConfig cfg = null)
         {
             cfg ??= ConfigTools.LoadOrCreateAsset();
             bool isComplete = ConfigTools.IsComplete(cfg, out _);
 
-            // 1. 显示/隐藏 Mapping 警告条
-            if (_mappingWarning != null)
-                _mappingWarning.style.display = isComplete ? DisplayStyle.None : DisplayStyle.Flex;
-
-            // 2. 如果配置不完整，禁用笔刷控件交互
+            // 基础 UI 状态
+            if (_mappingWarning != null) _mappingWarning.style.display = isComplete ? DisplayStyle.None : DisplayStyle.Flex;
+            if (_openSettingsBtn != null) _openSettingsBtn.style.display = isComplete ? DisplayStyle.Flex : DisplayStyle.None;
             _brushContent?.SetEnabled(isComplete);
 
-            // 3. 刷新控件可见性 (基于窗口模式)
-            UpdateFeatureVisibility();
-
-            // 4. 决定 Overlay 是否显示
-            UpdateOverlayDisplayState();
-        }
-
-        private static readonly string[] BrushParamsControls =
-       {
-            "Profiles", "Size", "Strength", "Density",
-            "Hardness", "Distribution", "MixExtraProfiles"
-        };
-
-        private static readonly string[] HelperControls =
-        {
-            "NormalDirection"
-        };
-
-        private void UpdateFeatureVisibility()
-        {
-            // 获取窗口状态
+            // 模式可见性逻辑
             bool windowOpen = MrTerrainPainterWindow.TryGet(out var win);
-
-            // 如果窗口没打开，painting 和 settings 自然为 false
             bool isPainting = windowOpen && win.IsPaintingModePublic();
             bool isSettings = windowOpen && win.IsSettingsOpenPublic();
 
-            // 2. 使用布尔逻辑推导显示状态
-            // 逻辑分析：
-            // - 笔刷参数：除了"绘画模式"(窗口已有参数)外，其他情况都显示
-            bool showBrushParams = !isPainting;
+            // 笔刷参数: 非绘画模式显示
+            // 辅助功能: 非设置模式显示
+            SetElementGroupVisibility(isPainting == false, _sizeSlider, _strengthSlider, _densitySlider, _hardnessSlider, _distributionField, _mixExtraToggle);
+            SetElementGroupVisibility(isSettings == false, _normalDirToggle);
 
-            // - 辅助功能：除了"设置模式"(不需要辅助)外，其他情况都显示
-            bool showHelpers = !isSettings;
-
-            // 3. 应用状态
-            SetVisibility(showBrushParams, BrushParamsControls);
-            SetVisibility(showHelpers, HelperControls);
-        }
-
-        // 通用辅助方法：根据 bool 设置一组控件的显隐
-        private void SetVisibility(bool visible, string[] controlNames)
-        {
-            var style = visible ? DisplayStyle.Flex : DisplayStyle.None;
-            foreach (var name in controlNames)
-            {
-                var el = _root.Q(name);
-                if (el != null) el.style.display = style;
-            }
-        }
-
-        private void RefreshProfileDropdownList()
-        {
-            if (_profilesDropdown == null) return;
-            var profiles = GetCurrentAvailableProfiles();
-            _profilesDropdown.choices = profiles.Select(p => p ? p.name : "<Null>").ToList();
-
-            var current = MTPBrushContext.CurrentProfile;
-            // 设置当前值
-            _profilesDropdown.SetValueWithoutNotify(current != null && profiles.Contains(current) ? current.name : null);
+            // Overlay 自身显示逻辑
+            UpdateOverlayDisplayState();
         }
 
         private void UpdateOverlayDisplayState()
@@ -308,121 +378,80 @@ namespace MrTerrainPainter.Editor.Tools
             if (_updateQueued) return;
             _updateQueued = true;
 
-            // 延迟一帧更新，防止布局抖动
+            // 延迟一帧以避免布局抖动
             _root?.schedule.Execute(() =>
             {
                 _updateQueued = false;
                 bool isToolActive = ToolManager.activeToolType == typeof(MTPBrushTool);
-                bool hasTerrain = Selection.activeGameObject?.GetComponent<Terrain>() != null;
 
-                // 控制 Overlay 本身的显示/隐藏
+                // 只有选中物体且带有 Terrain 组件时才显示
+                bool hasTerrain = Selection.activeGameObject != null &&
+                                  Selection.activeGameObject.GetComponent<Terrain>() != null;
+
                 displayed = isToolActive && hasTerrain;
             });
         }
 
-        private void OnBrushPropertyChanged(string propertyName)
+        private void SetElementGroupVisibility(bool visible, params VisualElement[] elements)
         {
-            // 双向绑定：笔刷数据变了 -> 更新 UI
-            var b = _boundBrush;
-            if (b == null) return;
-
-            switch (propertyName)
+            var style = visible ? DisplayStyle.Flex : DisplayStyle.None;
+            foreach (var el in elements)
             {
-                case nameof(BrushSettings.size): UpdateSliderValue("Size", b.size); break;
-                case nameof(BrushSettings.strength): UpdateSliderValue("Strength", b.strength); break;
-                case nameof(BrushSettings.densityScale): UpdateSliderValue("Density", b.densityScale); break;
-                case nameof(BrushSettings.hardness): UpdateSliderValue("Hardness", b.hardness); break;
-                case nameof(BrushSettings.strokeSpacingFactor): UpdateSliderValue("StrokeSpacing", b.strokeSpacingFactor); break;
-                case nameof(BrushSettings.strokeSpacingAbsolute): UpdateSliderValue("StrokeSpacingAbs", b.strokeSpacingAbsolute); break;
-                    // 其他属性如 Enum/Toggle 变化频率低，这里视情况添加
+                if (el != null) el.style.display = style;
             }
-            RequestSceneRepaint();
         }
 
         #endregion
 
         #region Helpers
 
-        /// <summary>
-        /// 绑定 EnumField，显式调用 Init 修复显示问题
-        /// </summary>
-        private void BindEnum<T>(string name, Enum value, Action<T> setter) where T : Enum
+        // 泛型绑定 Slider/Toggle，减少重复代码
+        private void BindControl<T>(BaseField<T> field, Func<T> getter, Action<T> setter)
         {
-            var field = _root.Q<EnumField>(name);
             if (field == null) return;
-
-            field.Init(value); // 关键：初始化选项
-            field.SetValueWithoutNotify(value);
-
-            field.RegisterValueChangedCallback(evt => setter((T)evt.newValue));
+            field.SetValueWithoutNotify(getter());
+            // 先移除旧回调防止重复 (虽然实例化时是新的，但这是好习惯)
+            field.RegisterValueChangedCallback(evt => setter(evt.newValue));
         }
 
-        /// <summary>
-        /// 绑定浮点 Slider
-        /// </summary>
-        private void BindSlider(string name, Func<float> getter, Action<float> setter)
-        {
-            var slider = _root.Q<Slider>(name);
-            if (slider == null) return;
-
-            slider.SetValueWithoutNotify(getter());
-            slider.RegisterValueChangedCallback(evt => setter(evt.newValue));
-        }
-
-        private void UpdateSliderValue(string name, float val)
-        {
-            var slider = _root.Q<Slider>(name);
-            slider?.SetValueWithoutNotify(val);
-        }
-
-        private void BindToggle(string name, Func<bool> getter, Action<bool> setter)
-        {
-            var toggle = _root.Q<Toggle>(name);
-            if (toggle != null)
-            {
-                toggle.SetValueWithoutNotify(getter());
-                toggle.RegisterValueChangedCallback(evt => setter(evt.newValue));
-            }
-        }
-
-        private List<VegetationProfile> GetCurrentAvailableProfiles()
-        {
-            // 优先从 Session 获取
-            if (MrTerrainPainterWindow.TryGet(out var win) && win.Session != null)
-                return win.Session.AvailableProfiles;
-
-            // 否则手动加载
-            var list = new List<VegetationProfile>();
-            foreach (var guid in AssetDatabase.FindAssets("t:VegetationProfile"))
-            {
-                var vp = AssetDatabase.LoadAssetAtPath<VegetationProfile>(AssetDatabase.GUIDToAssetPath(guid));
-                if (vp != null) list.Add(vp);
-            }
-            return list;
-        }
+        private void UpdateValue(Slider slider, float val) => slider?.SetValueWithoutNotify(val);
 
         private void RequestSceneRepaint()
         {
             if (_repaintQueued) return;
             _repaintQueued = true;
-            EditorApplication.delayCall += () => { _repaintQueued = false; SceneView.RepaintAll(); };
+            EditorApplication.delayCall += () =>
+            {
+                _repaintQueued = false;
+                SceneView.RepaintAll();
+            };
         }
 
-        // 回调代理
+        // 事件回调代理
         private void OnStateChanged() => RefreshVisibility();
-        private void OnProjectChanged() { RefreshProfileDropdownList(); RefreshVisibility(); }
+        private void OnConfigUpdated() => RefreshVisibility();
         private void OnCompletenessChanged(bool c) => RefreshVisibility();
-        private void OnWindowStateChanged(bool o, bool s, bool p) { RefreshProfileDropdownList(); RefreshVisibility(); RequestSceneRepaint(); }
-        private void OnBrushReplaced() { BindBrushSettings(MTPBrushContext.Brush); RequestSceneRepaint(); }
-        private void OnExternalProfileChanged(VegetationProfile p) { RefreshProfileDropdownList(); RequestSceneRepaint(); }
-        private void OnExtrasChanged() { UpdateFeatureVisibility(); RequestSceneRepaint(); }
-
-        private void ShowControls(params string[] names) => SetDisplay(DisplayStyle.Flex, names);
-        private void HideControls(params string[] names) => SetDisplay(DisplayStyle.None, names);
-        private void SetDisplay(DisplayStyle style, params string[] names)
+        private void OnWindowStateChanged(bool o, bool s, bool p)
         {
-            if (_root == null) return;
-            foreach (var name in names) { var el = _root.Q(name); if (el != null) el.style.display = style; }
+            _profilesDirty = true; // 窗口状态改变可能影响 Session，标记脏数据
+            RefreshProfilesIfNeeded();
+            RefreshVisibility();
+            RequestSceneRepaint();
+        }
+        private void OnBrushReplaced()
+        {
+            BindBrushSettings(MTPBrushContext.Brush);
+            RequestSceneRepaint();
+        }
+        private void OnExternalProfileChanged(VegetationProfile p)
+        {
+            RefreshProfilesIfNeeded(); // 只更新选中的值，不需要完全重建列表
+            RequestSceneRepaint();
+        }
+        private void OnExtrasChanged()
+        {
+            RefreshVisibility();
+            RequestSceneRepaint();
         }
 
         #endregion

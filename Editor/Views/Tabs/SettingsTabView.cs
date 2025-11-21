@@ -6,7 +6,7 @@ using UnityEngine;
 using UnityEngine.UIElements;
 using UnityEditor.UIElements;
 using MrTerrainPainter.Editor.Config;
-using MrTerrainPainter.Editor.Tools;
+using MrTerrainPainter.Editor.Tools; // 引用 MTPBrushContext
 
 namespace MrTerrainPainter.Editor.Views.Tabs
 {
@@ -16,6 +16,7 @@ namespace MrTerrainPainter.Editor.Views.Tabs
         private readonly MrTerrainPainterConfig _directConfig;
         private readonly VisualElement _root;
 
+        // 优先使用窗口中的配置，如果是独立窗口则使用直接传入的配置
         private MrTerrainPainterConfig Config => _window != null ? _window.config : _directConfig;
 
         public SettingsTabView(MrTerrainPainterWindow window, VisualElement root)
@@ -48,7 +49,12 @@ namespace MrTerrainPainter.Editor.Views.Tabs
 
             BindField<Toggle, bool>("ShowPool",
                 () => VegetationPool.ShowInHierarchy,
-                v => { VegetationPool.ShowInHierarchy = v; Config.showPoolInHierarchy = v; VegetationPool.ApplyShowInHierarchyAll(); });
+                v =>
+                {
+                    VegetationPool.ShowInHierarchy = v;
+                    Config.showPoolInHierarchy = v;
+                    VegetationPool.ApplyShowInHierarchyAll();
+                });
 
             // 特殊处理 NormalDirection
             var normalToggle = _root.Q<Toggle>("NormalDirection");
@@ -56,13 +62,20 @@ namespace MrTerrainPainter.Editor.Views.Tabs
             {
                 normalToggle.SetValueWithoutNotify(Config.normalDirection);
                 normalToggle.RegisterValueChangedCallback(e => ConfigTools.SetNormalDirection(Config, e.newValue));
+                // 监听外部变化（如 Overlay 改变）同步 UI
                 ConfigTools.NormalDirectionChanged += v => normalToggle.SetValueWithoutNotify(v);
             }
 
-            // 资源引用
+            // 资源引用绑定
             BindObject<VisualTreeAsset>("VegetationSharedUXML", () => Config.vegetationSharedUxml, v => Config.vegetationSharedUxml = v);
             BindObject<VisualTreeAsset>("BrushOverlayUXML", () => Config.brushOverlayUxml, v => Config.brushOverlayUxml = v);
             BindObject<StyleSheet>("StylesUSS", () => Config.stylesUss, v => Config.stylesUss = v);
+
+            // 其他资源绑定 (可按需添加更多 BindObject)
+            BindObject<VisualTreeAsset>("StartUXML", () => Config.startUxml, v => Config.startUxml = v);
+            BindObject<VisualTreeAsset>("ControlUXML", () => Config.controlUxml, v => Config.controlUxml = v);
+            BindObject<VisualTreeAsset>("PaintUXML", () => Config.paintUxml, v => Config.paintUxml = v);
+            BindObject<VisualTreeAsset>("GenerateUXML", () => Config.generateUxml, v => Config.generateUxml = v);
         }
 
         private void SetupMappingList()
@@ -107,36 +120,46 @@ namespace MrTerrainPainter.Editor.Views.Tabs
 
             // Object Field
             var objField = row.Q<ObjectField>("ObjectField");
-            objField.objectType = typeof(Transform);
-            objField.SetValueWithoutNotify(entry.node);
-            objField.RegisterValueChangedCallback(e =>
+            if (objField != null)
             {
-                // 实时获取引用以防闭包过期
-                if (index < Config.mappingEntries.Count)
+                objField.objectType = typeof(Transform);
+                objField.allowSceneObjects = true; // 允许拖拽场景中的根节点对象
+                objField.SetValueWithoutNotify(entry.node);
+                objField.RegisterValueChangedCallback(e =>
                 {
-                    Config.mappingEntries[index].node = e.newValue as Transform;
-                    Save();
-                }
-            });
+                    // 实时获取引用以防闭包过期
+                    if (index < Config.mappingEntries.Count)
+                    {
+                        Config.mappingEntries[index].node = e.newValue as Transform;
+                        Save();
+                    }
+                });
+            }
 
             // Enum Field
             var enumField = row.Q<EnumField>("PrefabType");
-            enumField.Init(entry.type);
-            enumField.RegisterValueChangedCallback(e =>
+            if (enumField != null)
             {
-                if (index < Config.mappingEntries.Count)
+                enumField.Init(entry.type);
+                enumField.RegisterValueChangedCallback(e =>
                 {
-                    Config.mappingEntries[index].type = (Runtime.Profiles.PrefabType)e.newValue;
-                    Save();
-                }
-            });
+                    if (index < Config.mappingEntries.Count)
+                    {
+                        Config.mappingEntries[index].type = (Runtime.Profiles.PrefabType)e.newValue;
+                        Save();
+                    }
+                });
+            }
 
             // Delete
             row.Q<Button>("Delete")?.SetClickHandler(() =>
             {
-                Config.mappingEntries.RemoveAt(index);
-                Save();
-                onRefresh();
+                if (index < Config.mappingEntries.Count)
+                {
+                    Config.mappingEntries.RemoveAt(index);
+                    Save();
+                    onRefresh();
+                }
             });
 
             parent.Add(row);
@@ -144,6 +167,7 @@ namespace MrTerrainPainter.Editor.Views.Tabs
 
         private void UpdateStatus(HelpBox box)
         {
+            if (box == null) return;
             int unbound = Config.mappingEntries.Count(e => e == null || e.node == null);
             bool hasPlant = Config.mappingEntries.Any(e => e?.type == Runtime.Profiles.PrefabType.Plant && e.node != null);
 
@@ -164,12 +188,20 @@ namespace MrTerrainPainter.Editor.Views.Tabs
             void HandleSave()
             {
                 ConfigTools.Save(Config);
+
+                // 【关键优化】1. 立即更新画笔上下文
                 MTPBrushContext.SetConfig(Config);
+
                 if (ConfigTools.IsComplete(Config, out var reason))
                 {
+                    // 2. 通知宿主窗口(如果存在)更新UI状态
                     _window?.OnConfigurationCompleted();
                     _window?.CelebrateMappingCompleted();
-                    EditorUtility.DisplayDialog("成功", "配置已保存", "确定");
+
+                    // 3. 【关键优化】广播全局事件，通知所有监听者(Overlay等)刷新
+                    ConfigTools.NotifyConfigUpdated();
+
+                    EditorUtility.DisplayDialog("成功", "配置已保存并同步。", "确定");
                 }
                 else
                 {
@@ -177,7 +209,7 @@ namespace MrTerrainPainter.Editor.Views.Tabs
                 }
             }
 
-            _root.Q<Button>("SaveConfiguration")?.SetClickHandler(HandleSave);
+            // _root.Q<Button>("SaveConfiguration")?.SetClickHandler(HandleSave);
             _root.Q<Button>("Confirm")?.SetClickHandler(HandleSave);
             _root.Q<Button>("BindDefaultResources")?.SetClickHandler(BindDefaults);
         }
@@ -187,17 +219,35 @@ namespace MrTerrainPainter.Editor.Views.Tabs
             // 仅填充空缺的默认资源
             if (Config.brushOverlayUxml == null) Config.brushOverlayUxml = ConfigTools.GetBrushOverlayUxml(Config);
             if (Config.stylesUss == null) Config.stylesUss = ConfigTools.GetStylesUss(Config);
-            // ... 其他资源绑定逻辑保持一致
+
+            if (Config.startUxml == null) Config.startUxml = ConfigTools.GetStartUxml(Config);
+            if (Config.controlUxml == null) Config.controlUxml = ConfigTools.GetControlUxml(Config);
+            if (Config.paintUxml == null) Config.paintUxml = ConfigTools.GetPaintUxml(Config);
+            if (Config.generateUxml == null) Config.generateUxml = ConfigTools.GetGenerateUxml(Config);
+            if (Config.vegetationSharedUxml == null) Config.vegetationSharedUxml = ConfigTools.GetVegetationSharedUxml(Config);
+            if (Config.vegetationProfileRowUxml == null) Config.vegetationProfileRowUxml = ConfigTools.GetVegetationProfileRowUxml(Config);
+            if (Config.prefabIconUxml == null) Config.prefabIconUxml = ConfigTools.GetPrefabIconUxml(Config);
+            if (Config.draggableAreaUxml == null) Config.draggableAreaUxml = ConfigTools.GetDraggableAreaUxml(Config);
+
             Save();
-            SetupBasicSettings(); // 刷新 UI
+
+            // 【关键优化】同步更新
+            MTPBrushContext.SetConfig(Config);
+            ConfigTools.NotifyConfigUpdated();
+
+            SetupBasicSettings(); // 刷新 UI 显示
+            EditorUtility.DisplayDialog("成功", "已绑定默认资源。", "确定");
         }
 
         // --- Generic Helpers ---
-        private void BindField<TElement, TValue>(string name, Func<TValue> getter, Action<TValue> setter) where TElement : VisualElement, INotifyValueChanged<TValue>
+
+        private void BindField<TElement, TValue>(string name, Func<TValue> getter, Action<TValue> setter)
+            where TElement : VisualElement, INotifyValueChanged<TValue>
         {
             var el = _root.Q<TElement>(name);
             if (el == null) return;
             el.SetValueWithoutNotify(getter());
+            // 注意：普通字段修改不立即触发全局刷新，只有点击保存时触发
             el.RegisterValueChangedCallback(e => { setter(e.newValue); Save(); });
         }
 
@@ -210,10 +260,12 @@ namespace MrTerrainPainter.Editor.Views.Tabs
             el.RegisterValueChangedCallback(e => { setter(e.newValue as T); Save(); });
         }
 
-        private void Save()
-        {
-            if (Config == null) return;
-            EditorUtility.SetDirty(Config);
-        }
+        private void Save() => EditorUtility.SetDirty(Config);
+    }
+
+    // 如果没有引用 UIExtensions, 确保有 SetClickHandler
+    internal static class SettingsExtensions
+    {
+        public static void SetClickHandler(this Button b, Action a) { if (b != null) b.clicked += a; }
     }
 }

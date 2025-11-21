@@ -294,23 +294,26 @@ namespace MrTerrainPainter.Editor.Services
             var fill = st.fillColor;
             var ring = st.ringColor;
             var inner = st.innerColor;
+            var cfg1 = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+            bool useNormalDir = cfg1 != null && cfg1.normalDirection;
             if (!s_configCompleteCached)
             {
                 fill = new Color(1f, 0f, 0f, 0.15f);
                 ring = new Color(1f, 0f, 0f, 0.9f);
                 inner = new Color(1f, 0.4f, 0.4f, 0.35f);
             }
-            var raisedCenter = center + normal.normalized * 0.02f;
+            var planeN = useNormalDir ? normal.normalized : Vector3.up;
+            var raisedCenter = center + planeN * 0.02f;
             if (bs.shape == BrushShape.Circle)
             {
                 Handles.color = fill;
-                Handles.DrawSolidDisc(raisedCenter, normal, bs.size);
+                Handles.DrawSolidDisc(raisedCenter, planeN, bs.size);
                 Handles.color = ring;
                 const int segments = 64;
                 var pts = new Vector3[segments + 1];
-                var tangent = Vector3.Normalize(Vector3.Cross(normal, Vector3.right));
-                if (tangent == Vector3.zero) tangent = Vector3.Normalize(Vector3.Cross(normal, Vector3.forward));
-                var bitangent = Vector3.Normalize(Vector3.Cross(normal, tangent));
+                var tangent = Vector3.Normalize(Vector3.Cross(planeN, Vector3.right));
+                if (tangent == Vector3.zero) tangent = Vector3.Normalize(Vector3.Cross(planeN, Vector3.forward));
+                var bitangent = Vector3.Normalize(Vector3.Cross(planeN, tangent));
                 for (int i = 0; i <= segments; i++)
                 {
                     float a = (i / (float)segments) * Mathf.PI * 2f;
@@ -353,21 +356,13 @@ namespace MrTerrainPainter.Editor.Services
                     raisedCenter + new Vector3(half.x, 0f, -half.z)
                 }, fill, ring);
             }
-            var cfg1 = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
-            if (cfg1 != null && cfg1.normalDirection)
+            if (useNormalDir)
             {
                 Handles.color = new Color(1f, 1f, 1f, 0.9f);
-                var tip = raisedCenter + normal.normalized * (bs.size * 0.6f);
+                var tip = raisedCenter + planeN * (bs.size * 0.6f);
                 Handles.DrawAAPolyLine(6f, new Vector3[] { raisedCenter, tip });
             }
-            var fwd = normal.normalized;
-            var upProj = Vector3.ProjectOnPlane(Vector3.up, fwd);
-            if (upProj.sqrMagnitude > 1e-6f)
-            {
-                var upTip = raisedCenter + upProj.normalized * (bs.size * 0.4f);
-                Handles.color = new Color(0.6f, 1f, 0.6f, 0.9f);
-                Handles.DrawAAPolyLine(4f, new Vector3[] { raisedCenter, upTip });
-            }
+            // 当不使用法线方向时，不绘制法线/上方向辅助线
         }
 
         public static void Paint(Terrain terrain, VegetationProfile profile, Vector3 center, BrushSettings bs, System.Random rnd, VegetationGenerator.PlacementOverrides? ov = null)
@@ -928,9 +923,9 @@ namespace MrTerrainPainter.Editor.Services
             // 强制使用条目级Y旋转范围
             float yRot = item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape ? 0f : item.SampleYRotation(rnd);
             var rot = Quaternion.Euler(0f, yRot, 0f);
-            var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
-            bool useNormal = cfg != null ? (cfg.normalDirection || item.alignToTerrainNormal || item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape) : (item.alignToTerrainNormal || item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape);
-            if (item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape)
+            var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+            bool useNormal = cfg != null && cfg.normalDirection;
+            if (item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape && useNormal)
             {
                 var forward = normal.normalized;
                 var upOnPlane = Vector3.ProjectOnPlane(Vector3.up, forward);
@@ -943,7 +938,7 @@ namespace MrTerrainPainter.Editor.Services
                 rot = Quaternion.LookRotation(Vector3.Cross(Vector3.right, normal), normal) * Quaternion.Euler(0f, yRot, 0f);
             }
             go.transform.rotation = rot;
-            if (item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape && item.edgeAutoHeight)
+            if (useNormal && item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape && item.edgeAutoHeight)
             {
                 var up = Vector3.up;
                 var forward = Vector3.ProjectOnPlane(normal, up);
@@ -994,13 +989,15 @@ namespace MrTerrainPainter.Editor.Services
             float baseScale = item.SampleScale(rnd);
             go.transform.localScale = Vector3.one * baseScale;
 
+            var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+            bool useNormal = cfg != null && cfg.normalDirection;
             float yRot = 0f;
-            var upOnPlane = Vector3.ProjectOnPlane(Vector3.up, forward);
-            if (upOnPlane.sqrMagnitude < 1e-6f) upOnPlane = Vector3.Cross(forward, Vector3.right).normalized;
-            var rot = Quaternion.LookRotation(forward, upOnPlane);
+            Quaternion rot = useNormal
+                ? Quaternion.LookRotation(forward, (Vector3.ProjectOnPlane(Vector3.up, forward).sqrMagnitude < 1e-6f ? Vector3.Cross(forward, Vector3.right).normalized : Vector3.ProjectOnPlane(Vector3.up, forward)))
+                : Quaternion.identity;
             go.transform.rotation = rot;
 
-            if (item.edgeAutoHeight)
+            if (useNormal && item.edgeAutoHeight)
             {
                 float yScale = info.heightMeters > 0f ? (info.heightMeters / Mathf.Max(item.edgeReferenceHeightMeters, 0.0001f)) : baseScale;
                 go.transform.localScale = new Vector3(baseScale, yScale, baseScale);

@@ -1,54 +1,34 @@
-<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="True">
-    <!-- 引用上面的 USS 文件 (确保路径正确) -->
-    <!-- <Style src="MTPOverlayStyles.uss" /> --> 
-    
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
     <ui:VisualElement class="mtp-root">
-        <!-- 顶部标题栏 -->
         <ui:VisualElement class="mtp-header">
-            <ui:Label text="MTP Brush" class="mtp-title" />
-            <ui:Button name="OpenSettingsBtn" text="⚙" tooltip="Open Main Window" class="mtp-icon-btn" />
+            <ui:Label text="MTP Brush" class="mtp-title" style="-unity-font-style: bold; font-size: 18px; color: rgb(226, 131, 72); height: 20px; max-height: 20px; min-height: 20px;" />
+            <ui:Button name="OpenSettingsBtn" text="⚙" tooltip="Open Main Window" class="mtp-icon-btn" style="height: 20px; max-height: 20px; min-height: 20px;" />
         </ui:VisualElement>
-
-        <!-- Mapping 警告条 (替代原来的大按钮替换逻辑) -->
         <ui:VisualElement name="MappingWarning" class="mtp-warning-box" style="display: none;">
             <ui:Label text="Mapping Incomplete" class="mtp-warning-label" />
             <ui:Button name="FixMappingBtn" text="Fix" class="mtp-fix-btn" />
         </ui:VisualElement>
-
-        <!-- 主内容区域 -->
         <ui:VisualElement name="BrushContent">
-            
-            <ui:Label text="PROFILE" class="mtp-section-label" />
-            <ui:DropdownField name="Profiles" />
-            
-            <ui:Label text="SETTINGS" class="mtp-section-label" style="margin-top:8px;" />
-            
-            <!-- 使用 Slider 而不是 SliderInt，可以直接显示浮点数 -->
-            <ui:Slider name="Size" label="Size" low-value="0.5" high-value="50" tooltip="Brush Size (World Units)" />
-            <ui:Slider name="Strength" label="Strength" low-value="0.1" high-value="10" />
-            <ui:Slider name="Density" label="Density" low-value="0.1" high-value="5" />
-            <ui:Slider name="Hardness" label="Hardness" low-value="0" high-value="1" />
-            
-            <ui:Label text="ADVANCED" class="mtp-section-label" style="margin-top:8px;" />
-            
-            <uie:EnumField name="Distribution" label="Distribution" />
-            <ui:Slider name="StrokeSpacing" label="Spacing (Rel)" low-value="0" high-value="1" tooltip="Relative spacing based on brush size" />
-            
-            <!-- 绝对间距设置行 -->
+            <ui:Label text="PROFILE" class="mtp-section-label" style="height: 20px; max-height: 20px; min-height: 20px;" />
+            <ui:DropdownField name="Profiles" style="height: 20px; max-height: 20px; min-height: 20px;" />
+            <ui:Label text="SETTINGS" class="mtp-section-label" style="margin-top: 8px; height: 20px; max-height: 20px; min-height: 20px;" />
+            <ui:Slider name="Size" label="Size" low-value="0.5" high-value="50" tooltip="Brush Size (World Units)" style="height: 20px; max-height: 20px; min-height: 20px;" />
+            <ui:Slider name="Strength" label="Strength" low-value="0.1" high-value="10" style="height: 20px; max-height: 20px; min-height: 20px;" />
+            <ui:Slider name="Density" label="Density" low-value="0.1" high-value="5" style="height: 20px; max-height: 20px; min-height: 20px;" />
+            <ui:Slider name="Hardness" label="Hardness" low-value="0" high-value="1" style="height: 20px; max-height: 20px; min-height: 20px;" />
+            <ui:Label text="ADVANCED" class="mtp-section-label" style="margin-top: 8px; height: 20px; max-height: 20px; min-height: 20px;" />
+            <uie:EnumField name="Distribution" label="Distribution" style="height: 20px; max-height: 20px; min-height: 20px;" />
+            <ui:Slider name="StrokeSpacing" label="Spacing (Rel)" low-value="0" high-value="1" tooltip="Relative spacing based on brush size" style="height: 20px; max-height: 20px; min-height: 20px;" />
             <ui:VisualElement class="mtp-row">
-                <ui:Toggle name="UseAbsoluteStrokeSpacing" text="Use Abs Spacing" class="mtp-toggle-label" />
+                <ui:Toggle name="UseAbsoluteStrokeSpacing" text="Use Abs Spacing" class="mtp-toggle-label" style="height: 20px; max-height: 20px; min-height: 20px;" />
             </ui:VisualElement>
-            <!-- 当上面 Toggle 开启时，此 Slider 有效/显示 -->
-            <ui:Slider name="StrokeSpacingAbs" label="Spacing (Abs)" low-value="0.1" high-value="50" style="margin-left: 10px;" />
-
+            <ui:Slider name="StrokeSpacingAbs" label="Spacing (Abs)" low-value="0.1" high-value="50" style="margin-left: 10px; height: 20px; max-height: 20px; min-height: 20px;" />
             <ui:VisualElement class="mtp-row" style="margin-top: 4px;">
-                <ui:Toggle name="MixExtraProfiles" text="Mix Extra Profiles" tooltip="Include multi-selected profiles" class="mtp-toggle-label" />
+                <ui:Toggle name="MixExtraProfiles" text="Mix Extra Profiles" tooltip="Include multi-selected profiles" class="mtp-toggle-label" style="min-height: 20px; max-height: 20px; height: 20px;" />
             </ui:VisualElement>
-            
             <ui:VisualElement class="mtp-row">
-                <ui:Toggle name="NormalDirection" text="Show Normals" class="mtp-toggle-label" />
+                <ui:Toggle name="NormalDirection" text="NormalDirection" class="mtp-toggle-label" style="min-height: 20px; max-height: 20px; height: 20px;" />
             </ui:VisualElement>
-
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

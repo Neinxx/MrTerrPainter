@@ -216,8 +216,9 @@ namespace MrTerrainPainter.Editor.Config
         {
             if (cfg == null) return;
             cfg.normalDirection = value;
-            Save(cfg); // Save 中包含了 SetDirty 和 SaveAssets
+            EditorUtility.SetDirty(cfg);
             NormalDirectionChanged?.Invoke(value);
+            ConfigUpdated?.Invoke();
         }
 
         /// <summary>
