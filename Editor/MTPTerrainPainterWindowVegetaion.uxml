@@ -11,7 +11,7 @@
             <uie:ObjectField label="CurrentPrefab" name="SelectPrefab" />
             <ui:Slider label="权重" value="0.5" high-value="1" name="Weigth" show-input-field="true" />
             <ui:Slider label="基础密度" value="1" high-value="10" name="BaseDensity" show-input-field="true" />
-            <ui:Slider label="最小间距" value="0" high-value="10" name="MinimumSpacing" show-input-field="true" />
+            <uie:FloatField label="Min Spacing (m)" name="MinSpacing" />
             <ui:MinMaxSlider label="缩放范围" min-value="0.5" max-value="5" low-limit="0" high-limit="2" name="SceleRange" />
             <ui:MinMaxSlider label="Y旋转范围" min-value="0" max-value="360" low-limit="0" high-limit="360" name="YrotationRange" />
             <ui:MinMaxSlider label="高度范围" min-value="1" max-value="12" low-limit="-10" high-limit="10" name="HeigthRange" />
@@ -23,7 +23,11 @@
             <uie:FloatField label="Probe Step (m)" name="ProbeStep" />
             <uie:FloatField label="Probe Max Dist (m)" name="ProbeMaxDist" />
             <uie:FloatField label="Facade Reference Height (m)" name="FacadeRefHeight" />
+            <uie:FloatField label="Facade Scale Offset" name="FacadeScaleOffset" />
             <uie:Vector3Field label="Facade Offsets (X/Y/Z)" name="FacadeOffsets" />
+            <uie:EnumField label="Facade Smooth Mode" name="FacadeSmoothMode" />
+            <uie:IntegerField label="Facade Smooth Window" name="FacadeSmoothWindow" />
+            <uie:FloatField label="Facade Smooth Sigma" name="FacadeSmoothSigma" />
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

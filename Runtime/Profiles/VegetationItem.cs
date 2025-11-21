@@ -56,13 +56,31 @@ namespace MrTerrainPainter.Runtime.Profiles
         [Tooltip("退出至平缓阈值（度），检测立面结束的陡度阈值")] 
         [Range(0f, 90f)] public float edgeSlopeExit = 25f;
         [Tooltip("探测步长（米），沿水平±Forward扫描的步长范围")] 
-        [Range(0.05f, 1f)] public float probeStep = 0.3f;
+        [Range(0.1f, 5f)] public float probeStep = 0.5f;
         [Tooltip("最大探测距离（米），沿水平±Forward的扫描上限")] 
         [Range(0.5f, 20f)] public float probeMaxDist = 6f;
         [Tooltip("Facade参考高度（米），用于按立面高度自动设置本地Y缩放")] 
         public float referenceHeightMeters = 1f;
         [Tooltip("Facade偏移：X沿条带right，Y沿世界up，Z沿水平-Forward（贴墙方向）")] 
         public Vector3 offsets = Vector3.zero;
+
+        [Header("堆叠模式 (Stacking)")]
+        [Tooltip("是否启用垂直堆叠模式。若关闭则使用单体拉伸。")]
+        public bool edgeStacking = false;
+        [Tooltip("堆叠层的沿竖直方向的水平偏移（米），用于多层间错位对齐")]
+        public float edgeStackingOffsetMeters = 0f;
+        [Tooltip("顶部层的额外Y缩放偏置（乘法），用于补偿顶部间隙")]
+        public float edgeTopScaleBias = 1f;
+
+        [Tooltip("Facade 自适应缩放后的额外Scale偏移（加法），用于微调最终等比缩放")]
+        public float facadeScaleOffset = 0f;
+
+        [Header("虚拟立面平滑 (Smoothing)")]
+        public FacadeSmoothingMode facadeSmoothingMode = FacadeSmoothingMode.Mean;
+        [Tooltip("平滑窗口大小（奇数>=3），用于均值或高斯平滑")]
+        public int facadeSmoothingWindow = 3;
+        [Tooltip("高斯平滑的Sigma（标准差）")]
+        public float facadeSmoothingSigma = 1f;
 
         public int Index { get; set; }
 

@@ -32,7 +32,7 @@ namespace MrTerrainPainter.Editor.Views
         private MinMaxSlider uiHeigthRange;
         private MinMaxSlider uiSlopeRange;
         private Slider uiBaseDensity;
-        private Slider uiMinimumSpacing;
+        private FloatField uiMinSpacing;
         private FloatField uiEdgeSlopeThreshold;
         private MinMaxSlider uiEmbedDepthRange;
         private FloatField uiFacadeEnterSlope;
@@ -40,7 +40,11 @@ namespace MrTerrainPainter.Editor.Views
         private FloatField uiProbeStep;
         private FloatField uiProbeMaxDist;
         private FloatField uiFacadeRefHeight;
+        private FloatField uiFacadeScaleOffset;
         private Vector3Field uiFacadeOffsets;
+        private EnumField uiFacadeSmoothMode;
+        private IntegerField uiFacadeSmoothWindow;
+        private FloatField uiFacadeSmoothSigma;
 
         private PropertyPanelCallbacks callbacks;
 
@@ -62,7 +66,7 @@ namespace MrTerrainPainter.Editor.Views
             uiHeigthRange = root.Q<MinMaxSlider>("HeigthRange");
             uiSlopeRange = root.Q<MinMaxSlider>("SlopeRange");
             uiBaseDensity = root.Q<Slider>("BaseDensity");
-            uiMinimumSpacing = root.Q<Slider>("MinimumSpacing");
+            uiMinSpacing = root.Q<FloatField>("MinSpacing");
             uiEdgeSlopeThreshold = root.Q<FloatField>("EdgeSlopeThreshold");
             uiEmbedDepthRange = root.Q<MinMaxSlider>("EmbedDepthRange");
             uiFacadeEnterSlope = root.Q<FloatField>("FacadeEnterSlope");
@@ -70,7 +74,11 @@ namespace MrTerrainPainter.Editor.Views
             uiProbeStep = root.Q<FloatField>("ProbeStep");
             uiProbeMaxDist = root.Q<FloatField>("ProbeMaxDist");
             uiFacadeRefHeight = root.Q<FloatField>("FacadeRefHeight");
+            uiFacadeScaleOffset = root.Q<FloatField>("FacadeScaleOffset");
             uiFacadeOffsets = root.Q<Vector3Field>("FacadeOffsets");
+            uiFacadeSmoothMode = root.Q<EnumField>("FacadeSmoothMode");
+            uiFacadeSmoothWindow = root.Q<IntegerField>("FacadeSmoothWindow");
+            uiFacadeSmoothSigma = root.Q<FloatField>("FacadeSmoothSigma");
 
             // 所有控件均来自 UXML；不在 C# 中动态创建
 
@@ -80,7 +88,7 @@ namespace MrTerrainPainter.Editor.Views
             if (uiHeigthRange != null) { uiHeigthRange.lowLimit = 0f; uiHeigthRange.highLimit = 1000f; }
             if (uiSlopeRange != null) { uiSlopeRange.lowLimit = 0f; uiSlopeRange.highLimit = 90f; }
             if (uiBaseDensity != null) { uiBaseDensity.lowValue = 0f; uiBaseDensity.highValue = 10f; }
-            if (uiMinimumSpacing != null) { uiMinimumSpacing.lowValue = 0f; uiMinimumSpacing.highValue = 10f; }
+            if (uiMinSpacing != null) { uiMinSpacing.tooltip = "条目级最小间距（米）"; }
             if (uiEdgeSlopeThreshold != null) { uiEdgeSlopeThreshold.tooltip = "Landscape 最小坡度阈值（度）"; }
             if (uiEmbedDepthRange != null) { uiEmbedDepthRange.lowLimit = 0f; uiEmbedDepthRange.highLimit = 1f; }
             if (uiFacadeEnterSlope != null) { uiFacadeEnterSlope.tooltip = "Facade 进入陡坡阈值（度）"; }
@@ -89,6 +97,10 @@ namespace MrTerrainPainter.Editor.Views
             if (uiProbeMaxDist != null) { uiProbeMaxDist.tooltip = "Facade 最大探测距离（米）"; }
             if (uiFacadeRefHeight != null) { uiFacadeRefHeight.tooltip = "Facade 参考高度（米）"; }
             if (uiFacadeOffsets != null) { uiFacadeOffsets.tooltip = "Facade 偏移：X沿right，Y沿up，Z沿水平-Forward"; }
+            if (uiFacadeScaleOffset != null) { uiFacadeScaleOffset.tooltip = "Facade 自适应后的等比缩放偏移（加法），用于微调最终Scale"; }
+            if (uiFacadeSmoothMode != null) { uiFacadeSmoothMode.tooltip = "虚拟立面平滑模式：Mean/Gaussian/Median"; }
+            if (uiFacadeSmoothWindow != null) { uiFacadeSmoothWindow.tooltip = "平滑窗口大小（奇数>=3）"; }
+            if (uiFacadeSmoothSigma != null) { uiFacadeSmoothSigma.tooltip = "高斯平滑Sigma"; }
 
             // 类型约束与事件绑定
             if (uiSelectPrefab != null)
@@ -185,13 +197,13 @@ namespace MrTerrainPainter.Editor.Views
                 callbacks.MarkCurrentProfileDirty?.Invoke();
             });
 
-            uiMinimumSpacing?.RegisterValueChangedCallback(evt =>
+            uiMinSpacing?.RegisterValueChangedCallback(evt =>
             {
                 var item = callbacks.GetSelectedItem?.Invoke();
                 if (item == null) return;
-                var v = Mathf.Clamp(evt.newValue, 0f, 10f);
+                var v = Mathf.Max(evt.newValue, 0f);
                 item.minSpacing = v;
-                uiMinimumSpacing.SetValueWithoutNotify(v);
+                uiMinSpacing.SetValueWithoutNotify(v);
                 callbacks.MarkCurrentProfileDirty?.Invoke();
             });
 
@@ -239,7 +251,7 @@ namespace MrTerrainPainter.Editor.Views
             {
                 var item = callbacks.GetSelectedItem?.Invoke();
                 if (item == null) return;
-                var v = Mathf.Clamp(evt.newValue, 0.05f, 1f);
+                var v = Mathf.Clamp(evt.newValue, 0.1f, 5f);
                 item.probeStep = v;
                 uiProbeStep.SetValueWithoutNotify(v);
                 callbacks.MarkCurrentProfileDirty?.Invoke();
@@ -271,6 +283,43 @@ namespace MrTerrainPainter.Editor.Views
                 uiFacadeOffsets.SetValueWithoutNotify(v);
                 callbacks.MarkCurrentProfileDirty?.Invoke();
             });
+            uiFacadeScaleOffset?.RegisterValueChangedCallback(evt =>
+            {
+                var item = callbacks.GetSelectedItem?.Invoke();
+                if (item == null) return;
+                var v = evt.newValue;
+                item.facadeScaleOffset = v;
+                uiFacadeScaleOffset.SetValueWithoutNotify(v);
+                callbacks.MarkCurrentProfileDirty?.Invoke();
+            });
+            uiFacadeSmoothMode?.RegisterValueChangedCallback(evt =>
+            {
+                var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
+                if (cfg == null) return;
+                var v = (MrTerrainPainter.Runtime.Profiles.FacadeSmoothingMode)evt.newValue;
+                cfg.facadeSmoothMode = v;
+                uiFacadeSmoothMode.SetValueWithoutNotify(v);
+                // 避免频繁保存触发资产读条：仅更新内存，刷新视图
+            });
+            uiFacadeSmoothWindow?.RegisterValueChangedCallback(evt =>
+            {
+                var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
+                if (cfg == null) return;
+                var v = Mathf.Max(evt.newValue, 3);
+                if ((v % 2) == 0) v += 1;
+                cfg.facadeSmoothWindow = v;
+                uiFacadeSmoothWindow.SetValueWithoutNotify(v);
+                // 避免频繁保存触发资产读条：仅更新内存，刷新视图
+            });
+            uiFacadeSmoothSigma?.RegisterValueChangedCallback(evt =>
+            {
+                var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
+                if (cfg == null) return;
+                var v = Mathf.Max(evt.newValue, 0.1f);
+                cfg.facadeSmoothSigma = v;
+                uiFacadeSmoothSigma.SetValueWithoutNotify(v);
+                // 避免频繁保存触发资产读条：仅更新内存，刷新视图
+            });
         }
 
         // 从选中条目刷新属性面板显示（保持与窗口逻辑一致）
@@ -287,7 +336,7 @@ namespace MrTerrainPainter.Editor.Views
                 uiHeigthRange?.SetValueWithoutNotify(new Vector2(0f, 1000f));
                 uiSlopeRange?.SetValueWithoutNotify(new Vector2(0f, 90f));
                 uiBaseDensity?.SetValueWithoutNotify(0f);
-                uiMinimumSpacing?.SetValueWithoutNotify(0f);
+            uiMinSpacing?.SetValueWithoutNotify(0f);
                 uiEdgeSlopeThreshold?.SetValueWithoutNotify(75f);
                 uiEmbedDepthRange?.SetValueWithoutNotify(new Vector2(0.1f, 0.3f));
                 if (uiEdgeSlopeThreshold != null) uiEdgeSlopeThreshold.style.display = DisplayStyle.None;
@@ -308,7 +357,7 @@ namespace MrTerrainPainter.Editor.Views
             uiHeigthRange?.SetValueWithoutNotify(item.heightRange);
             uiSlopeRange?.SetValueWithoutNotify(item.slopeRange);
             uiBaseDensity?.SetValueWithoutNotify(item.baseDensity);
-            uiMinimumSpacing?.SetValueWithoutNotify(item.minSpacing);
+            uiMinSpacing?.SetValueWithoutNotify(item.minSpacing);
             uiEdgeSlopeThreshold?.SetValueWithoutNotify(item.edgeSlopeThreshold);
             uiEmbedDepthRange?.SetValueWithoutNotify(item.embedDepthRange);
             uiFacadeEnterSlope?.SetValueWithoutNotify(item.edgeSlopeEnter);
@@ -316,7 +365,16 @@ namespace MrTerrainPainter.Editor.Views
             uiProbeStep?.SetValueWithoutNotify(item.probeStep);
             uiProbeMaxDist?.SetValueWithoutNotify(item.probeMaxDist);
             uiFacadeRefHeight?.SetValueWithoutNotify(item.referenceHeightMeters);
+            uiFacadeScaleOffset?.SetValueWithoutNotify(item.facadeScaleOffset);
             uiFacadeOffsets?.SetValueWithoutNotify(item.offsets);
+            var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
+            if (cfg != null)
+            {
+                uiFacadeSmoothMode?.Init(cfg.facadeSmoothMode);
+                uiFacadeSmoothMode?.SetValueWithoutNotify(cfg.facadeSmoothMode);
+                uiFacadeSmoothWindow?.SetValueWithoutNotify(cfg.facadeSmoothWindow);
+                uiFacadeSmoothSigma?.SetValueWithoutNotify(cfg.facadeSmoothSigma);
+            }
 
             var isLandscape = item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape;
             if (uiEdgeSlopeThreshold != null) uiEdgeSlopeThreshold.style.display = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
@@ -324,9 +382,14 @@ namespace MrTerrainPainter.Editor.Views
             if (uiFacadeEnterSlope != null) uiFacadeEnterSlope.style.display = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
             if (uiFacadeExitSlope != null) uiFacadeExitSlope.style.display = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
             if (uiProbeStep != null) uiProbeStep.style.display = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
+            if (uiMinSpacing != null) uiMinSpacing.style.display = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
             if (uiProbeMaxDist != null) uiProbeMaxDist.style.display = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
             if (uiFacadeRefHeight != null) uiFacadeRefHeight.style.display = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
+            if (uiFacadeScaleOffset != null) uiFacadeScaleOffset.style.display = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
             if (uiFacadeOffsets != null) uiFacadeOffsets.style.display = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
+            if (uiFacadeSmoothMode != null) uiFacadeSmoothMode.style.display = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
+            if (uiFacadeSmoothWindow != null) uiFacadeSmoothWindow.style.display = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
+            if (uiFacadeSmoothSigma != null) uiFacadeSmoothSigma.style.display = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
 
             // —— 动态匹配上下限 ——
             if (uiSceleRange != null)

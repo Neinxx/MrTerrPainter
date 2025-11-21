@@ -7,6 +7,10 @@ using MrTerrainPainter.Runtime.Profiles;
 using UnityEditor;
 using UnityEngine;
 using MrTerrainPainter.Editor.Services;
+using Unity.Jobs;
+using Unity.Collections;
+using Unity.Burst;
+using Unity.Mathematics;
 
 namespace MrTerrainPainter.Editor.Services
 {
@@ -75,6 +79,7 @@ namespace MrTerrainPainter.Editor.Services
             if (s_nameMap.TryGetValue(key, out var n)) Changed?.Invoke(n);
             return true;
         }
+
 
         private bool SetFloat(ref float field, float value, BrushSettingKey key, float? min = null, float? max = null, bool approximately = true, bool clamp01 = false)
         {
@@ -187,8 +192,156 @@ namespace MrTerrainPainter.Editor.Services
         private float _adaptiveNoiseWeight = 1f;
     }
 
+    [BurstCompile]
+    internal struct TerrainSampleJob : IJobParallelFor
+    {
+        [ReadOnly] public NativeArray<float2> pointsWorld;
+        [ReadOnly] public NativeArray<float> heightsPatch;
+        public int xBase;
+        public int zBase;
+        public int width;
+        public int height;
+        public int hmMax;
+        public float dxWorld;
+        public float dzWorld;
+        public float3 terrainPos;
+        public float sizeX;
+        public float sizeZ;
+        public float sizeY;
+
+        public NativeArray<float> outHeightLocal;
+        public NativeArray<float3> outNormal;
+        public NativeArray<float> outSlope;
+
+        private float SampleHeight01(float2 uv)
+        {
+            float u = math.clamp(uv.x, 0f, hmMax);
+            float v = math.clamp(uv.y, 0f, hmMax);
+            int xi = (int)math.floor(u);
+            int zi = (int)math.floor(v);
+            int xi1 = math.min(xi + 1, xBase + width - 1);
+            int zi1 = math.min(zi + 1, zBase + height - 1);
+            xi = math.max(xi, xBase);
+            zi = math.max(zi, zBase);
+            float fu = u - xi;
+            float fv = v - zi;
+            int lx = xi - xBase;
+            int lz = zi - zBase;
+            int lx1 = xi1 - xBase;
+            int lz1 = zi1 - zBase;
+            float h00 = heightsPatch[lz * width + lx];
+            float h10 = heightsPatch[lz * width + lx1];
+            float h01 = heightsPatch[lz1 * width + lx];
+            float h11 = heightsPatch[lz1 * width + lx1];
+            float h0 = math.lerp(h00, h10, fu);
+            float h1 = math.lerp(h01, h11, fu);
+            return math.lerp(h0, h1, fv);
+        }
+
+        private float3 ComputeNormal(float2 uv)
+        {
+            float u = math.clamp(uv.x, 1f, hmMax - 1f);
+            float v = math.clamp(uv.y, 1f, hmMax - 1f);
+            int xi = (int)math.floor(u);
+            int zi = (int)math.floor(v);
+            int lxC = math.clamp(xi - xBase, 0, width - 1);
+            int lzC = math.clamp(zi - zBase, 0, height - 1);
+            int lxL = math.max(lxC - 1, 0);
+            int lxR = math.min(lxC + 1, width - 1);
+            int lzU = math.max(lzC - 1, 0);
+            int lzD = math.min(lzC + 1, height - 1);
+            float hL = heightsPatch[lzC * width + lxL];
+            float hR = heightsPatch[lzC * width + lxR];
+            float hU = heightsPatch[lzU * width + lxC];
+            float hD = heightsPatch[lzD * width + lxC];
+            float dhdx = ((hR - hL) * sizeY) / (2f * dxWorld);
+            float dhdz = ((hD - hU) * sizeY) / (2f * dzWorld);
+            float3 n = math.normalizesafe(new float3(-dhdx, 1f, -dhdz));
+            return n;
+        }
+
+        private float SampleSlope(float3 n)
+        {
+            float cosTheta = math.clamp(n.y, -1f, 1f);
+            float theta = math.acos(cosTheta);
+            return theta * 57.2957795f;
+        }
+
+        public void Execute(int index)
+        {
+            float2 pw = pointsWorld[index];
+            float2 pl = new float2(pw.x - terrainPos.x, pw.y - terrainPos.z);
+            float2 uv = new float2((pl.x / sizeX) * hmMax, (pl.y / sizeZ) * hmMax);
+            float h01 = SampleHeight01(uv);
+            float hLocal = h01 * sizeY;
+            float3 n = ComputeNormal(uv);
+            float slope = SampleSlope(n);
+            outHeightLocal[index] = hLocal;
+            outNormal[index] = n;
+            outSlope[index] = slope;
+        }
+    }
+
     public static class BrushPainter
     {
+        private static System.Collections.Generic.Dictionary<int, float> s_prefabHeightCache = new System.Collections.Generic.Dictionary<int, float>();
+        private static System.Collections.Generic.Dictionary<int, float> s_prefabHorizExtentCache = new System.Collections.Generic.Dictionary<int, float>();
+        public static float GetPrefabHeightMeters(GameObject prefab)
+        {
+            if (prefab == null) return 1f;
+            int id = prefab.GetInstanceID();
+            if (s_prefabHeightCache.TryGetValue(id, out var h) && h > 0f) return h;
+            var temp = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            float height = 1f;
+            if (temp != null)
+            {
+                try
+                {
+                    temp.transform.localScale = Vector3.one;
+                    var rends = temp.GetComponentsInChildren<Renderer>();
+                    if (rends != null && rends.Length > 0)
+                    {
+                        var b = new Bounds(temp.transform.position, Vector3.zero);
+                        for (int i = 0; i < rends.Length; i++) b.Encapsulate(rends[i].bounds);
+                        height = Mathf.Max(0.0001f, b.size.y);
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(temp);
+                }
+            }
+            s_prefabHeightCache[id] = height;
+            return height;
+        }
+        public static float GetPrefabHorizontalExtentMeters(GameObject prefab)
+        {
+            if (prefab == null) return 1f;
+            int id = prefab.GetInstanceID();
+            if (s_prefabHorizExtentCache.TryGetValue(id, out var w) && w > 0f) return w;
+            var temp = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            float extent = 1f;
+            if (temp != null)
+            {
+                try
+                {
+                    temp.transform.localScale = Vector3.one;
+                    var rends = temp.GetComponentsInChildren<Renderer>();
+                    if (rends != null && rends.Length > 0)
+                    {
+                        var b = new Bounds(temp.transform.position, Vector3.zero);
+                        for (int i = 0; i < rends.Length; i++) b.Encapsulate(rends[i].bounds);
+                        extent = Mathf.Max(0.0001f, Mathf.Max(b.size.x, b.size.z));
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(temp);
+                }
+            }
+            s_prefabHorizExtentCache[id] = extent;
+            return extent;
+        }
         private static bool s_configCompleteCached;
         static BrushPainter()
         {
@@ -203,11 +356,20 @@ namespace MrTerrainPainter.Editor.Services
         }
         private class Grid
         {
-            private readonly float cellSize;
+            private float cellSize;
             private readonly Dictionary<(int, int), List<Vector2>> cells = new();
             public Grid(float spacing)
             {
                 cellSize = Mathf.Max(spacing, 0.01f);
+            }
+            public void Reset(float spacing)
+            {
+                cellSize = Mathf.Max(spacing, 0.01f);
+                cells.Clear();
+            }
+            public void Clear()
+            {
+                cells.Clear();
             }
             private (int, int) Key(Vector2 p)
             {
@@ -234,6 +396,20 @@ namespace MrTerrainPainter.Editor.Services
                     }
                 return false;
             }
+        }
+        private static Grid s_sharedGrid;
+        private static System.Collections.Generic.Dictionary<int, Grid> s_itemGridCache = new();
+        private static Grid GetSharedGrid(float spacing)
+        {
+            if (s_sharedGrid == null) s_sharedGrid = new Grid(spacing);
+            else s_sharedGrid.Reset(spacing);
+            return s_sharedGrid;
+        }
+        private static Grid GetItemGrid(int idx, float spacing)
+        {
+            if (!s_itemGridCache.TryGetValue(idx, out var g)) { g = new Grid(spacing); s_itemGridCache[idx] = g; }
+            else g.Reset(spacing);
+            return g;
         }
         public static void DrawPreview(Vector3 center, BrushSettings bs)
         {
@@ -283,6 +459,46 @@ namespace MrTerrainPainter.Editor.Services
                     center + new Vector3(half.x, 0f, half.z),
                     center + new Vector3(half.x, 0f, -half.z)
                 }, fill, ring);
+            }
+            if (bs.distribution == DistributionType.EdgeLine)
+            {
+                Terrain t = null;
+                var terrains = Terrain.activeTerrains;
+                for (int i = 0; i < terrains.Length; i++)
+                {
+                    if (TerrainUtils.IsWithinTerrainBounds(terrains[i], center)) { t = terrains[i]; break; }
+                }
+                var profile = MrTerrainPainter.Editor.Tools.MTPBrushContext.CurrentProfile;
+                var itemRef = profile != null ? profile.Items.FirstOrDefault(it => it != null && it.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape) : null;
+                if (t != null && itemRef != null)
+                {
+                    var slices = FacadeDetectionService.TraceVirtualFacade(
+                        t,
+                        center,
+                        bs.size * 2f,
+                        itemRef.edgeSlopeEnter,
+                        itemRef.edgeSlopeExit,
+                        itemRef.probeStep,
+                        itemRef.facadeSmoothingMode,
+                        itemRef.facadeSmoothingWindow,
+                        itemRef.facadeSmoothingSigma);
+                    if (slices != null && slices.Count > 0)
+                    {
+                        var grid = new Grid(Mathf.Max(itemRef.minSpacing, 0.01f));
+                        var filtered = new System.Collections.Generic.List<FacadeDetectionService.CliffSlice>(slices.Count);
+                        for (int i = 0; i < slices.Count; i++)
+                        {
+                            var s = slices[i];
+                            if (!IsWithinBrush(s.BottomPosition, center, bs.size, bs.shape)) continue;
+                            var p2 = new Vector2(s.BottomPosition.x - t.transform.position.x, s.BottomPosition.z - t.transform.position.z);
+                            if (grid.HasNearby(p2, Mathf.Max(itemRef.minSpacing, 0.01f))) continue;
+                            grid.Add(p2);
+                            filtered.Add(s);
+                        }
+                        DrawFacadeSlicesPreview(filtered, bs);
+                    }
+                    else Handles.Label(center, "未检测到立面，尝试提高 edgeSlopeEnter 或增大笔刷半径");
+                }
             }
         }
 
@@ -363,6 +579,46 @@ namespace MrTerrainPainter.Editor.Services
                 Handles.DrawAAPolyLine(6f, new Vector3[] { raisedCenter, tip });
             }
             // 当不使用法线方向时，不绘制法线/上方向辅助线
+            if (bs.distribution == DistributionType.EdgeLine)
+            {
+                Terrain t = null;
+                var terrains = Terrain.activeTerrains;
+                for (int i = 0; i < terrains.Length; i++)
+                {
+                    if (TerrainUtils.IsWithinTerrainBounds(terrains[i], center)) { t = terrains[i]; break; }
+                }
+                var profile = MrTerrainPainter.Editor.Tools.MTPBrushContext.CurrentProfile;
+                var itemRef = profile != null ? profile.Items.FirstOrDefault(it => it != null && it.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape) : null;
+                if (t != null && itemRef != null)
+                {
+                    var slices = FacadeDetectionService.TraceVirtualFacade(
+                        t,
+                        center,
+                        bs.size * 2f,
+                        itemRef.edgeSlopeEnter,
+                        itemRef.edgeSlopeExit,
+                        itemRef.probeStep,
+                        itemRef.facadeSmoothingMode,
+                        itemRef.facadeSmoothingWindow,
+                        itemRef.facadeSmoothingSigma);
+                    if (slices != null && slices.Count > 0)
+                    {
+                        var grid = new Grid(Mathf.Max(itemRef.minSpacing, 0.01f));
+                        var filtered = new System.Collections.Generic.List<FacadeDetectionService.CliffSlice>(slices.Count);
+                        for (int i = 0; i < slices.Count; i++)
+                        {
+                            var s = slices[i];
+                            if (!IsWithinBrush(s.BottomPosition, center, bs.size, bs.shape)) continue;
+                            var p2 = new Vector2(s.BottomPosition.x - t.transform.position.x, s.BottomPosition.z - t.transform.position.z);
+                            if (grid.HasNearby(p2, Mathf.Max(itemRef.minSpacing, 0.01f))) continue;
+                            grid.Add(p2);
+                            filtered.Add(s);
+                        }
+                        DrawFacadeSlicesPreview(filtered, bs);
+                    }
+                    else Handles.Label(center, "未检测到立面，尝试提高 edgeSlopeEnter 或增大笔刷半径");
+                }
+            }
         }
 
         public static void Paint(Terrain terrain, VegetationProfile profile, Vector3 center, BrushSettings bs, System.Random rnd, VegetationGenerator.PlacementOverrides? ov = null)
@@ -372,6 +628,8 @@ namespace MrTerrainPainter.Editor.Services
             if (td == null) return; // 提前返回
 
             float radius = bs.size;
+            var areaWorldShared = new Bounds(new Vector3(center.x, terrain.transform.position.y, center.z), new Vector3(radius * 2f, 1f, radius * 2f));
+            var hbShared = TerrainUtils.FetchHeightsBlock(terrain, areaWorldShared, Allocator.TempJob);
             var typeToNode = VegetationGenerator.BuildTypeToNodeMapping();
 
             var items = profile.Items;
@@ -393,11 +651,31 @@ namespace MrTerrainPainter.Editor.Services
                 bool useFacade = (bs.distribution == DistributionType.EdgeLine && item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape);
                 if (useFacade)
                 {
-                    if (!FacadeDetectionService.TryDetectFacade(terrain, center, item.edgeSlopeEnter, item.edgeSlopeExit, item.probeStep, item.probeMaxDist, out facadeInfo))
+                    var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+                    var slices = FacadeDetectionService.TraceVirtualFacade(
+                        terrain,
+                        center,
+                        radius * 2f,
+                        item.edgeSlopeEnter,
+                        item.edgeSlopeExit,
+                        item.probeStep,
+                        cfg != null ? cfg.facadeSmoothMode : MrTerrainPainter.Runtime.Profiles.FacadeSmoothingMode.Gaussian,
+                        cfg != null ? Mathf.Max(3, cfg.facadeSmoothWindow) : 5,
+                        cfg != null ? Mathf.Max(0.1f, cfg.facadeSmoothSigma) : 1f);
+                    slices = FacadeDetectionService.ApplyGlobalConstraints(slices, cfg != null ? cfg.minFacadeHeightMeters : 0.3f, true, cfg != null ? cfg.curveOffsetRightMeters : 0f, cfg != null ? cfg.curveOffsetOutMeters : 0f);
+                    if (slices == null || slices.Count == 0)
                     {
+                        Handles.Label(center, "未检测到立面，尝试提高 edgeSlopeEnter 或增大笔刷半径");
                         continue;
                     }
-                    candidates = BuildFacadeStripCandidatesFromInfo(facadeInfo, bs, item);
+                    var targetParent = typeToNode.TryGetValue(item.prefabType, out var tf) ? tf : null;
+                    if (targetParent == null) { VegetationGenerator.LogMissingMappingOnce(item.prefabType); continue; }
+                    float acc = Mathf.Clamp01(item.baseDensity * bs.densityScale * bs.strength / 10f);
+                    var selected = new System.Collections.Generic.List<FacadeDetectionService.CliffSlice>(slices.Count);
+                    for (int si = 0; si < slices.Count; si++) if ((float)rnd.NextDouble() <= acc) selected.Add(slices[si]);
+                    DrawFacadeSlicesPreview(selected, bs);
+                    PlaceFacadeSlices(item, terrain, it, targetParent, rnd, selected, center, radius, bs.shape);
+                    continue;
                 }
                 else
                 {
@@ -419,8 +697,45 @@ namespace MrTerrainPainter.Editor.Services
                         bs.adaptiveNoiseWeight,
                         rnd);
                 }
-                var grid = new Grid(spacing);
+                var grid = GetSharedGrid(spacing);
                 int placed = 0;
+                NativeArray<float> outH = default;
+                NativeArray<float3> outN = default;
+                NativeArray<float> outS = default;
+                if (!useFacade && candidates.Count > 0)
+                {
+                    var pts = new NativeArray<float2>(candidates.Count, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+                    for (int iPt = 0; iPt < candidates.Count; iPt++)
+                    {
+                        var c2 = candidates[iPt];
+                        pts[iPt] = new float2(c2.x, c2.y);
+                    }
+                    outH = new NativeArray<float>(candidates.Count, Allocator.TempJob);
+                    outN = new NativeArray<float3>(candidates.Count, Allocator.TempJob);
+                    outS = new NativeArray<float>(candidates.Count, Allocator.TempJob);
+                    var job = new TerrainSampleJob
+                    {
+                        pointsWorld = pts,
+                        heightsPatch = hbShared.heights,
+                        xBase = hbShared.xBase,
+                        zBase = hbShared.zBase,
+                        width = hbShared.width,
+                        height = hbShared.height,
+                        hmMax = td.heightmapResolution - 1,
+                        dxWorld = hbShared.dxWorld,
+                        dzWorld = hbShared.dzWorld,
+                        terrainPos = new float3(terrain.transform.position.x, terrain.transform.position.y, terrain.transform.position.z),
+                        sizeX = td.size.x,
+                        sizeZ = td.size.z,
+                        sizeY = td.size.y,
+                        outHeightLocal = outH,
+                        outNormal = outN,
+                        outSlope = outS,
+                    };
+                    var handle = job.Schedule(candidates.Count, 64);
+                    handle.Complete();
+                    pts.Dispose();
+                }
                 for (int ci = 0; ci < candidates.Count && placed < count; ci++)
                 {
                     var c = candidates[ci];
@@ -437,9 +752,10 @@ namespace MrTerrainPainter.Editor.Services
                     }
                     else
                     {
-                        if (!TerrainUtils.TryGetHeightAndNormal(terrain, p, out h, out n)) continue;
+                        h = outH[ci] + terrain.transform.position.y;
+                        n = (Vector3)outN[ci];
+                        slope = outS[ci];
                         p.y = h;
-                        slope = TerrainUtils.ComputeSlope(n);
                     }
                     float dx0 = p.x - center.x;
                     float dz0 = p.z - center.z;
@@ -483,7 +799,7 @@ namespace MrTerrainPainter.Editor.Services
                     var ovScaled = ov;
                     if (useFacade)
                     {
-                        CreateFacadeInstance(item, p, n, terrain, it, targetParent, rnd, facadeInfo, ovScaled);
+                        // 已在上方通过 slices 直接放置
                     }
                     else
                     {
@@ -500,7 +816,11 @@ namespace MrTerrainPainter.Editor.Services
                     placed++;
                 }
                 BrushEngine.ReleaseList(candidates);
+                if (outH.IsCreated) outH.Dispose();
+                if (outN.IsCreated) outN.Dispose();
+                if (outS.IsCreated) outS.Dispose();
             }
+            if (hbShared.heights.IsCreated) hbShared.heights.Dispose();
         }
 
         public static void PaintMixed(Terrain terrain, IReadOnlyList<VegetationProfile> profiles, Vector3 center, BrushSettings bs, System.Random rnd, VegetationGenerator.PlacementOverrides? ov = null)
@@ -552,12 +872,71 @@ namespace MrTerrainPainter.Editor.Services
             bool useFacade = bs.distribution == DistributionType.EdgeLine && allItems.Any(it => it.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape);
             if (useFacade)
             {
-                var itemRef = allItems.First(it => it.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape);
-                if (!FacadeDetectionService.TryDetectFacade(terrain, center, itemRef.edgeSlopeEnter, itemRef.edgeSlopeExit, itemRef.probeStep, itemRef.probeMaxDist, out facadeInfo))
+                var landItems = allItems.Where(it => it.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape).ToList();
+                var itemRef = landItems.First();
+                var cfg2 = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+                var slices = FacadeDetectionService.TraceVirtualFacade(
+                    terrain,
+                    center,
+                    radius * 2f,
+                    itemRef.edgeSlopeEnter,
+                    itemRef.edgeSlopeExit,
+                    itemRef.probeStep,
+                    cfg2 != null ? cfg2.facadeSmoothMode : MrTerrainPainter.Runtime.Profiles.FacadeSmoothingMode.Gaussian,
+                    cfg2 != null ? Mathf.Max(3, cfg2.facadeSmoothWindow) : 5,
+                    cfg2 != null ? Mathf.Max(0.1f, cfg2.facadeSmoothSigma) : 1f);
+                slices = FacadeDetectionService.ApplyGlobalConstraints(slices, cfg2 != null ? cfg2.minFacadeHeightMeters : 0.3f, true, cfg2 != null ? cfg2.curveOffsetRightMeters : 0f, cfg2 != null ? cfg2.curveOffsetOutMeters : 0f);
+                if (slices == null || slices.Count == 0)
                 {
+                    Handles.Label(center, "未检测到立面，尝试提高 edgeSlopeEnter 或增大笔刷半径");
                     return;
                 }
-                candidates = BuildFacadeStripCandidatesFromInfo(facadeInfo, bs, itemRef);
+                var globalGrid = new Grid(Mathf.Max(bs.minSpacing, 0.01f));
+                var parent = typeToNode.TryGetValue(MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape, out var tf) ? tf : null;
+                if (parent == null) { VegetationGenerator.LogMissingMappingOnce(MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape); return; }
+                var weights = landItems.Select(li => Mathf.Clamp(li.weight, 0.0001f, 100f)).ToArray();
+                float sumW = weights.Sum();
+                for (int si = 0; si < slices.Count; si++)
+                {
+                    var s = slices[si];
+                    if (!IsWithinBrush(s.BottomPosition, center, radius, bs.shape)) continue;
+                    int pick = 0;
+                    float r = (float)rnd.NextDouble() * sumW;
+                    float acc = 0f;
+                    for (int i = 0; i < weights.Length; i++) { acc += weights[i]; if (r <= acc) { pick = i; break; } }
+                    var item = landItems[pick];
+                    var p2 = new Vector2(s.BottomPosition.x - terrain.transform.position.x, s.BottomPosition.z - terrain.transform.position.z);
+                    float rendererW = GetPrefabHorizontalExtentMeters(item.prefab);
+                    float rendererH = GetPrefabHeightMeters(item.prefab);
+                    var cfgM = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+                    float minHF = cfgM != null ? Mathf.Max(0.0001f, cfgM.minFacadeHeightMeters) : 0.0001f;
+                    float hLoc = s.Height;
+                    float uniS = Mathf.Max(minHF / Mathf.Max(0.0001f, rendererH), hLoc / Mathf.Max(0.0001f, rendererH));
+                    float spacingThresh = Mathf.Max(item.minSpacing, rendererW * uniS);
+                    if (globalGrid.HasNearby(p2, spacingThresh)) continue;
+                    var rightAxis = Vector3.Normalize(Vector3.Cross(s.Direction, s.Normal));
+                    float h = s.Height;
+                    var go = VegetationPool.Get(terrain, item, pick, parent, "Create Vegetation Instance");
+                    if (go == null) continue;
+                    go.transform.position = s.BottomPosition;
+                    go.transform.rotation = Quaternion.LookRotation(s.Normal, s.Direction);
+                    float rendererH = GetPrefabHeightMeters(item.prefab);
+                    var cfgLocal = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+                    float minH = cfgLocal != null ? Mathf.Max(0.0001f, cfgLocal.minFacadeHeightMeters) : 0.0001f;
+                    float uni = Mathf.Max(minH / Mathf.Max(0.0001f, rendererH), h / Mathf.Max(0.0001f, rendererH));
+                    go.transform.localScale = Vector3.one * uni;
+                    float depth = Mathf.Clamp(item.SampleEmbedDepth(rnd), 0f, 1f);
+                    var offsConf = item.edgeOffsets != Vector3.zero ? item.edgeOffsets : item.offsets;
+                    var off = rightAxis * offsConf.x + s.Direction * offsConf.y + (-s.Normal.normalized) * (depth + Mathf.Max(0f, offsConf.z));
+                    go.transform.position += off;
+                    var vi = go.GetComponent<VegetationInstance>() ?? go.AddComponent<VegetationInstance>();
+                    vi.sourceTerrain = terrain;
+                    vi.profileItemIndex = pick;
+                    vi.sourcePrefabName = item.prefab.name;
+                    VegetationPool.IndexRegister(terrain, go);
+                    globalGrid.Add(p2);
+                }
+                return;
             }
             else
             {
@@ -579,7 +958,7 @@ namespace MrTerrainPainter.Editor.Services
                     bs.adaptiveNoiseWeight,
                     rnd);
             }
-            var itemGrids = new Dictionary<int, Grid>();
+            foreach (var kv in s_itemGridCache) kv.Value.Clear();
             Grid globalGrid = null;
             float globalFactor = Mathf.Max(0f, bs.globalSpacingFactor);
             if (globalFactor > 0f) globalGrid = new Grid(globalFactor);
@@ -619,6 +998,46 @@ namespace MrTerrainPainter.Editor.Services
                 while (large.Count > 0) { prob[large.Dequeue()] = 1f; }
                 while (small.Count > 0) { prob[small.Dequeue()] = 1f; }
             }
+            NativeArray<float> outH2 = default;
+            NativeArray<float3> outN2 = default;
+            NativeArray<float> outS2 = default;
+            if (!useFacade && candidates.Count > 0)
+            {
+                var areaWorld2 = new Bounds(new Vector3(center.x, terrain.transform.position.y, center.z), new Vector3(radius * 2f, 1f, radius * 2f));
+                var hb2 = TerrainUtils.FetchHeightsBlock(terrain, areaWorld2, Allocator.TempJob);
+                var pts2 = new NativeArray<float2>(candidates.Count, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+                for (int iPt = 0; iPt < candidates.Count; iPt++)
+                {
+                    var c2 = candidates[iPt];
+                    pts2[iPt] = new float2(c2.x, c2.y);
+                }
+                outH2 = new NativeArray<float>(candidates.Count, Allocator.TempJob);
+                outN2 = new NativeArray<float3>(candidates.Count, Allocator.TempJob);
+                outS2 = new NativeArray<float>(candidates.Count, Allocator.TempJob);
+                var job2 = new TerrainSampleJob
+                {
+                    pointsWorld = pts2,
+                    heightsPatch = hb2.heights,
+                    xBase = hb2.xBase,
+                    zBase = hb2.zBase,
+                    width = hb2.width,
+                    height = hb2.height,
+                    hmMax = terrain.terrainData.heightmapResolution - 1,
+                    dxWorld = hb2.dxWorld,
+                    dzWorld = hb2.dzWorld,
+                    terrainPos = new float3(terrain.transform.position.x, terrain.transform.position.y, terrain.transform.position.z),
+                    sizeX = terrain.terrainData.size.x,
+                    sizeZ = terrain.terrainData.size.z,
+                    sizeY = terrain.terrainData.size.y,
+                    outHeightLocal = outH2,
+                    outNormal = outN2,
+                    outSlope = outS2,
+                };
+                var handle2 = job2.Schedule(candidates.Count, 64);
+                handle2.Complete();
+                hb2.heights.Dispose();
+                pts2.Dispose();
+            }
             for (int ci = 0; ci < candidates.Count; ci++)
             {
                 var c = candidates[ci];
@@ -629,15 +1048,14 @@ namespace MrTerrainPainter.Editor.Services
                 float slope = 0f;
                 if (useFacade)
                 {
-                    p.y = facadeInfo.bottomPos.y;
-                    n = facadeInfo.forward.normalized;
-                    slope = 90f;
+                    // FacadeStone路径已上方处理并返回
                 }
                 else
                 {
-                    if (!TerrainUtils.TryGetHeightAndNormal(terrain, p, out h, out n)) continue;
+                    h = outH2[ci] + terrain.transform.position.y;
+                    n = (Vector3)outN2[ci];
+                    slope = outS2[ci];
                     p.y = h;
-                    slope = TerrainUtils.ComputeSlope(n);
                 }
                 float dx0 = p.x - center.x;
                 float dz0 = p.z - center.z;
@@ -664,11 +1082,7 @@ namespace MrTerrainPainter.Editor.Services
                         float gspace = Mathf.Max(item.minSpacing, 0.01f) * globalFactor;
                         if (gspace > 0f && globalGrid.HasNearby(p2, gspace)) { continue; }
                     }
-                    if (!itemGrids.TryGetValue(idx, out var grid))
-                    {
-                        grid = new Grid(Mathf.Max(item.minSpacing, 0.01f));
-                        itemGrids[idx] = grid;
-                    }
+                    var grid = GetItemGrid(idx, Mathf.Max(item.minSpacing, 0.01f));
                     if (grid.HasNearby(p2, Mathf.Max(item.minSpacing, 0.01f))) { continue; }
                     if (!VegetationGenerator.MatchTerrain(item, h - terrain.transform.position.y, slope, ov)) { continue; }
                     if (item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape && !useFacade)
@@ -696,10 +1110,10 @@ namespace MrTerrainPainter.Editor.Services
                     var targetParent = typeToNode.TryGetValue(item.prefabType, out var tf) ? tf : null;
                     if (targetParent == null) { VegetationGenerator.LogMissingMappingOnce(item.prefabType); continue; }
                     var ovScaled = ov;
-                    if (item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape && useFacade)
-                    {
-                        CreateFacadeInstance(item, p, n, terrain, idx, targetParent, rnd, facadeInfo, ovScaled);
-                    }
+                if (item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape && useFacade)
+                {
+                    // FacadeStone路径已上方处理并返回
+                }
                     else
                     {
                         if (bs.distribution == DistributionType.EdgeLine && item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape)
@@ -731,6 +1145,9 @@ namespace MrTerrainPainter.Editor.Services
                 }
             }
             BrushEngine.ReleaseList(candidates);
+            if (outH2.IsCreated) outH2.Dispose();
+            if (outN2.IsCreated) outN2.Dispose();
+            if (outS2.IsCreated) outS2.Dispose();
         }
 
         public static void Erase(Vector3 center, BrushSettings bs, bool eraseAll, IReadOnlyList<GameObject> onlyTypes = null)
@@ -1015,6 +1432,105 @@ namespace MrTerrainPainter.Editor.Services
             vi.profileItemIndex = itemIndex;
             vi.sourcePrefabName = item.prefab.name;
             VegetationPool.IndexRegister(terrain, go);
+        }
+
+
+        private static void DrawFacadeSlicesPreview(System.Collections.Generic.List<FacadeDetectionService.CliffSlice> slices, BrushSettings bs)
+        {
+            if (bs == null || !bs.preview || slices == null || slices.Count == 0) return;
+            Handles.color = Color.green;
+            for (int i = 0; i < slices.Count - 1; i++) Handles.DrawLine(slices[i].BottomPosition, slices[i + 1].BottomPosition);
+            Handles.color = Color.red;
+            for (int i = 0; i < slices.Count - 1; i++) Handles.DrawLine(slices[i].TopPosition, slices[i + 1].TopPosition);
+            Handles.color = Color.white;
+            for (int i = 0; i < slices.Count; i++) Handles.DrawLine(slices[i].BottomPosition, slices[i].TopPosition);
+            Handles.color = Color.blue;
+            for (int i = 0; i < slices.Count; i++) Handles.ArrowHandleCap(0, slices[i].BottomPosition, Quaternion.LookRotation(slices[i].Normal, Vector3.up), 1.0f, EventType.Repaint);
+        }
+
+        private static bool IsWithinBrush(Vector3 pos, Vector3 center, float radius, BrushShape shape)
+        {
+            float dx = pos.x - center.x; float dz = pos.z - center.z;
+            if (shape == BrushShape.Circle) return (dx * dx + dz * dz) <= radius * radius;
+            return Mathf.Abs(dx) <= radius && Mathf.Abs(dz) <= radius;
+        }
+
+        
+
+        private static void PlaceFacadeSlices(VegetationItem item, Terrain terrain, int itemIndex, Transform parent, System.Random rnd, System.Collections.Generic.List<FacadeDetectionService.CliffSlice> slices, Vector3 center, float radius, BrushShape shape)
+        {
+            if (item == null || terrain == null || parent == null || slices == null || slices.Count == 0) return;
+            var gridSlices = new Grid(Mathf.Max(item.minSpacing, 0.01f));
+            for (int i = 0; i < slices.Count; i++)
+            {
+                var s = slices[i];
+                if (!IsWithinBrush(s.BottomPosition, center, radius, shape)) continue;
+                var p2Local = new Vector2(s.BottomPosition.x - terrain.transform.position.x, s.BottomPosition.z - terrain.transform.position.z);
+                float rendererWForSpacing = GetPrefabHorizontalExtentMeters(item.prefab);
+                float rendererHForScale = GetPrefabHeightMeters(item.prefab);
+                var cfgForMin = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+                float minHFac = cfgForMin != null ? Mathf.Max(0.0001f, cfgForMin.minFacadeHeightMeters) : 0.0001f;
+                float h = s.Height;
+                float uniForSpacing = Mathf.Max(minHFac / Mathf.Max(0.0001f, rendererHForScale), h / Mathf.Max(0.0001f, rendererHForScale));
+                float spacingThresh = Mathf.Max(item.minSpacing, rendererWForSpacing * uniForSpacing);
+                if (gridSlices.HasNearby(p2Local, spacingThresh)) continue;
+                var rightAxis = Vector3.Normalize(Vector3.Cross(s.Direction, s.Normal));
+                float refH = Mathf.Max(item.edgeReferenceHeightMeters, 0.0001f);
+                bool stacking = item.edgeStacking && h > refH * 1.5f;
+                if (!stacking)
+                {
+                    var go = VegetationPool.Get(terrain, item, itemIndex, parent, "Create Vegetation Instance");
+                    if (go == null) continue;
+                    go.transform.position = s.BottomPosition;
+                    go.transform.rotation = Quaternion.LookRotation(s.Normal, s.Direction);
+                    float rendererH = rendererHForScale;
+                    var cfgLocal = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+                    float minH = cfgLocal != null ? Mathf.Max(0.0001f, cfgLocal.minFacadeHeightMeters) : 0.0001f;
+                    float uni = Mathf.Max(minH / Mathf.Max(0.0001f, rendererH), h / Mathf.Max(0.0001f, rendererH));
+                    float finalScale = Mathf.Max(0.0001f, uni + item.facadeScaleOffset);
+                    go.transform.localScale = Vector3.one * finalScale;
+                    float depth = Mathf.Clamp(item.SampleEmbedDepth(rnd), 0f, 1f);
+                    var offsConf = item.edgeOffsets != Vector3.zero ? item.edgeOffsets : item.offsets;
+                    var off = rightAxis * offsConf.x + s.Direction * offsConf.y + (-s.Normal.normalized) * (depth + Mathf.Max(0f, offsConf.z));
+                    go.transform.position += off;
+                    var vi = go.GetComponent<VegetationInstance>() ?? go.AddComponent<VegetationInstance>();
+                    vi.sourceTerrain = terrain;
+                    vi.profileItemIndex = itemIndex;
+                    vi.sourcePrefabName = item.prefab.name;
+                    VegetationPool.IndexRegister(terrain, go);
+                    gridSlices.Add(p2Local);
+                    continue;
+                }
+                int layers = Mathf.Max(1, Mathf.CeilToInt(h / refH));
+                float per = h / layers;
+                float used = 0f;
+                for (int L = 0; L < layers; L++)
+                {
+                    float currH = L == layers - 1 ? (h - used) : per;
+                    used += currH;
+                    var go = VegetationPool.Get(terrain, item, itemIndex, parent, "Create Vegetation Instance");
+                    if (go == null) continue;
+                    var basePos = s.BottomPosition + s.Direction * (per * L + Mathf.Max(0f, item.edgeStackingOffsetMeters));
+                    go.transform.position = basePos;
+                    go.transform.rotation = Quaternion.LookRotation(s.Normal, s.Direction);
+                    float rendererH2 = rendererHForScale;
+                    var cfgLocal2 = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+                    float minH2 = cfgLocal2 != null ? Mathf.Max(0.0001f, cfgLocal2.minFacadeHeightMeters) : 0.0001f;
+                    float uni2 = Mathf.Max(minH2 / Mathf.Max(0.0001f, rendererH2), currH / Mathf.Max(0.0001f, rendererH2));
+                    float finalScale2 = Mathf.Max(0.0001f, uni2 + item.facadeScaleOffset);
+                    go.transform.localScale = Vector3.one * finalScale2;
+                    float depth = Mathf.Clamp(item.SampleEmbedDepth(rnd), 0f, 1f);
+                    var offsConf2 = item.edgeOffsets != Vector3.zero ? item.edgeOffsets : item.offsets;
+                    var off = rightAxis * offsConf2.x + s.Direction * offsConf2.y + (-s.Normal.normalized) * (depth + Mathf.Max(0f, offsConf2.z));
+                    go.transform.position += off;
+                    var vi = go.GetComponent<VegetationInstance>() ?? go.AddComponent<VegetationInstance>();
+                    vi.sourceTerrain = terrain;
+                    vi.profileItemIndex = itemIndex;
+                    vi.sourcePrefabName = item.prefab.name;
+                    VegetationPool.IndexRegister(terrain, go);
+                }
+                gridSlices.Add(p2Local);
+            }
         }
     }
 }

@@ -112,6 +112,127 @@ MonoBehaviour:
     probeMaxDist: 6
     referenceHeightMeters: 1
     offsets: {x: 0, y: 0, z: 0}
+  - prefab: {fileID: 3803255655427722666, guid: 387e7e4cf18bbf54b8bb640a093f1be6,
+      type: 3}
+    weight: 1
+    prefabType: 2
+    uniformScaleRange: {x: 1, y: 1}
+    yRotationRange: {x: 0, y: 30}
+    heightRange: {x: 0, y: 1000}
+    slopeRange: {x: 0, y: 90}
+    baseDensity: 1
+    minSpacing: 1.5
+    alignToTerrainNormal: 1
+    edgeSlopeThreshold: 75
+    embedDepthRange: {x: 0.1, y: 0.3}
+    edgeReferenceWidthMeters: 1
+    edgeAutoHeight: 1
+    edgeReferenceHeightMeters: 1
+    edgeOffsets: {x: 0, y: 0, z: 0}
+    edgeLookAheadStep: 0.5
+    edgeMaxLookAhead: 5
+    edgeSlopeEnter: 30
+    edgeSlopeExit: 25
+    probeStep: 0.3
+    probeMaxDist: 6
+    referenceHeightMeters: 1
+    offsets: {x: 0, y: 0, z: 0}
+  - prefab: {fileID: 467230214150537627, guid: c4cde5fa09312a94795bc143d72451b7, type: 3}
+    weight: 1
+    prefabType: 2
+    uniformScaleRange: {x: 1, y: 1}
+    yRotationRange: {x: 0, y: 30}
+    heightRange: {x: 0, y: 1000}
+    slopeRange: {x: 0, y: 90}
+    baseDensity: 1
+    minSpacing: 1.5
+    alignToTerrainNormal: 1
+    edgeSlopeThreshold: 75
+    embedDepthRange: {x: 0.1, y: 0.3}
+    edgeReferenceWidthMeters: 1
+    edgeAutoHeight: 1
+    edgeReferenceHeightMeters: 1
+    edgeOffsets: {x: 0, y: 0, z: 0}
+    edgeLookAheadStep: 0.5
+    edgeMaxLookAhead: 5
+    edgeSlopeEnter: 30
+    edgeSlopeExit: 25
+    probeStep: 0.3
+    probeMaxDist: 6
+    referenceHeightMeters: 1
+    offsets: {x: 0, y: 0, z: 0}
+  - prefab: {fileID: 467230214150537627, guid: 453fff3f3aff80949aecc1e9897d67a5, type: 3}
+    weight: 1
+    prefabType: 2
+    uniformScaleRange: {x: 1, y: 1}
+    yRotationRange: {x: 0, y: 30}
+    heightRange: {x: 0, y: 1000}
+    slopeRange: {x: 0, y: 90}
+    baseDensity: 1
+    minSpacing: 1.5
+    alignToTerrainNormal: 1
+    edgeSlopeThreshold: 75
+    embedDepthRange: {x: 0.1, y: 0.3}
+    edgeReferenceWidthMeters: 1
+    edgeAutoHeight: 1
+    edgeReferenceHeightMeters: 1
+    edgeOffsets: {x: 0, y: 0, z: 0}
+    edgeLookAheadStep: 0.5
+    edgeMaxLookAhead: 5
+    edgeSlopeEnter: 30
+    edgeSlopeExit: 25
+    probeStep: 0.3
+    probeMaxDist: 6
+    referenceHeightMeters: 1
+    offsets: {x: 0, y: 0, z: 0}
+  - prefab: {fileID: 467230214150537627, guid: 3bf757dae4932be4383a0914c64169a4, type: 3}
+    weight: 1
+    prefabType: 2
+    uniformScaleRange: {x: 1, y: 1}
+    yRotationRange: {x: 0, y: 30}
+    heightRange: {x: 0, y: 1000}
+    slopeRange: {x: 0, y: 90}
+    baseDensity: 1
+    minSpacing: 1.5
+    alignToTerrainNormal: 1
+    edgeSlopeThreshold: 75
+    embedDepthRange: {x: 0.1, y: 0.3}
+    edgeReferenceWidthMeters: 1
+    edgeAutoHeight: 1
+    edgeReferenceHeightMeters: 1
+    edgeOffsets: {x: 0, y: 0, z: 0}
+    edgeLookAheadStep: 0.5
+    edgeMaxLookAhead: 5
+    edgeSlopeEnter: 30
+    edgeSlopeExit: 25
+    probeStep: 0.3
+    probeMaxDist: 6
+    referenceHeightMeters: 1
+    offsets: {x: 0, y: 0, z: 0}
+  - prefab: {fileID: 467230214150537627, guid: ee7fb70ab45dcbd43b836efb70db45a6, type: 3}
+    weight: 1
+    prefabType: 2
+    uniformScaleRange: {x: 1, y: 1}
+    yRotationRange: {x: 0, y: 30}
+    heightRange: {x: 0, y: 1000}
+    slopeRange: {x: 0, y: 90}
+    baseDensity: 1
+    minSpacing: 1.5
+    alignToTerrainNormal: 1
+    edgeSlopeThreshold: 75
+    embedDepthRange: {x: 0.1, y: 0.3}
+    edgeReferenceWidthMeters: 1
+    edgeAutoHeight: 1
+    edgeReferenceHeightMeters: 1
+    edgeOffsets: {x: 0, y: 0, z: 0}
+    edgeLookAheadStep: 0.5
+    edgeMaxLookAhead: 5
+    edgeSlopeEnter: 30
+    edgeSlopeExit: 25
+    probeStep: 0.3
+    probeMaxDist: 6
+    referenceHeightMeters: 1
+    offsets: {x: 0, y: 0, z: 0}
   initialized: 1
   randomSeed: 12345
   baseDensity: 1

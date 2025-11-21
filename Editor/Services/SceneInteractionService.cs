@@ -79,17 +79,11 @@ namespace MrTerrainPainter.Editor.Services
             bool hasHit = terrainController != null && terrainController.TryGetTerrainHit(ray, out hitTerrain, out hitPos, out hitNormal);
             RenderBrushPreview(hasHit, hitPos, hitNormal, e);
 
-            // 只处理鼠标按下和拖拽事件，不考虑修饰键
+            // 处理鼠标按下和拖拽事件
             if (e.type == EventType.MouseDown || e.type == EventType.MouseDrag)
             {
                 if (!hasHit) return;
-
-                // 仅在绘画模式下处理，忽略生成模式的修饰键逻辑
-                if (isPaintMode())
-                {
-                    HandlePaintMouse(e, hitTerrain, hitPos);
-                    return;
-                }
+                if (isPaintMode()) { HandlePaintMouse(e, hitTerrain, hitPos); return; }
             }
             else if (e.type == EventType.MouseUp)
             {
@@ -113,46 +107,6 @@ namespace MrTerrainPainter.Editor.Services
         {
             if (e.type != EventType.Repaint) return;
             if (!hasHit || !isPaintMode()) return;
-
-            var terrain = nearestTerrain?.Invoke(hitPos);
-            var profile = getCurrentProfile?.Invoke();
-            bool isFacadeEdgeMode = brush != null && brush.distribution == DistributionType.EdgeLine && profile != null && profile.Items.Any(it => it != null && it.prefabType == PrefabType.Landscape);
-
-            if (isFacadeEdgeMode && terrain != null)
-            {
-                var item = profile.Items.FirstOrDefault(it => it != null && it.prefabType == PrefabType.Landscape);
-                if (item != null)
-                {
-                    if (FacadeDetectionService.TryDetectFacade(terrain, hitPos, item.edgeSlopeEnter, item.edgeSlopeExit, item.probeStep, item.probeMaxDist, out var info))
-                    {
-                        Handles.zTest = UnityEngine.Rendering.CompareFunction.Always;
-                        Handles.color = new Color(1f, 0.3f, 0.3f, 0.95f);
-                        Handles.SphereHandleCap(0, info.topPos, Quaternion.identity, 0.3f, EventType.Repaint);
-                        Handles.color = new Color(0.3f, 1f, 0.3f, 0.95f);
-                        Handles.SphereHandleCap(0, info.bottomPos, Quaternion.identity, 0.3f, EventType.Repaint);
-                        Handles.color = Color.white;
-                        var tip = info.bottomPos + info.forward.normalized * Mathf.Max(brush.size * 0.6f, 0.5f);
-                        Handles.DrawAAPolyLine(4f, new Vector3[] { info.bottomPos, tip });
-                        Handles.color = new Color(0.2f, 1f, 1f, 0.9f);
-                        float length = brush.size * 2f;
-                        float step = Mathf.Max(item.minSpacing, 0.01f);
-                        for (float u = -length * 0.5f; u <= length * 0.5f + 0.0001f; u += step)
-                        {
-                            var p = info.bottomPos + info.right * u;
-                            var q = p + info.forward * 0.6f;
-                            Handles.DrawAAPolyLine(2f, new Vector3[] { p, q });
-                        }
-                        BrushPainter.DrawPreview(hitPos, hitNormal, brush);
-                        return;
-                    }
-                    else
-                    {
-                        Handles.Label(hitPos + Vector3.up * 0.2f, "未检测到立面（坡度不足或探测范围不足）");
-                        return;
-                    }
-                }
-            }
-
             BrushPainter.DrawPreview(hitPos, hitNormal, brush);
         }
 

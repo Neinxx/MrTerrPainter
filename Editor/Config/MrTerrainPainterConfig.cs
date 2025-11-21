@@ -68,6 +68,25 @@ namespace MrTerrainPainter.Editor.Config
         public float missingMappingLogThrottleSeconds = 3f;
         public bool autoOpenSettingsOnMissingMapping = false;
         public string missingMappingLogTemplate = "未找到父节点映射的类型: {0}";
+
+        [Header("撤销设置 (Undo Settings)")]
+        [Tooltip("达到该数量阈值时，启用批量优化，绕过逐对象Undo记录以降低内存占用")]
+        public int undoBulkThreshold = 5000;
+        [Tooltip("是否启用大批量撤销优化（达到阈值时跳过逐对象Undo）")]
+        public bool enableUndoBulkOptimization = true;
+
+        [Header("虚拟立面全局参数 (Facade Global)")]
+        public MrTerrainPainter.Runtime.Profiles.FacadeSmoothingMode facadeSmoothMode = MrTerrainPainter.Runtime.Profiles.FacadeSmoothingMode.Gaussian;
+        [Tooltip("平滑窗口大小（奇数>=3）")]
+        public int facadeSmoothWindow = 5;
+        [Tooltip("高斯平滑Sigma（仅在高斯模式下生效）")]
+        public float facadeSmoothSigma = 1f;
+        [Tooltip("虚拟面最小高度（米），用于避免双轨重合")]
+        public float minFacadeHeightMeters = 0.3f;
+        [Tooltip("曲线偏移（米）：沿Right轴")]
+        public float curveOffsetRightMeters = 0f;
+        [Tooltip("曲线偏移（米）：沿面外Normal轴（正数外推）")]
+        public float curveOffsetOutMeters = 0f;
     }
 
 #if UNITY_EDITOR

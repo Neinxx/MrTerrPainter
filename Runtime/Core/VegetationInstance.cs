@@ -15,5 +15,6 @@ namespace MrTerrainPainter.Runtime.Core
         public string instanceId;
 
         public string sourcePrefabName;
+        public int sourcePrefabID;
     }
 }

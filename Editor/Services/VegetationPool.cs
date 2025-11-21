@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using MrTerrainPainter.Runtime.Core;
 using MrTerrainPainter.Runtime.Profiles;
 using UnityEditor;
@@ -10,8 +11,26 @@ using MrTerrainPainter.Editor.Config;
 public static class VegetationPool
 {
     public static bool ShowInHierarchy = true;
-    private static readonly Dictionary<string, ObjectPool<GameObject>> pools = new();
-    private static readonly Dictionary<int, Dictionary<(int,int), List<GameObject>>> spatial = new();
+    private struct PoolKey : System.IEquatable<PoolKey>
+    {
+        public int terrainID;
+        public int itemIndex;
+        public int prefabID;
+        public bool Equals(PoolKey other) => terrainID == other.terrainID && itemIndex == other.itemIndex && prefabID == other.prefabID;
+        public override bool Equals(object obj) => obj is PoolKey other && Equals(other);
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                int h = terrainID;
+                h = (h * 397) ^ itemIndex;
+                h = (h * 397) ^ prefabID;
+                return h;
+            }
+        }
+    }
+    private static readonly Dictionary<PoolKey, ObjectPool<GameObject>> pools = new();
+    private static readonly Dictionary<int, Dictionary<(int,int), HashSet<GameObject>>> spatial = new();
     private const float SpatialCellSize = 2f;
     private static (int,int) Key(Terrain t, Vector3 worldPos)
     {
@@ -32,10 +51,10 @@ public static class VegetationPool
     {
         if (terrain == null || go == null) return;
         var tid = terrain.GetInstanceID();
-        if (!spatial.TryGetValue(tid, out var grid)) { grid = new Dictionary<(int,int), List<GameObject>>(); spatial[tid] = grid; }
+        if (!spatial.TryGetValue(tid, out var grid)) { grid = new Dictionary<(int,int), HashSet<GameObject>>(); spatial[tid] = grid; }
         var k = Key(terrain, go.transform.position);
-        if (!grid.TryGetValue(k, out var list)) { list = new List<GameObject>(); grid[k] = list; }
-        if (!list.Contains(go)) list.Add(go);
+        if (!grid.TryGetValue(k, out var set)) { set = new HashSet<GameObject>(); grid[k] = set; }
+        set.Add(go);
     }
     public static void IndexUnregister(Terrain terrain, GameObject go)
     {
@@ -43,7 +62,7 @@ public static class VegetationPool
         var tid = terrain.GetInstanceID();
         if (!spatial.TryGetValue(tid, out var grid)) return;
         var k = Key(terrain, go.transform.position);
-        if (grid.TryGetValue(k, out var list)) { list.Remove(go); }
+        if (grid.TryGetValue(k, out var set)) { set.Remove(go); }
     }
     public static void QueryInRadius(Terrain terrain, Vector3 center, float radius, List<GameObject> outList)
     {
@@ -57,10 +76,9 @@ public static class VegetationPool
         for (int dz = -rx; dz <= rx; dz++)
         {
             var k = (kc.Item1 + dx, kc.Item2 + dz);
-            if (!grid.TryGetValue(k, out var list)) continue;
-            for (int i = 0; i < list.Count; i++)
+            if (!grid.TryGetValue(k, out var set)) continue;
+            foreach (var go in set)
             {
-                var go = list[i];
                 if (go == null) continue;
                 var p = go.transform.position;
                 var v = new Vector3(p.x - center.x, 0f, p.z - center.z);
@@ -74,7 +92,7 @@ public static class VegetationPool
         if (terrain == null || item == null || item.prefab == null) return null; // 提前返回
         var nameHint = item.prefab.name;
         var bin = GetOrCreateBin(terrain, itemIndex, nameHint);
-        var key = BuildKey(terrain, itemIndex, nameHint);
+        var key = BuildKey(terrain, itemIndex, item.prefab.GetInstanceID());
         if (!pools.TryGetValue(key, out var pool))
         {
             pool = new ObjectPool<GameObject>(
@@ -86,6 +104,8 @@ public static class VegetationPool
                     var vi = go.GetComponent<VegetationInstance>() ?? go.AddComponent<VegetationInstance>();
                     vi.sourceTerrain = terrain;
                     vi.profileItemIndex = itemIndex;
+                    vi.sourcePrefabName = item.prefab.name;
+                    vi.sourcePrefabID = item.prefab.GetInstanceID();
                     Undo.SetTransformParent(go.transform, bin, undoLabel);
                     go.SetActive(false);
                     return go;
@@ -113,6 +133,7 @@ public static class VegetationPool
         vi2.sourceTerrain = terrain;
         vi2.profileItemIndex = itemIndex;
         vi2.sourcePrefabName = item.prefab.name;
+        vi2.sourcePrefabID = item.prefab.GetInstanceID();
         return reused;
     }
 
@@ -124,7 +145,8 @@ public static class VegetationPool
         var vi = go.GetComponent<VegetationInstance>();
         var itemIndex = vi != null ? vi.profileItemIndex : -1;
         var nameHint = vi != null && !string.IsNullOrEmpty(vi.sourcePrefabName) ? vi.sourcePrefabName : go.name;
-        var key = BuildKey(terrain, itemIndex, nameHint);
+        int prefabID = vi != null ? vi.sourcePrefabID : 0;
+        var key = BuildKey(terrain, itemIndex, prefabID);
         if (!pools.TryGetValue(key, out var pool))
         {
             var bin = GetOrCreateBin(terrain, itemIndex, nameHint);
@@ -165,10 +187,9 @@ public static class VegetationPool
         return go.transform;
     }
 
-    private static string BuildKey(Terrain terrain, int itemIndex, string nameHint)
+    private static PoolKey BuildKey(Terrain terrain, int itemIndex, int prefabID)
     {
-        var safeName = string.IsNullOrEmpty(nameHint) ? "Item" : nameHint;
-        return $"{terrain.GetInstanceID()}_{itemIndex}_{safeName}";
+        return new PoolKey { terrainID = terrain.GetInstanceID(), itemIndex = itemIndex, prefabID = prefabID };
     }
 
     // 批量回收：将地形的生成容器中所有实例迁移到对象池（可选删除空容器）
@@ -191,9 +212,11 @@ public static class VegetationPool
             }
         }
 
-        // 使用撤销分组，避免生成大量独立Undo记录造成卡顿
-        int group = Undo.GetCurrentGroup();
-        Undo.IncrementCurrentGroup();
+        var cfgLocal = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
+        int bulkThreshold = cfgLocal != null ? cfgLocal.undoBulkThreshold : 5000;
+        bool bulkOpt = cfgLocal != null ? cfgLocal.enableUndoBulkOptimization : true;
+        // 先不创建Undo分组，视具体批量判断再决定
+        int group = -1;
 
         // 收集并回收：默认容器 + 映射父节点下的实例（仅回收与该 Terrain 关联的）
         void CollectAndRecycleUnder(Transform parent)
@@ -206,15 +229,67 @@ public static class VegetationPool
                 if (child == null) continue;
                 toRecycle.Add(child.gameObject);
             }
+            int total = toRecycle.Count;
+            bool large = bulkOpt && total >= bulkThreshold;
+            if (!large)
+            {
+                if (group == -1)
+                {
+                    group = Undo.GetCurrentGroup();
+                    Undo.IncrementCurrentGroup();
+                }
+                for (int i = 0; i < toRecycle.Count; i++)
+                {
+                    var go = toRecycle[i];
+                    var vi = go.GetComponent<VegetationInstance>();
+                    if (vi == null) continue; // 仅回收本工具生成的实例
+                    if (vi.sourceTerrain != null && vi.sourceTerrain != terrain) continue;
+                    var srcTerrain = vi.sourceTerrain != null ? vi.sourceTerrain : terrain;
+                    Recycle(srcTerrain, go, undoLabel);
+                }
+                return;
+            }
+            var groups = new Dictionary<PoolKey, List<GameObject>>();
             for (int i = 0; i < toRecycle.Count; i++)
             {
                 var go = toRecycle[i];
                 var vi = go.GetComponent<VegetationInstance>();
-                if (vi == null) continue; // 仅回收本工具生成的实例
-                // 仅回收来源地形匹配者，避免影响用户自有物体
+                if (vi == null) continue;
                 if (vi.sourceTerrain != null && vi.sourceTerrain != terrain) continue;
                 var srcTerrain = vi.sourceTerrain != null ? vi.sourceTerrain : terrain;
-                Recycle(srcTerrain, go, undoLabel);
+                int itemIndex = vi.profileItemIndex;
+                int prefabID = vi.sourcePrefabID;
+                var key = BuildKey(srcTerrain, itemIndex, prefabID);
+                if (!groups.TryGetValue(key, out var list)) { list = new List<GameObject>(); groups[key] = list; }
+                list.Add(go);
+            }
+            foreach (var kv in groups)
+            {
+                var key = kv.Key;
+                var list = kv.Value;
+                if (pools.TryGetValue(key, out var pool))
+                {
+                    for (int i = 0; i < list.Count; i++)
+                    {
+                        var go = list[i];
+                        IndexUnregister(terrain, go);
+                        pool.Release(go);
+                    }
+                }
+                else
+                {
+                    // 找不到池时，按组一次性创建bin并迁移（不使用Undo，避免爆炸）
+                    var any = list.FirstOrDefault();
+                    string nameHintLocal = any != null ? (any.GetComponent<VegetationInstance>()?.sourcePrefabName ?? any.name) : "Item";
+                    var bin = GetOrCreateBin(terrain, key.itemIndex, nameHintLocal);
+                    for (int i = 0; i < list.Count; i++)
+                    {
+                        var go = list[i];
+                        IndexUnregister(terrain, go);
+                        go.transform.SetParent(bin, false);
+                        go.SetActive(false);
+                    }
+                }
             }
         }
 
@@ -226,11 +301,19 @@ public static class VegetationPool
         // 默认容器按需删除（仅当存在时）
         if (removeEmptyContainer && defaultContainer != null)
         {
-            Undo.DestroyObjectImmediate(defaultContainer.gameObject);
+            if (group == -1)
+            {
+                // 若未启用Undo分组（大批量路径），直接销毁避免大Undo记录
+                Object.DestroyImmediate(defaultContainer.gameObject);
+            }
+            else
+            {
+                Undo.DestroyObjectImmediate(defaultContainer.gameObject);
+            }
         }
 
         // 合并撤销操作，减少记录数量
-        Undo.CollapseUndoOperations(group);
+        if (group != -1) Undo.CollapseUndoOperations(group);
     }
 
     public static void ApplyShowInHierarchyAll()

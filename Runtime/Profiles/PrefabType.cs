@@ -7,6 +7,7 @@ namespace MrTerrainPainter.Runtime.Profiles
         Prop,
         Rock,
         Building,
-        Landscape
+        Landscape,
+        FacadeStone
     }
 }

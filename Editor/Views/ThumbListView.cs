@@ -103,7 +103,7 @@ namespace MrTerrainPainter.Editor.Views
         private void RenderIconAndType(VisualElement root, VisualElement thumb, VegetationItem item)
         {
             var go = item?.prefab;
-            var tex = go ? (AssetPreview.GetAssetPreview(go) ?? AssetPreview.GetMiniThumbnail(go)) : null;
+            var tex = MrTerrainPainter.Editor.Services.AssetPreviewCache.GetCached(go);
 
             var icon = root?.Q<VisualElement>("Icon");
             var iconImage = icon?.Q<Image>();
@@ -129,6 +129,23 @@ namespace MrTerrainPainter.Editor.Views
                 {
                     icon.style.alignItems = Align.Center;
                     icon.style.justifyContent = Justify.Center;
+                }
+                if (go != null)
+                {
+                    MrTerrainPainter.Editor.Services.AssetPreviewCache.Request(go, t =>
+                    {
+                        if (t == null) return;
+                        if (iconImage != null)
+                        {
+                            iconImage.scaleMode = ScaleMode.ScaleToFit;
+                            iconImage.image = t;
+                        }
+                        else
+                        {
+                            host.style.backgroundImage = new StyleBackground(t);
+                        }
+                        thumb.RemoveFromClassList(EmptyClassName);
+                    });
                 }
 
                 // 注册点击打开 Prefab Picker 的事件（仅左键）
@@ -309,7 +326,77 @@ namespace MrTerrainPainter.Editor.Views
                 });
             }
 
+            menu.AddSeparator("");
+            menu.AddItem(new GUIContent("复制配置"), false, () =>
+            {
+                if (profile == null || currentItem == null) return;
+                CopyBuffer.Set(currentItem);
+            });
+            menu.AddItem(new GUIContent("粘贴配置到选中"), false, () =>
+            {
+                if (profile == null) return;
+                var indices = selectedIndices != null && selectedIndices.Count > 0 ? selectedIndices : new List<int> { index };
+                foreach (var idxLocal in indices)
+                {
+                    if (idxLocal < 0 || idxLocal >= profile.Items.Count) continue;
+                    var dst = profile.Items[idxLocal];
+                    if (dst == null) continue;
+                    CopyBuffer.ApplyTo(dst);
+                }
+                cb.UpdatePropertyPanelFromSelectedItem?.Invoke();
+                cb.RefreshPreviewListUI?.Invoke();
+            });
+
+            
             menu.ShowAsContext();
+        }
+
+        private static class CopyBuffer
+        {
+            private static VegetationItem snapshot;
+            public static void Set(VegetationItem src)
+            {
+                if (src == null) return;
+                snapshot = new VegetationItem();
+                snapshot.prefabType = src.prefabType;
+                snapshot.weight = src.weight;
+                snapshot.heightRange = src.heightRange;
+                snapshot.slopeRange = src.slopeRange;
+                snapshot.minSpacing = src.minSpacing;
+                snapshot.yRotationRange = src.yRotationRange;
+                snapshot.edgeSlopeThreshold = src.edgeSlopeThreshold;
+                snapshot.embedDepthRange = src.embedDepthRange;
+                snapshot.edgeReferenceHeightMeters = src.edgeReferenceHeightMeters;
+                snapshot.offsets = src.offsets;
+                snapshot.edgeOffsets = src.edgeOffsets;
+                snapshot.probeStep = src.probeStep;
+                snapshot.probeMaxDist = src.probeMaxDist;
+                snapshot.edgeStacking = src.edgeStacking;
+                snapshot.edgeStackingOffsetMeters = src.edgeStackingOffsetMeters;
+                snapshot.edgeTopScaleBias = src.edgeTopScaleBias;
+                snapshot.facadeScaleOffset = src.facadeScaleOffset;
+            }
+            public static void ApplyTo(VegetationItem dst)
+            {
+                if (snapshot == null || dst == null) return;
+                dst.prefabType = snapshot.prefabType;
+                dst.weight = snapshot.weight;
+                dst.heightRange = snapshot.heightRange;
+                dst.slopeRange = snapshot.slopeRange;
+                dst.minSpacing = snapshot.minSpacing;
+                dst.yRotationRange = snapshot.yRotationRange;
+                dst.edgeSlopeThreshold = snapshot.edgeSlopeThreshold;
+                dst.embedDepthRange = snapshot.embedDepthRange;
+                dst.edgeReferenceHeightMeters = snapshot.edgeReferenceHeightMeters;
+                dst.offsets = snapshot.offsets;
+                dst.edgeOffsets = snapshot.edgeOffsets;
+                dst.probeStep = snapshot.probeStep;
+                dst.probeMaxDist = snapshot.probeMaxDist;
+                dst.edgeStacking = snapshot.edgeStacking;
+                dst.edgeStackingOffsetMeters = snapshot.edgeStackingOffsetMeters;
+                dst.edgeTopScaleBias = snapshot.edgeTopScaleBias;
+                dst.facadeScaleOffset = snapshot.facadeScaleOffset;
+            }
         }
 
         #endregion
