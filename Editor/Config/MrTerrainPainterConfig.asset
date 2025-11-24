@@ -45,18 +45,20 @@ MonoBehaviour:
   exampleScenePath: 
   mappingEntries:
   - node: {fileID: 0}
-    type: 5
+    type: 2
   - node: {fileID: 0}
     type: 0
   - node: {fileID: 0}
-    type: 2
+    type: 3
+  - node: {fileID: 0}
+    type: 5
   missingMappingLogThrottleSeconds: 3
   autoOpenSettingsOnMissingMapping: 0
   missingMappingLogTemplate: "\u672A\u627E\u5230\u7236\u8282\u70B9\u6620\u5C04\u7684\u7C7B\u578B:
     {0}"
   undoBulkThreshold: 5000
   enableUndoBulkOptimization: 1
-  facadeSmoothMode: 0
+  facadeSmoothMode: 1
   facadeSmoothWindow: 7
   facadeSmoothSigma: 0.15
   minFacadeHeightMeters: 0.3

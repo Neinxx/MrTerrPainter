@@ -23,7 +23,7 @@
             <uie:FloatField label="Probe Step (m)" name="ProbeStep" />
             <uie:FloatField label="Probe Max Dist (m)" name="ProbeMaxDist" />
             <uie:FloatField label="Facade Reference Height (m)" name="FacadeRefHeight" />
-            <uie:FloatField label="Facade Scale Offset" name="FacadeScaleOffset" />
+            <uie:Vector3Field label="Facade Scale Offset (X/Y/Z)" name="FacadeScaleOffset" />
             <uie:Vector3Field label="Facade Offsets (X/Y/Z)" name="FacadeOffsets" />
             <uie:EnumField label="Facade Smooth Mode" name="FacadeSmoothMode" />
             <uie:IntegerField label="Facade Smooth Window" name="FacadeSmoothWindow" />

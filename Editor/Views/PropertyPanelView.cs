@@ -40,7 +40,7 @@ namespace MrTerrainPainter.Editor.Views
         private FloatField uiProbeStep;
         private FloatField uiProbeMaxDist;
         private FloatField uiFacadeRefHeight;
-        private FloatField uiFacadeScaleOffset;
+        private Vector3Field uiFacadeScaleOffset;
         private Vector3Field uiFacadeOffsets;
         private EnumField uiFacadeSmoothMode;
         private IntegerField uiFacadeSmoothWindow;
@@ -74,7 +74,7 @@ namespace MrTerrainPainter.Editor.Views
             uiProbeStep = root.Q<FloatField>("ProbeStep");
             uiProbeMaxDist = root.Q<FloatField>("ProbeMaxDist");
             uiFacadeRefHeight = root.Q<FloatField>("FacadeRefHeight");
-            uiFacadeScaleOffset = root.Q<FloatField>("FacadeScaleOffset");
+            uiFacadeScaleOffset = root.Q<Vector3Field>("FacadeScaleOffset");
             uiFacadeOffsets = root.Q<Vector3Field>("FacadeOffsets");
             uiFacadeSmoothMode = root.Q<EnumField>("FacadeSmoothMode");
             uiFacadeSmoothWindow = root.Q<IntegerField>("FacadeSmoothWindow");
@@ -97,7 +97,7 @@ namespace MrTerrainPainter.Editor.Views
             if (uiProbeMaxDist != null) { uiProbeMaxDist.tooltip = "Facade 最大探测距离（米）"; }
             if (uiFacadeRefHeight != null) { uiFacadeRefHeight.tooltip = "Facade 参考高度（米）"; }
             if (uiFacadeOffsets != null) { uiFacadeOffsets.tooltip = "Facade 偏移：X沿right，Y沿up，Z沿水平-Forward"; }
-            if (uiFacadeScaleOffset != null) { uiFacadeScaleOffset.tooltip = "Facade 自适应后的等比缩放偏移（加法），用于微调最终Scale"; }
+            if (uiFacadeScaleOffset != null) { uiFacadeScaleOffset.tooltip = "Facade 自适应后的逐轴缩放偏移（XYZ加法），用于微调最终缩放"; }
             if (uiFacadeSmoothMode != null) { uiFacadeSmoothMode.tooltip = "虚拟立面平滑模式：Mean/Gaussian/Median"; }
             if (uiFacadeSmoothWindow != null) { uiFacadeSmoothWindow.tooltip = "平滑窗口大小（奇数>=3）"; }
             if (uiFacadeSmoothSigma != null) { uiFacadeSmoothSigma.tooltip = "高斯平滑Sigma"; }

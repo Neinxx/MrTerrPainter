@@ -28,7 +28,7 @@ namespace MrTerrainPainter.Editor.Services
             {
                 int win = 5;
                 int r = win / 2;
-                float[] coeff = new float[] { -3f/35f, 12f/35f, 17f/35f, 12f/35f, -3f/35f };
+                float[] coeff = new float[] { -3f / 35f, 12f / 35f, 17f / 35f, 12f / 35f, -3f / 35f };
                 var smoothed = new Vector3[slices.Count];
                 for (int i = 0; i < slices.Count; i++)
                 {
@@ -180,7 +180,9 @@ namespace MrTerrainPainter.Editor.Services
                 forward = forward,
                 right = right
             };
-            return heightMeters > 0f;
+            var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+            float minH = cfg != null ? Mathf.Max(0.0001f, cfg.minFacadeHeightMeters) : 0.3f;
+            return heightMeters >= minH;
         }
 
         public static System.Collections.Generic.List<CliffSlice> TraceVirtualFacade(
@@ -209,23 +211,48 @@ namespace MrTerrainPainter.Editor.Services
             int steps = Mathf.Max(2, Mathf.CeilToInt(Mathf.Max(0.1f, lengthMeters) / step));
             float epsilon = 0.2f;
 
-            Vector3 ScanEnter(Vector3 p)
+            System.Func<Vector3, (float,float)> Slope3 = pos =>
             {
+                float s0 = SampleSlope(t, pos);
+                float sL = SampleSlope(t, pos - right * epsilon);
+                float sR = SampleSlope(t, pos + right * epsilon);
+                float mean = (s0 + sL + sR) / 3f;
+                float maxv = Mathf.Max(s0, Mathf.Max(sL, sR));
+                return (mean, maxv);
+            };
+            Vector3 ScanEnterCanny(Vector3 p, out float high, out float low)
+            {
+                var acc = new System.Collections.Generic.List<float>();
                 for (float d = 0f; d <= lengthMeters + 0.0001f; d += step)
                 {
                     var q = p + (-forward) * d;
-                    float s = (SampleSlope(t, q) + SampleSlope(t, q + right * epsilon) + SampleSlope(t, q - right * epsilon)) / 3f;
-                    if (s >= enter) return q;
+                    var v = Slope3(q);
+                    acc.Add(v.Item2);
+                }
+                float mean = 0f, varv = 0f;
+                for (int i = 0; i < acc.Count; i++) mean += acc[i];
+                mean /= Mathf.Max(1, acc.Count);
+                for (int i = 0; i < acc.Count; i++) varv += (acc[i] - mean) * (acc[i] - mean);
+                varv /= Mathf.Max(1, acc.Count);
+                float std = Mathf.Sqrt(varv);
+                high = mean + std;
+                low = mean + std * 0.5f;
+                for (float d = 0f; d <= lengthMeters + 0.0001f; d += step)
+                {
+                    var q = p + (-forward) * d;
+                    var v = Slope3(q);
+                    float s = v.Item2;
+                    if (s >= high) return q;
                 }
                 return p;
             }
-            Vector3 ScanExit(Vector3 enterPos)
+            Vector3 ScanExitCanny(Vector3 enterPos, float low)
             {
                 for (float d = step; d <= lengthMeters + 0.0001f; d += step)
                 {
                     var q = enterPos + (-forward) * d;
-                    float s = (SampleSlope(t, q) + SampleSlope(t, q + right * epsilon) + SampleSlope(t, q - right * epsilon)) / 3f;
-                    if (s <= exit) return q;
+                    var v = Slope3(q);
+                    if (v.Item2 <= low) return q;
                 }
                 return enterPos;
             }
@@ -255,9 +282,9 @@ namespace MrTerrainPainter.Editor.Services
                 for (int i = -steps; i <= steps; i++)
                 {
                     var basePos = start + lateralDir * (i * step);
-                    var bEnter = ScanEnter(basePos);
+                    var bEnter = ScanEnterCanny(basePos, out float high, out float low);
                     var bPos = RefineBottom(bEnter);
-                    var tPos = ScanExit(bPos);
+                    var tPos = ScanExitCanny(bPos, low);
                     if (TerrainUtils.TryGetHeightAndNormal(t, bPos, out var hb, out var nb) && TerrainUtils.TryGetHeightAndNormal(t, tPos, out var ht, out var nt))
                     {
                         var bottom = new Vector3(bPos.x, hb, bPos.z);
@@ -391,7 +418,46 @@ namespace MrTerrainPainter.Editor.Services
                     slices[i] = s;
                 }
             }
+            var cfgG = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+            float minHGlobal = cfgG != null ? Mathf.Max(0.0001f, cfgG.minFacadeHeightMeters) : 0.3f;
+            if (slices.Count > 0)
+            {
+                for (int i = slices.Count - 1; i >= 0; i--)
+                {
+                    if (slices[i].Height < minHGlobal) slices.RemoveAt(i);
+                }
+            }
             return slices;
+        }
+
+        public static System.Collections.Generic.List<CliffSlice> FilterByMinimumWidth(System.Collections.Generic.List<CliffSlice> slices, float minLenMeters, float spacingThreshold, float maxAngleDeg)
+        {
+            var res = new System.Collections.Generic.List<CliffSlice>();
+            if (slices == null || slices.Count == 0) return res;
+            int n = slices.Count;
+            int i = 0;
+            while (i < n)
+            {
+                int start = i;
+                float len = 0f;
+                var prev = slices[i];
+                i++;
+                while (i < n)
+                {
+                    var curr = slices[i];
+                    float dist = Vector3.Distance(prev.BottomPosition, curr.BottomPosition);
+                    float ang = Vector3.Angle(prev.Normal, curr.Normal);
+                    if (dist > spacingThreshold * 2f || ang > maxAngleDeg) break;
+                    len += dist;
+                    prev = curr;
+                    i++;
+                }
+                if (len >= Mathf.Max(0.0001f, minLenMeters))
+                {
+                    for (int k = start; k < i; k++) res.Add(slices[k]);
+                }
+            }
+            return res;
         }
 
         private static float SampleSlope(Terrain t, Vector3 p)

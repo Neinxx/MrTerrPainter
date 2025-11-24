@@ -514,7 +514,7 @@ namespace MrTerrainPainter.Editor.Services
                 count = Mathf.Clamp(count, 0, 50000);
                 if (count <= 0) continue;
 
-                float spacing = Mathf.Max(item.minSpacing, 0.01f);
+                float spacing = Mathf.Max(item.CoreSpacing, 0.01f);
                 if (!grids.TryGetValue(it, out var gridForItem)) { gridForItem = new Grid(spacing); grids[it] = gridForItem; }
 
                 Vector2 centerLocal;
@@ -564,7 +564,7 @@ namespace MrTerrainPainter.Editor.Services
                         {
                             candidates = new List<Vector2>();
                             float length = radiusLocal * 2f;
-                            float stepU = Mathf.Max(item.minSpacing, 0.01f);
+                            float stepU = Mathf.Max(item.CoreSpacing, 0.01f);
                             for (float u = -length * 0.5f; u <= length * 0.5f + 0.0001f; u += stepU)
                             {
                                 var p = info.bottomPos + info.right * u;
@@ -584,13 +584,19 @@ namespace MrTerrainPainter.Editor.Services
                         if (forward.sqrMagnitude > 1e-6f)
                         {
                             forward.Normalize();
-                            var right = Vector3.Cross(Vector3.up, forward).normalized;
+                            var right = Vector3.Cross(Vector3.up, forward);
+                            if (right.sqrMagnitude < 1e-6f) right = Vector3.right;
+                            right.Normalize();
+                            forward = Vector3.Normalize(Vector3.Cross(right, Vector3.up));
                             candidates = new List<Vector2>();
                             float stepU = Mathf.Max(spacing, 0.01f);
+                            float rail = Mathf.Max(items[it].edgeReferenceWidthMeters, 0.01f) * 0.5f;
                             for (float u = -radiusLocal; u <= radiusLocal + 0.0001f; u += stepU)
                             {
-                                var p = centerWorld + right * u;
-                                candidates.Add(new Vector2(p.x - worldPos.x, p.z - worldPos.z));
+                                var pL = centerWorld + right * (u - rail);
+                                var pR = centerWorld + right * (u + rail);
+                                candidates.Add(new Vector2(pL.x - worldPos.x, pL.z - worldPos.z));
+                                candidates.Add(new Vector2(pR.x - worldPos.x, pR.z - worldPos.z));
                             }
                         }
                         else
@@ -613,9 +619,12 @@ namespace MrTerrainPainter.Editor.Services
                         cfgG != null ? Mathf.Max(3, cfgG.facadeSmoothWindow) : 5,
                         cfgG != null ? Mathf.Max(0.1f, cfgG.facadeSmoothSigma) : 1f);
                     slices = FacadeDetectionService.ApplyGlobalConstraints(slices, cfgG != null ? cfgG.minFacadeHeightMeters : 0.3f, true, cfgG != null ? cfgG.curveOffsetRightMeters : 0f, cfgG != null ? cfgG.curveOffsetOutMeters : 0f);
+                    float rendererWMinLen = BrushPainter.GetPrefabHorizontalExtentMeters(item.prefab);
+                    float minLenSeg = Mathf.Max(rendererWMinLen, item.edgeReferenceWidthMeters);
+                    slices = FacadeDetectionService.FilterByMinimumWidth(slices, minLenSeg, Mathf.Max(item.CoreSpacing, 0.01f), 30f);
                     var parent = ResolveTargetParent(terrain, item);
                     if (parent == null) { LogMissingMappingOnce(item.prefabType); BrushEngine.ReleaseList(candidates); continue; }
-                    var gridFacade = new Grid(Mathf.Max(item.minSpacing, 0.01f));
+                    var gridFacade = new Grid(Mathf.Max(item.CoreSpacing, 0.01f));
                     for (int si = 0; si < slices.Count; si++)
                     {
                         var s = slices[si];
@@ -626,9 +635,9 @@ namespace MrTerrainPainter.Editor.Services
                             : (Mathf.Abs(dx) <= radiusLocal && Mathf.Abs(dz) <= radiusLocal);
                         if (!inBrush) continue;
                         var p2 = new Vector2(s.BottomPosition.x - worldPos.x, s.BottomPosition.z - worldPos.z);
-                        float baseScaleXZ = item.SampleScale(rnd);
+                        float baseScaleXZ = item.CoreScale;
                         float rendererW = BrushPainter.GetPrefabHorizontalExtentMeters(item.prefab);
-                        float spacingThresh = Mathf.Max(item.minSpacing, rendererW * baseScaleXZ);
+                        float spacingThresh = Mathf.Max(item.CoreSpacing, rendererW * baseScaleXZ);
                         if (gridFacade.HasNearby(p2, Mathf.Max(spacingThresh, 0.01f))) continue;
                         _ = item.SampleScale(rnd);
                         float refH = Mathf.Max(item.edgeReferenceHeightMeters, 0.0001f);
@@ -645,10 +654,15 @@ namespace MrTerrainPainter.Editor.Services
                             var cfgG2 = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
                             float minH = cfgG2 != null ? Mathf.Max(0.0001f, cfgG2.minFacadeHeightMeters) : 0.0001f;
                             float uni = Mathf.Max(minH / Mathf.Max(0.0001f, rendererH), h / Mathf.Max(0.0001f, rendererH));
-                            go.transform.localScale = Vector3.one * uni;
+                            var baseScale = new Vector3(uni, uni, uni);
+                            var finalScale = new Vector3(
+                                Mathf.Max(0.0001f, baseScale.x + item.facadeScaleOffset.x),
+                                Mathf.Max(0.0001f, baseScale.y + item.facadeScaleOffset.y),
+                                Mathf.Max(0.0001f, baseScale.z + item.facadeScaleOffset.z));
+                            go.transform.localScale = finalScale;
                             float depth = Mathf.Clamp(item.SampleEmbedDepth(rnd), 0f, 1f);
                             var rightAxis = Vector3.Normalize(Vector3.Cross(s.Direction, s.Normal));
-                            var offsConf = item.edgeOffsets != Vector3.zero ? item.edgeOffsets : item.offsets;
+                            var offsConf = item.offsets;
                             go.transform.position += rightAxis * offsConf.x + s.Direction * offsConf.y + (-s.Normal.normalized) * (depth + Mathf.Max(0f, offsConf.z));
                             var vi = go.GetComponent<VegetationInstance>() ?? go.AddComponent<VegetationInstance>();
                             vi.sourceTerrain = terrain;
@@ -675,10 +689,15 @@ namespace MrTerrainPainter.Editor.Services
                                 float minH2 = cfgG3 != null ? Mathf.Max(0.0001f, cfgG3.minFacadeHeightMeters) : 0.0001f;
                                 float uni2 = Mathf.Max(minH2 / Mathf.Max(0.0001f, rendererH2), currH / Mathf.Max(0.0001f, rendererH2));
                                 if (L == layers - 1) uni2 *= Mathf.Max(0.0001f, item.edgeTopScaleBias);
-                                go.transform.localScale = Vector3.one * uni2;
+                                var baseScale2 = new Vector3(uni2, uni2, uni2);
+                                var finalScale2 = new Vector3(
+                                    Mathf.Max(0.0001f, baseScale2.x + item.facadeScaleOffset.x),
+                                    Mathf.Max(0.0001f, baseScale2.y + item.facadeScaleOffset.y),
+                                    Mathf.Max(0.0001f, baseScale2.z + item.facadeScaleOffset.z));
+                                go.transform.localScale = finalScale2;
                                 float depth = Mathf.Clamp(item.SampleEmbedDepth(rnd), 0f, 1f);
                                 var rightAxis2 = Vector3.Normalize(Vector3.Cross(s.Direction, s.Normal));
-                                var offsConf2 = item.edgeOffsets != Vector3.zero ? item.edgeOffsets : item.offsets;
+                                var offsConf2 = item.offsets;
                                 go.transform.position += rightAxis2 * offsConf2.x + s.Direction * offsConf2.y + (-s.Normal.normalized) * (depth + Mathf.Max(0f, offsConf2.z));
                                 var vi = go.GetComponent<VegetationInstance>() ?? go.AddComponent<VegetationInstance>();
                                 vi.sourceTerrain = terrain;
@@ -845,7 +864,7 @@ namespace MrTerrainPainter.Editor.Services
             }
             else
             {
-                scale = item.SampleScale(rnd);
+                scale = item.CoreScale;
             }
             go.transform.localScale = Vector3.one * scale;
 
@@ -895,7 +914,8 @@ namespace MrTerrainPainter.Editor.Services
                     go.transform.localScale = new Vector3(baseScale, yScale, baseScale);
                     var right = Vector3.Cross(up, forward).normalized;
                     var horizFwd = forward;
-                    var off = right * item.edgeOffsets.x + up * item.edgeOffsets.y + (-horizFwd) * item.edgeOffsets.z;
+                    var offsConf = item.CoreOffset;
+                    var off = right * offsConf.x + up * offsConf.y + (-horizFwd) * offsConf.z;
                     go.transform.position += off;
                 }
             }

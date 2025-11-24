@@ -72,8 +72,8 @@ namespace MrTerrainPainter.Runtime.Profiles
         [Tooltip("顶部层的额外Y缩放偏置（乘法），用于补偿顶部间隙")]
         public float edgeTopScaleBias = 1f;
 
-        [Tooltip("Facade 自适应缩放后的额外Scale偏移（加法），用于微调最终等比缩放")]
-        public float facadeScaleOffset = 0f;
+        [Tooltip("Facade自适应缩放后的额外缩放偏移（XYZ加法）用于微调最终缩放")]
+        public Vector3 facadeScaleOffset = Vector3.zero;
 
         [Header("虚拟立面平滑 (Smoothing)")]
         public FacadeSmoothingMode facadeSmoothingMode = FacadeSmoothingMode.Mean;
@@ -111,6 +111,41 @@ namespace MrTerrainPainter.Runtime.Profiles
         {
             var t = (float)rnd.NextDouble();
             return Mathf.Lerp(embedDepthRange.x, embedDepthRange.y, t);
+        }
+
+        public Vector3 CoreOffset
+        {
+            get
+            {
+                var v = edgeOffsets != Vector3.zero ? edgeOffsets : offsets;
+                return new Vector3(v.x, v.y, v.z);
+            }
+        }
+
+        public float CoreScale
+        {
+            get
+            {
+                float lo = Mathf.Max(0.0001f, uniformScaleRange.x);
+                float hi = Mathf.Max(lo, uniformScaleRange.y);
+                if (Mathf.Approximately(lo, hi)) return lo;
+                return (lo + hi) * 0.5f;
+            }
+        }
+
+        public float CoreSpacing
+        {
+            get
+            {
+                return Mathf.Max(minSpacing, 0.01f);
+            }
+        }
+
+        public void ValidateCore()
+        {
+            uniformScaleRange.x = Mathf.Max(0.0001f, uniformScaleRange.x);
+            uniformScaleRange.y = Mathf.Max(uniformScaleRange.x, uniformScaleRange.y);
+            minSpacing = Mathf.Max(0.01f, minSpacing);
         }
     }
 }
