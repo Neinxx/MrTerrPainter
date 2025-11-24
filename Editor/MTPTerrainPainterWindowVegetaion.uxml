@@ -27,7 +27,16 @@
             <uie:Vector3Field label="Facade Offsets (X/Y/Z)" name="FacadeOffsets" />
             <uie:EnumField label="Facade Smooth Mode" name="FacadeSmoothMode" />
             <uie:IntegerField label="Facade Smooth Window" name="FacadeSmoothWindow" />
-            <uie:FloatField label="Facade Smooth Sigma" name="FacadeSmoothSigma" />
+        <uie:FloatField label="Facade Smooth Sigma" name="FacadeSmoothSigma" />
+            <uie:FloatField label="Facade RDP Epsilon (m)" name="RdpEpsilon" />
+            <uie:ColorField label="Preview Bottom Color" name="PreviewBottomColor" />
+            <uie:ColorField label="Preview Top Color" name="PreviewTopColor" />
+            <uie:Toggle label="Use Contour Detection" name="UseContourDetection" />
+            <uie:FloatField label="Contour Slope Deg" name="ContourSlopeDeg" />
+            <ui:VisualElement style="flex-direction: row; justify-content: space-between; margin-top: 6px;">
+                <ui:Button text="Scan Selected Terrain" name="ScanFacadesButton" style="flex-grow: 1; margin-right: 4px;" />
+                <ui:Button text="Bake Facades" name="BakeFacadesButton" style="flex-grow: 1; margin-left: 4px;" />
+            </ui:VisualElement>
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

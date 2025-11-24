@@ -607,52 +607,24 @@ namespace MrTerrainPainter.Editor.Services
                 }
                 if (dType == DistributionType.EdgeLine && item.prefabType == PrefabType.Landscape)
                 {
-                    var cfgG = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
-                    var slices = FacadeDetectionService.TraceVirtualFacade(
-                        terrain,
-                        new Vector3(worldPos.x + centerLocal.x, worldPos.y, worldPos.z + centerLocal.y),
-                        radiusLocal * 2f,
-                        item.edgeSlopeEnter,
-                        item.edgeSlopeExit,
-                        item.probeStep,
-                        cfgG != null ? cfgG.facadeSmoothMode : MrTerrainPainter.Runtime.Profiles.FacadeSmoothingMode.Gaussian,
-                        cfgG != null ? Mathf.Max(3, cfgG.facadeSmoothWindow) : 5,
-                        cfgG != null ? Mathf.Max(0.1f, cfgG.facadeSmoothSigma) : 1f);
-                    slices = FacadeDetectionService.ApplyGlobalConstraints(slices, cfgG != null ? cfgG.minFacadeHeightMeters : 0.3f, true, cfgG != null ? cfgG.curveOffsetRightMeters : 0f, cfgG != null ? cfgG.curveOffsetOutMeters : 0f);
-                    float rendererWMinLen = BrushPainter.GetPrefabHorizontalExtentMeters(item.prefab);
-                    float minLenSeg = Mathf.Max(rendererWMinLen, item.edgeReferenceWidthMeters);
-                    slices = FacadeDetectionService.FilterByMinimumWidth(slices, minLenSeg, Mathf.Max(item.CoreSpacing, 0.01f), 30f);
                     var parent = ResolveTargetParent(terrain, item);
                     if (parent == null) { LogMissingMappingOnce(item.prefabType); BrushEngine.ReleaseList(candidates); continue; }
-                    var gridFacade = new Grid(Mathf.Max(item.CoreSpacing, 0.01f));
-                    for (int si = 0; si < slices.Count; si++)
+                    var centerWorldUnified = new Vector3(worldPos.x + centerLocal.x, worldPos.y, worldPos.z + centerLocal.y);
+                    FacadeDetectionService.ProcessFacadeAndPlace(terrain, centerWorldUnified, radiusLocal, item, dShape, s =>
                     {
-                        var s = slices[si];
-                        float dx = s.BottomPosition.x - (worldPos.x + centerLocal.x);
-                        float dz = s.BottomPosition.z - (worldPos.z + centerLocal.y);
-                        bool inBrush = (dShape == BrushShape.Circle)
-                            ? (dx * dx + dz * dz) <= (radiusLocal * radiusLocal)
-                            : (Mathf.Abs(dx) <= radiusLocal && Mathf.Abs(dz) <= radiusLocal);
-                        if (!inBrush) continue;
-                        var p2 = new Vector2(s.BottomPosition.x - worldPos.x, s.BottomPosition.z - worldPos.z);
-                        float baseScaleXZ = item.CoreScale;
-                        float rendererW = BrushPainter.GetPrefabHorizontalExtentMeters(item.prefab);
-                        float spacingThresh = Mathf.Max(item.CoreSpacing, rendererW * baseScaleXZ);
-                        if (gridFacade.HasNearby(p2, Mathf.Max(spacingThresh, 0.01f))) continue;
-                        _ = item.SampleScale(rnd);
-                        float refH = Mathf.Max(item.edgeReferenceHeightMeters, 0.0001f);
+                        var rightAxis = Vector3.Normalize(Vector3.Cross(s.Direction, s.Normal));
                         float h = s.Height;
-                        float acceptance = Mathf.Clamp01(item.baseDensity / 10f);
-                        if ((float)rnd.NextDouble() > acceptance) continue;
-                        if (!(item.edgeStacking && h > refH * 1.5f))
+                        float refH = Mathf.Max(item.edgeReferenceHeightMeters, 0.0001f);
+                        bool stacking = item.edgeStacking && h > refH * 1.5f;
+                        if (!stacking)
                         {
                             var go = VegetationPool.Get(terrain, item, it, parent, "Create Vegetation Instance");
-                            if (go == null) continue;
+                            if (go == null) return;
                             go.transform.position = s.BottomPosition;
                             go.transform.rotation = Quaternion.LookRotation(s.Normal, s.Direction);
                             float rendererH = BrushPainter.GetPrefabHeightMeters(item.prefab);
-                            var cfgG2 = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
-                            float minH = cfgG2 != null ? Mathf.Max(0.0001f, cfgG2.minFacadeHeightMeters) : 0.0001f;
+                            var cfgLocal = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+                            float minH = cfgLocal != null ? Mathf.Max(0.0001f, cfgLocal.minFacadeHeightMeters) : 0.0001f;
                             float uni = Mathf.Max(minH / Mathf.Max(0.0001f, rendererH), h / Mathf.Max(0.0001f, rendererH));
                             var baseScale = new Vector3(uni, uni, uni);
                             var finalScale = new Vector3(
@@ -661,7 +633,6 @@ namespace MrTerrainPainter.Editor.Services
                                 Mathf.Max(0.0001f, baseScale.z + item.facadeScaleOffset.z));
                             go.transform.localScale = finalScale;
                             float depth = Mathf.Clamp(item.SampleEmbedDepth(rnd), 0f, 1f);
-                            var rightAxis = Vector3.Normalize(Vector3.Cross(s.Direction, s.Normal));
                             var offsConf = item.offsets;
                             go.transform.position += rightAxis * offsConf.x + s.Direction * offsConf.y + (-s.Normal.normalized) * (depth + Mathf.Max(0f, offsConf.z));
                             var vi = go.GetComponent<VegetationInstance>() ?? go.AddComponent<VegetationInstance>();
@@ -685,8 +656,8 @@ namespace MrTerrainPainter.Editor.Services
                                 go.transform.position = basePos;
                                 go.transform.rotation = Quaternion.LookRotation(s.Normal, s.Direction);
                                 float rendererH2 = BrushPainter.GetPrefabHeightMeters(item.prefab);
-                                var cfgG3 = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
-                                float minH2 = cfgG3 != null ? Mathf.Max(0.0001f, cfgG3.minFacadeHeightMeters) : 0.0001f;
+                                var cfgLocal2 = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+                                float minH2 = cfgLocal2 != null ? Mathf.Max(0.0001f, cfgLocal2.minFacadeHeightMeters) : 0.0001f;
                                 float uni2 = Mathf.Max(minH2 / Mathf.Max(0.0001f, rendererH2), currH / Mathf.Max(0.0001f, rendererH2));
                                 if (L == layers - 1) uni2 *= Mathf.Max(0.0001f, item.edgeTopScaleBias);
                                 var baseScale2 = new Vector3(uni2, uni2, uni2);
@@ -696,18 +667,16 @@ namespace MrTerrainPainter.Editor.Services
                                     Mathf.Max(0.0001f, baseScale2.z + item.facadeScaleOffset.z));
                                 go.transform.localScale = finalScale2;
                                 float depth = Mathf.Clamp(item.SampleEmbedDepth(rnd), 0f, 1f);
-                                var rightAxis2 = Vector3.Normalize(Vector3.Cross(s.Direction, s.Normal));
                                 var offsConf2 = item.offsets;
-                                go.transform.position += rightAxis2 * offsConf2.x + s.Direction * offsConf2.y + (-s.Normal.normalized) * (depth + Mathf.Max(0f, offsConf2.z));
+                                go.transform.position += rightAxis * offsConf2.x + s.Direction * offsConf2.y + (-s.Normal.normalized) * (depth + Mathf.Max(0f, offsConf2.z));
                                 var vi = go.GetComponent<VegetationInstance>() ?? go.AddComponent<VegetationInstance>();
                                 vi.sourceTerrain = terrain;
                                 vi.profileItemIndex = it;
                                 vi.sourcePrefabName = item.prefab.name;
                                 VegetationPool.IndexRegister(terrain, go);
                             }
-
                         }
-                    }
+                    });
                     BrushEngine.ReleaseList(candidates);
                 }
                 else
@@ -791,7 +760,7 @@ namespace MrTerrainPainter.Editor.Services
 
                         var targetParent = ResolveTargetParent(terrain, item);
                         if (targetParent == null) { LogMissingMappingOnce(item.prefabType); continue; }
-                        CreateInstance(item, sample, n, terrain, it, targetParent, rnd, ov);
+                        PlaceItem(item, sample, n, terrain, it, targetParent, rnd, ov);
                     }
 
                     hb.heights.Dispose();
@@ -846,7 +815,7 @@ namespace MrTerrainPainter.Editor.Services
             return dict.TryGetValue(item.prefabType, out var tf) ? tf : null;
         }
 
-        private static void CreateInstance(VegetationItem item, Vector3 pos, Vector3 normal, Terrain terrain, int itemIndex, Transform parent, System.Random rnd, PlacementOverrides? ov)
+        public static void PlaceItem(VegetationItem item, Vector3 pos, Vector3 normal, Terrain terrain, int itemIndex, Transform parent, System.Random rnd, PlacementOverrides? ov)
         {
             if (item.prefab == null) return; // 提前返回
             // 优先复用对象池，避免大量实例化导致卡顿

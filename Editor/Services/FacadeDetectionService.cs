@@ -1,10 +1,17 @@
 using MrTerrainPainter.Editor.Utils;
+using MrTerrainPainter.Runtime.Profiles;
 using UnityEngine;
 
 namespace MrTerrainPainter.Editor.Services
 {
     public static class FacadeDetectionService
     {
+        public class FacadePath
+        {
+            public Terrain SourceTerrain;
+            public System.Collections.Generic.List<CliffSlice> SmoothSlices;
+            public float TotalLength;
+        }
         public struct CliffSlice
         {
             public Vector3 BottomPosition;
@@ -211,7 +218,7 @@ namespace MrTerrainPainter.Editor.Services
             int steps = Mathf.Max(2, Mathf.CeilToInt(Mathf.Max(0.1f, lengthMeters) / step));
             float epsilon = 0.2f;
 
-            System.Func<Vector3, (float,float)> Slope3 = pos =>
+            System.Func<Vector3, (float, float)> Slope3 = pos =>
             {
                 float s0 = SampleSlope(t, pos);
                 float sL = SampleSlope(t, pos - right * epsilon);
@@ -460,6 +467,134 @@ namespace MrTerrainPainter.Editor.Services
             return res;
         }
 
+        private static bool InsideBrush(Vector3 pos, Vector3 center, float radius, MrTerrainPainter.Editor.Services.BrushShape shape)
+        {
+            float dx = pos.x - center.x; float dz = pos.z - center.z;
+            if (shape == MrTerrainPainter.Editor.Services.BrushShape.Circle) return (dx * dx + dz * dz) <= radius * radius;
+            return Mathf.Abs(dx) <= radius && Mathf.Abs(dz) <= radius;
+        }
+
+        internal class FacadeGrid
+        {
+            private readonly float cellSize;
+            private readonly System.Collections.Generic.Dictionary<(int, int), System.Collections.Generic.List<Vector2>> cells = new();
+            public FacadeGrid(float spacing) { cellSize = Mathf.Max(spacing, 0.01f); }
+            private (int, int) Key(Vector2 p) => (Mathf.FloorToInt(p.x / cellSize), Mathf.FloorToInt(p.y / cellSize));
+            public void Add(Vector2 p)
+            {
+                var k = Key(p);
+                if (!cells.TryGetValue(k, out var list)) { list = new System.Collections.Generic.List<Vector2>(); cells[k] = list; }
+                list.Add(p);
+            }
+            public bool HasNearby(Vector2 p, float minDist)
+            {
+                var k = Key(p);
+                for (int dx = -1; dx <= 1; dx++)
+                    for (int dy = -1; dy <= 1; dy++)
+                    {
+                        var nk = (k.Item1 + dx, k.Item2 + dy);
+                        if (!cells.TryGetValue(nk, out var list)) continue;
+                        for (int i = 0; i < list.Count; i++)
+                        {
+                            if (Vector2.SqrMagnitude(list[i] - p) < minDist * minDist) return true;
+                        }
+                    }
+                return false;
+            }
+        }
+
+        public static void ProcessFacadeAndPlace(
+            Terrain terrain,
+            Vector3 center,
+            float radius,
+            VegetationItem item,
+            MrTerrainPainter.Editor.Services.BrushShape shape,
+            System.Action<CliffSlice> onPlace)
+        {
+            if (terrain == null || item == null || onPlace == null) return;
+            var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+            var slices = TraceVirtualFacade(
+                terrain,
+                center,
+                radius * 2f,
+                item.edgeSlopeEnter,
+                item.edgeSlopeExit,
+                item.probeStep,
+                cfg != null ? cfg.facadeSmoothMode : MrTerrainPainter.Runtime.Profiles.FacadeSmoothingMode.Gaussian,
+                cfg != null ? Mathf.Max(3, cfg.facadeSmoothWindow) : 5,
+                cfg != null ? Mathf.Max(0.1f, cfg.facadeSmoothSigma) : 1f);
+            slices = ApplyGlobalConstraints(slices, cfg != null ? cfg.minFacadeHeightMeters : 0.3f, true, cfg != null ? cfg.curveOffsetRightMeters : 0f, cfg != null ? cfg.curveOffsetOutMeters : 0f);
+            float rendererWMinLen = MrTerrainPainter.Editor.Services.BrushPainter.GetPrefabHorizontalExtentMeters(item.prefab);
+            float minLenSeg = Mathf.Max(rendererWMinLen, item.edgeReferenceWidthMeters);
+            slices = FilterByMinimumWidth(slices, minLenSeg, Mathf.Max(item.CoreSpacing, 0.01f), 30f);
+            if (slices != null && slices.Count > 3)
+            {
+                float eps = cfg != null ? Mathf.Max(0.01f, cfg.facadeRdpEpsilon) : 0.5f;
+                var pts = new System.Collections.Generic.List<Vector3>(slices.Count);
+                for (int i = 0; i < slices.Count; i++) pts.Add(slices[i].BottomPosition);
+                var simple = MrTerrainPainter.Editor.Utils.GeometryUtils.SimplifyPathRDP(pts, eps);
+                if (simple != null && simple.Count >= 2)
+                {
+                    var rebuilt = new System.Collections.Generic.List<CliffSlice>();
+                    for (int i = 0; i < simple.Count - 1; i++)
+                    {
+                        Vector3 p0 = i > 0 ? simple[i - 1] : simple[i];
+                        Vector3 p1 = simple[i];
+                        Vector3 p2 = simple[i + 1];
+                        Vector3 p3 = i < simple.Count - 2 ? simple[i + 2] : p2;
+                        float seg = Vector3.Distance(p1, p2);
+                        int steps = Mathf.Max(1, Mathf.CeilToInt(seg / Mathf.Max(item.CoreSpacing, 0.01f)));
+                        for (int k = 0; k <= steps; k++)
+                        {
+                            float t = steps == 0 ? 0f : (k / (float)steps);
+                            var pos = MrTerrainPainter.Editor.Utils.SplineUtils.GetPoint(p0, p1, p2, p3, t);
+                            float lag = Mathf.Max(0.01f, item.CoreSpacing * 0.05f);
+                            var ahead = MrTerrainPainter.Editor.Utils.SplineUtils.GetPoint(p0, p1, p2, p3, Mathf.Clamp01(t + lag));
+                            var tan = ahead - pos; tan.y = 0f; if (tan.sqrMagnitude < 1e-6f) tan = p2 - p1; tan = tan.sqrMagnitude > 1e-6f ? tan.normalized : Vector3.right;
+                            var up = Vector3.up;
+                            var n = Vector3.Cross(tan, up).normalized;
+                            float height = ApproximateHeight(slices, pos);
+                            rebuilt.Add(new CliffSlice
+                            {
+                                BottomPosition = pos,
+                                TopPosition = new Vector3(pos.x, pos.y + height, pos.z),
+                                Normal = n,
+                                Direction = up
+                            });
+                        }
+                    }
+                    slices = rebuilt;
+                }
+            }
+            if (slices == null || slices.Count == 0) return;
+            var grid = new FacadeGrid(Mathf.Max(item.CoreSpacing, 0.01f));
+            for (int i = 0; i < slices.Count; i++)
+            {
+                var s = slices[i];
+                if (!InsideBrush(s.BottomPosition, center, radius, shape)) continue;
+                var p2 = new Vector2(s.BottomPosition.x - terrain.transform.position.x, s.BottomPosition.z - terrain.transform.position.z);
+                float rendererW = MrTerrainPainter.Editor.Services.BrushPainter.GetPrefabHorizontalExtentMeters(item.prefab);
+                float rendererH = MrTerrainPainter.Editor.Services.BrushPainter.GetPrefabHeightMeters(item.prefab);
+                float minH = cfg != null ? Mathf.Max(0.0001f, cfg.minFacadeHeightMeters) : 0.0001f;
+                float uni = Mathf.Max(minH / Mathf.Max(0.0001f, rendererH), s.Height / Mathf.Max(0.0001f, rendererH));
+                float spacingThresh = Mathf.Max(item.CoreSpacing, rendererW * uni);
+                if (grid.HasNearby(p2, spacingThresh)) continue;
+                grid.Add(p2);
+                onPlace(s);
+            }
+        }
+
+        static float ApproximateHeight(System.Collections.Generic.List<CliffSlice> raw, Vector3 pos)
+        {
+            float min = float.MaxValue; float h = 1f;
+            for (int i = 0; i < raw.Count; i++)
+            {
+                float d = Vector3.SqrMagnitude(raw[i].BottomPosition - pos);
+                if (d < min) { min = d; h = raw[i].Height; }
+            }
+            return h;
+        }
+
         private static float SampleSlope(Terrain t, Vector3 p)
         {
             if (TerrainUtils.TryGetHeightAndNormal(t, p, out var h, out var n))
@@ -467,6 +602,93 @@ namespace MrTerrainPainter.Editor.Services
                 return TerrainUtils.ComputeSlope(n);
             }
             return 0f;
+        }
+
+        public static System.Collections.Generic.List<FacadePath> ScanTerrainForFacades(
+            Terrain terrain,
+            Bounds scanBounds,
+            MrTerrainPainter.Runtime.Profiles.VegetationItem item,
+            float rdpEpsilon,
+            float smoothSpacing)
+        {
+            var paths = new System.Collections.Generic.List<FacadePath>();
+            if (terrain == null || item == null) return paths;
+            var cfg = MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+            var slices = TraceVirtualFacade(
+                terrain,
+                scanBounds.center,
+                scanBounds.size.x,
+                item.edgeSlopeEnter,
+                item.edgeSlopeExit,
+                item.probeStep,
+                cfg != null ? cfg.facadeSmoothMode : MrTerrainPainter.Runtime.Profiles.FacadeSmoothingMode.Gaussian,
+                cfg != null ? Mathf.Max(3, cfg.facadeSmoothWindow) : 5,
+                cfg != null ? Mathf.Max(0.1f, cfg.facadeSmoothSigma) : 1f);
+            slices = ApplyGlobalConstraints(slices, cfg != null ? cfg.minFacadeHeightMeters : 0.3f, true, cfg != null ? cfg.curveOffsetRightMeters : 0f, cfg != null ? cfg.curveOffsetOutMeters : 0f);
+            if (slices == null || slices.Count == 0) return paths;
+            var segments = SplitIntoSegmentsInternal(slices, item.probeStep * 2f);
+            for (int seg = 0; seg < segments.Count; seg++)
+            {
+                var raw = segments[seg];
+                if (raw == null || raw.Count < 2) continue;
+                var pts = new System.Collections.Generic.List<Vector3>(raw.Count);
+                for (int i = 0; i < raw.Count; i++) pts.Add(raw[i].BottomPosition);
+                var simple = MrTerrainPainter.Editor.Utils.GeometryUtils.SimplifyPathRDP(pts, Mathf.Max(0.01f, rdpEpsilon));
+                if (simple == null || simple.Count < 2) continue;
+                var rebuilt = new System.Collections.Generic.List<CliffSlice>();
+                for (int i = 0; i < simple.Count - 1; i++)
+                {
+                    Vector3 p0 = i > 0 ? simple[i - 1] : simple[i];
+                    Vector3 p1 = simple[i];
+                    Vector3 p2 = simple[i + 1];
+                    Vector3 p3 = i < simple.Count - 2 ? simple[i + 2] : p2;
+                    float segLen = Vector3.Distance(p1, p2);
+                    int steps = Mathf.Max(1, Mathf.CeilToInt(segLen / Mathf.Max(0.01f, smoothSpacing)));
+                    for (int k = 0; k <= steps; k++)
+                    {
+                        float t = steps == 0 ? 0f : (k / (float)steps);
+                        var pos = MrTerrainPainter.Editor.Utils.SplineUtils.GetPoint(p0, p1, p2, p3, t);
+                        float lag = Mathf.Max(0.01f, smoothSpacing * 0.05f);
+                        var ahead = MrTerrainPainter.Editor.Utils.SplineUtils.GetPoint(p0, p1, p2, p3, Mathf.Clamp01(t + lag));
+                        var tan = ahead - pos; tan.y = 0f; if (tan.sqrMagnitude < 1e-6f) tan = p2 - p1; tan = tan.sqrMagnitude > 1e-6f ? tan.normalized : Vector3.right;
+                        var up = Vector3.up;
+                        var n = Vector3.Cross(tan, up).normalized;
+                        float height = ApproximateHeight(raw, pos);
+                        rebuilt.Add(new CliffSlice
+                        {
+                            BottomPosition = pos,
+                            TopPosition = new Vector3(pos.x, pos.y + height, pos.z),
+                            Normal = n,
+                            Direction = up
+                        });
+                    }
+                }
+                if (rebuilt.Count > 1)
+                {
+                    float total = 0f;
+                    for (int i = 0; i < rebuilt.Count - 1; i++) total += Vector3.Distance(rebuilt[i].BottomPosition, rebuilt[i + 1].BottomPosition);
+                    paths.Add(new FacadePath { SourceTerrain = terrain, SmoothSlices = rebuilt, TotalLength = total });
+                }
+            }
+            return paths;
+        }
+
+        static System.Collections.Generic.List<System.Collections.Generic.List<CliffSlice>> SplitIntoSegmentsInternal(System.Collections.Generic.List<CliffSlice> allSlices, float gapThreshold)
+        {
+            var segments = new System.Collections.Generic.List<System.Collections.Generic.List<CliffSlice>>();
+            if (allSlices == null || allSlices.Count == 0) return segments;
+            var current = new System.Collections.Generic.List<CliffSlice> { allSlices[0] };
+            segments.Add(current);
+            for (int i = 1; i < allSlices.Count; i++)
+            {
+                if (Vector3.Distance(allSlices[i].BottomPosition, allSlices[i - 1].BottomPosition) > gapThreshold)
+                {
+                    current = new System.Collections.Generic.List<CliffSlice> { allSlices[i] };
+                    segments.Add(current);
+                }
+                else current.Add(allSlices[i]);
+            }
+            return segments;
         }
     }
 }

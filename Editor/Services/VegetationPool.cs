@@ -77,12 +77,17 @@ public static class VegetationPool
         {
             var k = (kc.Item1 + dx, kc.Item2 + dz);
             if (!grid.TryGetValue(k, out var set)) continue;
+            var toRemove = new List<GameObject>();
             foreach (var go in set)
             {
-                if (go == null) continue;
+                if (go == null) { toRemove.Add(go); continue; }
                 var p = go.transform.position;
                 var v = new Vector3(p.x - center.x, 0f, p.z - center.z);
                 if (v.sqrMagnitude <= radius * radius) outList.Add(go);
+            }
+            if (toRemove.Count > 0)
+            {
+                for (int i = 0; i < toRemove.Count; i++) set.Remove(toRemove[i]);
             }
         }
     }

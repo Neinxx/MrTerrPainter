@@ -68,6 +68,7 @@ namespace MrTerrainPainter.Editor
             SceneView.duringSceneGui -= OnSceneGUI;
             SceneView.duringSceneGui += OnSceneGUI;
             EditorApplication.projectChanged += OnProjectChanged;
+            UnityEditor.SceneManagement.EditorSceneManager.sceneOpened += OnSceneOpened;
             ConfigTools.ConfigUpdated += OnConfigUpdatedFromExternal;
         }
 
@@ -75,6 +76,7 @@ namespace MrTerrainPainter.Editor
         {
             SceneView.duringSceneGui -= OnSceneGUI;
             EditorApplication.projectChanged -= OnProjectChanged;
+            UnityEditor.SceneManagement.EditorSceneManager.sceneOpened -= OnSceneOpened;
             ConfigTools.ConfigUpdated -= OnConfigUpdatedFromExternal;
             session?.Dispose();
             WindowStateChanged?.Invoke(false, false, false);
@@ -130,7 +132,14 @@ namespace MrTerrainPainter.Editor
         private void OnProjectChanged()
         {
             session?.ReloadAvailableProfiles();
+            Editor.Services.BrushPainter.ClearCache();
             RefreshAllUI();
+        }
+
+        private void OnSceneOpened(UnityEngine.SceneManagement.Scene scene, UnityEditor.SceneManagement.OpenSceneMode mode)
+        {
+            VegetationPool.ClearAllIndexes();
+            Editor.Services.BrushPainter.ClearCache();
         }
         // 处理外部（如独立设置窗口）修改配置后的刷新
         private void OnConfigUpdatedFromExternal()

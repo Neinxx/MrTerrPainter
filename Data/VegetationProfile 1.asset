@@ -15,13 +15,13 @@ MonoBehaviour:
   items:
   - prefab: {fileID: 7054060797056600678, guid: e6e38bb1a883aa44e911a1627ee066f6,
       type: 3}
-    weight: 0.339
+    weight: 0.121
     prefabType: 2
     uniformScaleRange: {x: 0.44444442, y: 1.8703701}
     yRotationRange: {x: 0, y: 360}
     heightRange: {x: 0, y: 1000}
     slopeRange: {x: 0, y: 90}
-    baseDensity: 1
+    baseDensity: 0.6
     minSpacing: 8.03
     alignToTerrainNormal: 1
     edgeSlopeThreshold: 75
@@ -38,15 +38,22 @@ MonoBehaviour:
     probeMaxDist: 6
     referenceHeightMeters: 1
     offsets: {x: 0, y: 0, z: 0}
+    edgeStacking: 0
+    edgeStackingOffsetMeters: 0
+    edgeTopScaleBias: 1
+    facadeScaleOffset: {x: 0, y: 0, z: 0}
+    facadeSmoothingMode: 0
+    facadeSmoothingWindow: 3
+    facadeSmoothingSigma: 1
   - prefab: {fileID: 7596274264633063344, guid: 2c922a53da90d3c46b3104e1532940f5,
       type: 3}
     weight: 0.03
     prefabType: 2
-    uniformScaleRange: {x: 0.44444454, y: 2.1296296}
+    uniformScaleRange: {x: 0.44444454, y: 3.0479968}
     yRotationRange: {x: 0, y: 360}
     heightRange: {x: 0, y: 1000}
     slopeRange: {x: 0, y: 90}
-    baseDensity: 2.98
+    baseDensity: 1.49
     minSpacing: 6.44
     alignToTerrainNormal: 1
     edgeSlopeThreshold: 75
@@ -63,15 +70,22 @@ MonoBehaviour:
     probeMaxDist: 6
     referenceHeightMeters: 1
     offsets: {x: 0, y: 0, z: 0}
+    edgeStacking: 0
+    edgeStackingOffsetMeters: 0
+    edgeTopScaleBias: 1
+    facadeScaleOffset: {x: 0, y: 0, z: 0}
+    facadeSmoothingMode: 0
+    facadeSmoothingWindow: 3
+    facadeSmoothingSigma: 1
   - prefab: {fileID: 7054060797056600678, guid: 1f3a4dfd8e286fb49aa99f262f5ff8a3,
       type: 3}
-    weight: 0.239
+    weight: 0.267
     prefabType: 0
     uniformScaleRange: {x: 0.33333337, y: 1.5925928}
     yRotationRange: {x: 0, y: 360}
     heightRange: {x: 0, y: 1000}
     slopeRange: {x: 0, y: 90}
-    baseDensity: 5.12
+    baseDensity: 1.27
     minSpacing: 5.58
     alignToTerrainNormal: 1
     edgeSlopeThreshold: 75
@@ -88,6 +102,76 @@ MonoBehaviour:
     probeMaxDist: 6
     referenceHeightMeters: 1
     offsets: {x: 0, y: 0, z: 0}
+    edgeStacking: 0
+    edgeStackingOffsetMeters: 0
+    edgeTopScaleBias: 1
+    facadeScaleOffset: {x: 0, y: 0, z: 0}
+    facadeSmoothingMode: 0
+    facadeSmoothingWindow: 3
+    facadeSmoothingSigma: 1
+  - prefab: {fileID: 6530072322093872315, guid: 8cb93ade096d25d4bb4d8b19bd6673f2,
+      type: 3}
+    weight: 0.625
+    prefabType: 2
+    uniformScaleRange: {x: 1, y: 2.6618078}
+    yRotationRange: {x: 0, y: 360}
+    heightRange: {x: 0, y: 1000}
+    slopeRange: {x: 0, y: 90}
+    baseDensity: 0.32
+    minSpacing: 1.5
+    alignToTerrainNormal: 1
+    edgeSlopeThreshold: 75
+    embedDepthRange: {x: 0.1, y: 0.3}
+    edgeReferenceWidthMeters: 1
+    edgeAutoHeight: 1
+    edgeReferenceHeightMeters: 1
+    edgeOffsets: {x: 0, y: 0, z: 0}
+    edgeLookAheadStep: 0.5
+    edgeMaxLookAhead: 5
+    edgeSlopeEnter: 30
+    edgeSlopeExit: 25
+    probeStep: 0.5
+    probeMaxDist: 6
+    referenceHeightMeters: 1
+    offsets: {x: 0, y: 0, z: 0}
+    edgeStacking: 0
+    edgeStackingOffsetMeters: 0
+    edgeTopScaleBias: 1
+    facadeScaleOffset: {x: 0, y: 0, z: 0}
+    facadeSmoothingMode: 0
+    facadeSmoothingWindow: 3
+    facadeSmoothingSigma: 1
+  - prefab: {fileID: 589605590901698377, guid: 1cbc17b5a53d9da468720ce8ee8f304b, type: 3}
+    weight: 0.435
+    prefabType: 2
+    uniformScaleRange: {x: 1, y: 3.3177843}
+    yRotationRange: {x: 0, y: 360}
+    heightRange: {x: 0, y: 1000}
+    slopeRange: {x: 0, y: 90}
+    baseDensity: 0.37
+    minSpacing: 1.5
+    alignToTerrainNormal: 1
+    edgeSlopeThreshold: 75
+    embedDepthRange: {x: 0.1, y: 0.3}
+    edgeReferenceWidthMeters: 1
+    edgeAutoHeight: 1
+    edgeReferenceHeightMeters: 1
+    edgeOffsets: {x: 0, y: 0, z: 0}
+    edgeLookAheadStep: 0.5
+    edgeMaxLookAhead: 5
+    edgeSlopeEnter: 30
+    edgeSlopeExit: 25
+    probeStep: 0.5
+    probeMaxDist: 6
+    referenceHeightMeters: 1
+    offsets: {x: 0, y: 0, z: 0}
+    edgeStacking: 0
+    edgeStackingOffsetMeters: 0
+    edgeTopScaleBias: 1
+    facadeScaleOffset: {x: 0, y: 0, z: 0}
+    facadeSmoothingMode: 0
+    facadeSmoothingWindow: 3
+    facadeSmoothingSigma: 1
   initialized: 1
   randomSeed: 12345
   baseDensity: 1

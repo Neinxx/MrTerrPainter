@@ -87,6 +87,22 @@ namespace MrTerrainPainter.Editor.Config
         public float curveOffsetRightMeters = 0f;
         [Tooltip("曲线偏移（米）：沿面外Normal轴（正数外推）")]
         public float curveOffsetOutMeters = 0f;
+
+        [Header("立面路径简化 (RDP)")]
+        [Tooltip("Ramer-Douglas-Peucker 简化容差（米），用于消除地形锯齿影响")]
+        public float facadeRdpEpsilon = 0.5f;
+
+        [Header("等值线扫描 (Contour)")]
+        [Tooltip("是否使用高度图等值线扫描（Marching Squares）替代射线扫描")]
+        public bool useContourDetection = false;
+        [Tooltip("等值线坡度阈值（度），例如 75 表示提取坡度>=75°的连通线")]
+        public float contourSlopeDeg = 75f;
+
+        [Header("预览样式 (Preview Style)")]
+        [Tooltip("底轨（Bottom）预览颜色")]
+        public Color facadePreviewBottomColor = new Color(0f, 1f, 0f, 0.8f);
+        [Tooltip("顶轨（Top）预览颜色")]
+        public Color facadePreviewTopColor = new Color(1f, 0.2f, 0.2f, 0.8f);
     }
 
 #if UNITY_EDITOR

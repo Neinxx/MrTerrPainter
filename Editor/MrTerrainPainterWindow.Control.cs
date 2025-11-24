@@ -358,7 +358,9 @@ namespace MrTerrainPainter.Editor
                 RefreshPreviewListUI = RefreshPreviewUI,
                 RefreshVegetationListUI = RefreshProfileListUI,
                 UpdatePropertyPanelFromSelectedItem = UpdatePropertyPanel,
-                MarkCurrentProfileDirty = () => { if (session.CurrentProfile) EditorUtility.SetDirty(session.CurrentProfile); }
+                MarkCurrentProfileDirty = () => { if (session.CurrentProfile) EditorUtility.SetDirty(session.CurrentProfile); },
+                ScanSelectedTerrainsForFacades = () => session.ScanSelectedTerrainsForFacades(),
+                BakeCachedFacades = () => session.BakeCachedFacades()
             });
         }
 

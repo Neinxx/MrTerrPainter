@@ -21,6 +21,8 @@ namespace MrTerrainPainter.Editor.Views
             public Action RefreshVegetationListUI;
             public Action UpdatePropertyPanelFromSelectedItem;
             public Action MarkCurrentProfileDirty;
+            public Action ScanSelectedTerrainsForFacades;
+            public Action BakeCachedFacades;
         }
 
         private readonly VisualElement root;
@@ -45,6 +47,13 @@ namespace MrTerrainPainter.Editor.Views
         private EnumField uiFacadeSmoothMode;
         private IntegerField uiFacadeSmoothWindow;
         private FloatField uiFacadeSmoothSigma;
+        private FloatField uiRdpEpsilon;
+        private ColorField uiPreviewBottomColor;
+        private ColorField uiPreviewTopColor;
+        private Button uiScanFacadesButton;
+        private Button uiBakeFacadesButton;
+        private Toggle uiUseContourDetection;
+        private FloatField uiContourSlopeDeg;
 
         private PropertyPanelCallbacks callbacks;
 
@@ -79,6 +88,13 @@ namespace MrTerrainPainter.Editor.Views
             uiFacadeSmoothMode = root.Q<EnumField>("FacadeSmoothMode");
             uiFacadeSmoothWindow = root.Q<IntegerField>("FacadeSmoothWindow");
             uiFacadeSmoothSigma = root.Q<FloatField>("FacadeSmoothSigma");
+            uiRdpEpsilon = root.Q<FloatField>("RdpEpsilon");
+            uiPreviewBottomColor = root.Q<ColorField>("PreviewBottomColor");
+            uiPreviewTopColor = root.Q<ColorField>("PreviewTopColor");
+            uiScanFacadesButton = root.Q<Button>("ScanFacadesButton");
+            uiBakeFacadesButton = root.Q<Button>("BakeFacadesButton");
+            uiUseContourDetection = root.Q<Toggle>("UseContourDetection");
+            uiContourSlopeDeg = root.Q<FloatField>("ContourSlopeDeg");
 
             // 所有控件均来自 UXML；不在 C# 中动态创建
 
@@ -101,6 +117,9 @@ namespace MrTerrainPainter.Editor.Views
             if (uiFacadeSmoothMode != null) { uiFacadeSmoothMode.tooltip = "虚拟立面平滑模式：Mean/Gaussian/Median"; }
             if (uiFacadeSmoothWindow != null) { uiFacadeSmoothWindow.tooltip = "平滑窗口大小（奇数>=3）"; }
             if (uiFacadeSmoothSigma != null) { uiFacadeSmoothSigma.tooltip = "高斯平滑Sigma"; }
+            if (uiRdpEpsilon != null) { uiRdpEpsilon.tooltip = "RDP 简化容差（米），增大将更直"; }
+            if (uiPreviewBottomColor != null) { uiPreviewBottomColor.tooltip = "底轨预览颜色"; }
+            if (uiPreviewTopColor != null) { uiPreviewTopColor.tooltip = "顶轨预览颜色"; }
 
             // 类型约束与事件绑定
             if (uiSelectPrefab != null)
@@ -320,6 +339,44 @@ namespace MrTerrainPainter.Editor.Views
                 uiFacadeSmoothSigma.SetValueWithoutNotify(v);
                 // 避免频繁保存触发资产读条：仅更新内存，刷新视图
             });
+
+            uiRdpEpsilon?.RegisterValueChangedCallback(evt =>
+            {
+                var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
+                if (cfg == null) return;
+                var v = Mathf.Max(evt.newValue, 0.01f);
+                cfg.facadeRdpEpsilon = v;
+                uiRdpEpsilon.SetValueWithoutNotify(v);
+                SceneView.RepaintAll();
+            });
+
+            uiPreviewBottomColor?.RegisterValueChangedCallback(evt =>
+            {
+                var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
+                if (cfg == null) return;
+                cfg.facadePreviewBottomColor = evt.newValue;
+                uiPreviewBottomColor.SetValueWithoutNotify(evt.newValue);
+                SceneView.RepaintAll();
+            });
+
+            uiPreviewTopColor?.RegisterValueChangedCallback(evt =>
+            {
+                var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
+                if (cfg == null) return;
+                cfg.facadePreviewTopColor = evt.newValue;
+                uiPreviewTopColor.SetValueWithoutNotify(evt.newValue);
+                SceneView.RepaintAll();
+            });
+
+            uiScanFacadesButton?.RegisterCallback<ClickEvent>(_ =>
+            {
+                callbacks.ScanSelectedTerrainsForFacades?.Invoke();
+            });
+
+            uiBakeFacadesButton?.RegisterCallback<ClickEvent>(_ =>
+            {
+                callbacks.BakeCachedFacades?.Invoke();
+            });
         }
 
         // 从选中条目刷新属性面板显示（保持与窗口逻辑一致）
@@ -336,7 +393,7 @@ namespace MrTerrainPainter.Editor.Views
                 uiHeigthRange?.SetValueWithoutNotify(new Vector2(0f, 1000f));
                 uiSlopeRange?.SetValueWithoutNotify(new Vector2(0f, 90f));
                 uiBaseDensity?.SetValueWithoutNotify(0f);
-            uiMinSpacing?.SetValueWithoutNotify(0f);
+                uiMinSpacing?.SetValueWithoutNotify(0f);
                 uiEdgeSlopeThreshold?.SetValueWithoutNotify(75f);
                 uiEmbedDepthRange?.SetValueWithoutNotify(new Vector2(0.1f, 0.3f));
                 if (uiEdgeSlopeThreshold != null) uiEdgeSlopeThreshold.style.display = DisplayStyle.None;
@@ -374,6 +431,11 @@ namespace MrTerrainPainter.Editor.Views
                 uiFacadeSmoothMode?.SetValueWithoutNotify(cfg.facadeSmoothMode);
                 uiFacadeSmoothWindow?.SetValueWithoutNotify(cfg.facadeSmoothWindow);
                 uiFacadeSmoothSigma?.SetValueWithoutNotify(cfg.facadeSmoothSigma);
+                uiRdpEpsilon?.SetValueWithoutNotify(cfg.facadeRdpEpsilon);
+                uiPreviewBottomColor?.SetValueWithoutNotify(cfg.facadePreviewBottomColor);
+                uiPreviewTopColor?.SetValueWithoutNotify(cfg.facadePreviewTopColor);
+                uiUseContourDetection?.SetValueWithoutNotify(cfg.useContourDetection);
+                uiContourSlopeDeg?.SetValueWithoutNotify(cfg.contourSlopeDeg);
             }
 
             var isLandscape = item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape;
@@ -407,6 +469,29 @@ namespace MrTerrainPainter.Editor.Views
                 uiSlopeRange.lowLimit = Mathf.Min(0f, item.slopeRange.x);
                 uiSlopeRange.highLimit = Mathf.Max(90f, item.slopeRange.y);
             }
+            if (uiUseContourDetection != null) { uiUseContourDetection.tooltip = "使用高度图等值线扫描替代射线扫描"; }
+            if (uiContourSlopeDeg != null) { uiContourSlopeDeg.tooltip = "等值线坡度阈值（度）"; }
+            uiUseContourDetection?.RegisterValueChangedCallback(evt =>
+            {
+                var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
+                if (cfg == null) return;
+                cfg.useContourDetection = evt.newValue;
+                uiUseContourDetection.SetValueWithoutNotify(evt.newValue);
+                SceneView.RepaintAll();
+            });
+
+            uiContourSlopeDeg?.RegisterValueChangedCallback(evt =>
+            {
+                var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
+                if (cfg == null) return;
+                var v = Mathf.Clamp(evt.newValue, 0f, 90f);
+                cfg.contourSlopeDeg = v;
+                uiContourSlopeDeg.SetValueWithoutNotify(v);
+                SceneView.RepaintAll();
+            });
         }
+
+
     }
 }
+

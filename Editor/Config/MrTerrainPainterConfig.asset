@@ -64,3 +64,8 @@ MonoBehaviour:
   minFacadeHeightMeters: 0.3
   curveOffsetRightMeters: 0
   curveOffsetOutMeters: 0
+  facadeRdpEpsilon: 0.5
+  useContourDetection: 0
+  contourSlopeDeg: 75
+  facadePreviewBottomColor: {r: 0, g: 1, b: 0, a: 0.8}
+  facadePreviewTopColor: {r: 1, g: 0.2, b: 0.2, a: 0.8}

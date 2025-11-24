@@ -23,6 +23,7 @@ namespace MrTerrainPainter.Editor.Services
         private readonly System.Action markSceneDirty;
         private readonly System.Func<Vector3, Terrain> nearestTerrain;
         private readonly System.Func<System.Random> getRandom;
+        private readonly System.Func<List<FacadeDetectionService.FacadePath>> getCachedPaths;
         private readonly bool allowWhenBrushToolActive;
         private Vector3 _lastPaintPos;
         private bool _hasLastPaintPos;
@@ -40,7 +41,8 @@ namespace MrTerrainPainter.Editor.Services
             System.Action markSceneDirty,
             System.Func<Vector3, Terrain> nearestTerrain,
             System.Func<System.Random> getRandom,
-            bool allowWhenBrushToolActive = false)
+            bool allowWhenBrushToolActive = false,
+            System.Func<List<FacadeDetectionService.FacadePath>> getCachedPaths = null)
         {
             this.terrainController = terrainController;
             this.paintingController = paintingController;
@@ -54,6 +56,7 @@ namespace MrTerrainPainter.Editor.Services
             this.markSceneDirty = markSceneDirty;
             this.nearestTerrain = nearestTerrain;
             this.getRandom = getRandom;
+            this.getCachedPaths = getCachedPaths;
             this.allowWhenBrushToolActive = allowWhenBrushToolActive;
             MrTerrainPainter.Editor.Tools.MTPBrushContext.BrushReplaced += OnBrushReplaced;
         }
@@ -78,6 +81,7 @@ namespace MrTerrainPainter.Editor.Services
             Vector3 hitNormal = Vector3.up;
             bool hasHit = terrainController != null && terrainController.TryGetTerrainHit(ray, out hitTerrain, out hitPos, out hitNormal);
             RenderBrushPreview(hasHit, hitPos, hitNormal, e);
+            if (e.type == EventType.Repaint) RenderCachedFacades();
 
             // 处理鼠标按下和拖拽事件
             if (e.type == EventType.MouseDown || e.type == EventType.MouseDrag)
@@ -88,6 +92,39 @@ namespace MrTerrainPainter.Editor.Services
             else if (e.type == EventType.MouseUp)
             {
                 _hasLastPaintPos = false;
+            }
+        }
+
+        private void RenderCachedFacades()
+        {
+            var paths = getCachedPaths != null ? getCachedPaths.Invoke() : null;
+            if (paths == null || paths.Count == 0) return;
+            var cfg = MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+            var bottomColor = cfg != null ? cfg.facadePreviewBottomColor : new Color(0f, 1f, 0f, 0.8f);
+            var topColor = cfg != null ? cfg.facadePreviewTopColor : new Color(1f, 0.2f, 0.2f, 0.8f);
+            foreach (var path in paths)
+            {
+                var slices = path.SmoothSlices;
+                if (slices == null || slices.Count < 2) continue;
+                var bottom = new Vector3[slices.Count];
+                var top = new Vector3[slices.Count];
+                for (int i = 0; i < slices.Count; i++) { bottom[i] = slices[i].BottomPosition; top[i] = slices[i].TopPosition; }
+                Handles.color = bottomColor;
+                Handles.DrawAAPolyLine(3f, bottom);
+                Handles.color = topColor;
+                Handles.DrawAAPolyLine(3f, top);
+                Handles.color = new Color(1f, 1f, 1f, 0.25f);
+                float acc = 0f; float spacing = Mathf.Max(1f, brush != null ? brush.size * 0.1f : 1f);
+                for (int i = 0; i < slices.Count - 1; i++)
+                {
+                    acc += Vector3.Distance(bottom[i], bottom[i + 1]);
+                    if (acc >= spacing || i == 0 || i == slices.Count - 2)
+                    {
+                        Handles.DrawLine(bottom[i], top[i]);
+                        acc = 0f;
+                    }
+                }
+                Handles.Label(top[top.Length - 1] + Vector3.up * 0.25f, $"Facade {path.TotalLength:F1}m");
             }
         }
 
