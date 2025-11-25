@@ -119,9 +119,8 @@
     background-color: rgba(0, 0, 0, 0.1);
     margin: 3px 6px;
     padding-bottom: 4px;
-      overflow: hidden;       /* 关键：禁止内容溢出导致父级重算 */
-    flex-shrink: 0;         /* 关键：禁止被压缩 */
-    flex-grow: 0;     
+    height: auto;
+    min-height: 112px;
 }
 
 /* 选中整行 Profile */
@@ -151,9 +150,9 @@
     background-color: rgba(0, 0, 0, 0.15);
     border-radius: 4px;
     margin: 0 6px 6px 6px;
-     overflow: hidden;       /* 关键 */
-    flex-shrink: 0;         /* 关键：宽度由父级决定，内部不要反向影响父级 */
-    width: 100%;            /* 强制占满，避免 auto 带来的计算波动 */
+    height: auto;
+    flex-grow: 1;
+    flex-shrink: 0;
 }
 
 /* 缩略图项 */

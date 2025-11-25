@@ -1,11 +1,11 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
     <Style src="project://database/Assets/MrTerrPainterV1/Editor/MrTerrainPainterStyles.uss?fileID=7433441132597879392&amp;guid=1094a64c2bc4b654486d9ae7dcc8907c&amp;type=3#MrTerrainPainterStyles" />
-    <ui:VisualElement style="background-color: rgba(30, 30, 30, 0.16); margin-left: 0; margin-right: 0; padding-left: 4px; padding-right: 4px; padding-top: 4px; padding-bottom: 13px; margin-top: 0; margin-bottom: 4px; max-height: 146px; min-height: 146px; height: 146px;">
-        <ui:VisualElement class="profile-row__top" style="flex-grow: 1; width: 100%; padding-left: 10px; padding-right: 7px; padding-top: 0; padding-bottom: 0; min-height: 24px; max-height: 24px; height: 24px; flex-shrink: 1; justify-content: space-between; align-items: stretch;">
+    <ui:VisualElement style="background-color: rgba(30, 30, 30, 0.16); margin-left: 0; margin-right: 0; padding-left: 4px; padding-right: 4px; padding-top: 4px; padding-bottom: 13px; margin-top: 0; margin-bottom: 4px; height: auto;">
+        <ui:VisualElement class="profile-row__top" style="width: 100%; padding-left: 10px; padding-right: 7px; padding-top: 0; padding-bottom: 0; height: 24px; justify-content: space-between; align-items: center;">
             <ui:Toggle name="Select" style="height: 20px; width: 20px; margin-left: 0; margin-right: 0; margin-top: 0; margin-bottom: 0; align-items: center; max-height: 20px; min-height: 20px; min-width: 20px; max-width: 20px; scale: 1.3 1.3;" />
             <uie:ObjectField name="ProfileField" style="flex-shrink: 1; flex-grow: 0; min-height: 20px; max-height: 20px; height: 20px; margin-left: 0; margin-right: 4px; justify-content: space-around; align-items: center; margin-top: 0; margin-bottom: 0;" />
             <ui:Button text="X" display-tooltip-when-elided="true" name="DeleteProfileInline" class="mt-buttonR" style="flex-shrink: 0; flex-grow: 0; min-height: 20px; min-width: 20px; max-width: 20px; max-height: 20px; height: 20px; width: 20px; -unity-text-align: middle-center; margin-left: 0; margin-right: 0; margin-top: 0; margin-bottom: 0; padding-left: 0; padding-right: 0; padding-top: 0; padding-bottom: 0;" />
         </ui:VisualElement>
-        <ui:GroupBox name="Thumbs" class="profile-row__thumbs" style="width: auto; margin-top: 2px; max-height: none; min-height: 110px; height: auto; padding-bottom: 0; flex-grow: 1;" />
+        <ui:GroupBox name="Thumbs" class="profile-row__thumbs" style="flex-grow: 1; margin-top: 2px; height: auto; padding-bottom: 0;" />
     </ui:VisualElement>
 </ui:UXML>

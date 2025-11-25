@@ -27,6 +27,8 @@ namespace MrTerrainPainter.Editor.Views
     {
         private readonly VisualElement root;
         private readonly VisualTreeAsset rowTemplate;
+        private readonly System.Collections.Generic.Dictionary<VegetationProfile, VisualElement> _rowMap = new System.Collections.Generic.Dictionary<VegetationProfile, VisualElement>();
+        private bool _subscribed;
 
         public ListView ListView { get; private set; }
 
@@ -54,33 +56,34 @@ namespace MrTerrainPainter.Editor.Views
 
             cb.ReloadAvailableProfiles?.Invoke();
 
-            var lv = root.Q<ListView>("VegetationProfileListLV");
-            if (lv == null)
+            var sv = root.Q<ScrollView>("VegetationProfileListSV");
+            if (sv == null)
             {
-                lv = new ListView();
-                lv.name = "VegetationProfileListLV";
-                lv.AddToClassList("mt-veg-list");
-                host.Add(lv);
+                sv = new ScrollView();
+                sv.name = "VegetationProfileListSV";
+                sv.AddToClassList("mt-veg-list");
+                host.Add(sv);
             }
-
-            lv.selectionType = SelectionType.None;
-            lv.reorderable = false;
-            lv.itemsSource = availableProfiles;
-            lv.virtualizationMethod = CollectionVirtualizationMethod.DynamicHeight;
-            lv.RegisterCallback<GeometryChangedEvent>(e =>
+            sv.Clear();
+            _rowMap.Clear();
+            for (int i = 0; i < availableProfiles.Count; i++)
             {
-                var w = lv.resolvedStyle.width;
-                if (w > 0 && !float.IsNaN(w)) cb.OnListContentWidthMeasured?.Invoke(w);
-            });
+                var row = MakeRow();
+                var profile = availableProfiles[i];
+                BindRow(row, profile, availableProfiles, extraProfiles, cb, makeDraggableArea, makeThumb, thumbRows);
+                sv.Add(row);
+                if (profile != null && !_rowMap.ContainsKey(profile)) _rowMap[profile] = row;
+            }
+            ListView = null;
 
-            lv.makeItem = () => MakeRow();
-            lv.bindItem = (elem, i) =>
+            var current = cb.GetCurrentProfile != null ? cb.GetCurrentProfile() : null;
+            ApplySelection(current);
+
+            if (!_subscribed)
             {
-                var profile = (i >= 0 && i < availableProfiles.Count) ? availableProfiles[i] : null;
-                BindRow(elem, profile, availableProfiles, extraProfiles, cb, makeDraggableArea, makeThumb, thumbRows);
-            };
-
-            ListView = lv;
+                _subscribed = true;
+                MrTerrainPainter.Editor.Tools.MTPBrushContext.ProfileChanged += ApplySelection;
+            }
 
             // 使用 UXML 中的 CreateCreateButton 按钮
             var btnCreateProfile = root.Q<Button>("CreateCreateButton");
@@ -306,16 +309,16 @@ namespace MrTerrainPainter.Editor.Views
                     desired++;
                 }
                 while (thumbs.childCount > desired) thumbs.RemoveAt(thumbs.childCount - 1);
-                MrTerrainPainter.Editor.Utils.UIThrottle.RunOnPanel(row, () =>
-                {
-                    float w = Mathf.Max(thumbs.resolvedStyle.width, row.resolvedStyle.width - 40f);
-                    float cell = ThumbSize + ThumbGap;
-                    int cols = Mathf.Max(1, Mathf.FloorToInt(w / Mathf.Max(1f, cell)));
-                    int rows = Mathf.Max(1, Mathf.CeilToInt(Mathf.Max(1, total) / cols));
-                    float headerH = 48f;
-                    float thumbsH = rows * cell + 12f;
-                    row.style.minHeight = headerH + thumbsH;
-                });
+
+            }
+        }
+
+        private void ApplySelection(VegetationProfile current)
+        {
+            foreach (var kv in _rowMap)
+            {
+                if (kv.Key == current) kv.Value.AddToClassList("profile-row--selected");
+                else kv.Value.RemoveFromClassList("profile-row--selected");
             }
         }
     }
