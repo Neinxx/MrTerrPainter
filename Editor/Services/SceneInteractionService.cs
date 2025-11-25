@@ -67,6 +67,27 @@ namespace MrTerrainPainter.Editor.Services
         private readonly bool allowWhenBrushToolActive;
         private Vector3 _lastPaintPos;
         private bool _hasLastPaintPos;
+        private PreviewData _preview = new PreviewData();
+        private double _lastPreviewTime;
+        private const double _previewIntervalSeconds = 0.05; // 50ms throttle
+
+        public class PreviewData
+        {
+            public Terrain terrain;
+            public Vector3 center;
+            public Vector3 normal;
+            public System.Collections.Generic.List<FacadeDetectionService.CliffSlice> slices;
+            public System.Collections.Generic.List<Vector3> bottomLine;
+            public System.Collections.Generic.List<Vector3> topLine;
+            public float prefabW;
+            public float prefabH;
+            public bool hasData;
+            public void Clear()
+            {
+                terrain = null; center = Vector3.zero; normal = Vector3.up;
+                slices = null; bottomLine = null; topLine = null; prefabW = prefabH = 0f; hasData = false;
+            }
+        }
 
         public SceneInteractionService(Options o)
         {
@@ -107,6 +128,19 @@ namespace MrTerrainPainter.Editor.Services
             Vector3 hitPos = Vector3.zero;
             Vector3 hitNormal = Vector3.up;
             bool hasHit = terrainController != null && terrainController.TryGetTerrainHit(ray, out hitTerrain, out hitPos, out hitNormal);
+            if (hasHit)
+            {
+                if (e.type == EventType.MouseMove || e.type == EventType.MouseDrag || e.type == EventType.Layout)
+                {
+                    double now = EditorApplication.timeSinceStartup;
+                    if (now - _lastPreviewTime >= _previewIntervalSeconds)
+                    {
+                        _lastPreviewTime = now;
+                        UpdatePreviewData(hitTerrain, hitPos, hitNormal);
+                    }
+                }
+            }
+            else _preview.Clear();
             RenderBrushPreview(hasHit, hitPos, hitNormal, e);
             if (e.type == EventType.Repaint) RenderCachedFacades();
 
@@ -188,7 +222,7 @@ namespace MrTerrainPainter.Editor.Services
         {
             if (e.type != EventType.Repaint) return;
             if (!hasHit || !isPaintMode()) return;
-            BrushPainter.DrawPreview(hitPos, hitNormal, brush);
+            BrushPainter.DrawPreview(_preview, brush);
         }
 
         // 移除Generate模式的处理逻辑，确保只有绘画模式生效
@@ -243,6 +277,35 @@ namespace MrTerrainPainter.Editor.Services
                     _lastPaintPos = hitPos;
                 }
                 e.Use();
+            }
+        }
+
+        private void UpdatePreviewData(Terrain terrain, Vector3 center, Vector3 normal)
+        {
+            if (terrain == null || brush == null) { _preview.Clear(); return; }
+            _preview.terrain = terrain; _preview.center = center; _preview.normal = normal; _preview.hasData = true;
+            _preview.slices = null; _preview.bottomLine = null; _preview.topLine = null; _preview.prefabW = _preview.prefabH = 0f;
+            if (brush.distribution == DistributionType.EdgeLine)
+            {
+                var profile = getCurrentProfile?.Invoke();
+                var itemRef = profile != null ? profile.Items.FirstOrDefault(it => it != null && it.prefabType == PrefabType.Landscape) : null;
+                if (itemRef != null)
+                {
+                    var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+                    var req = new FacadeDetectionService.FacadeTraceBuilder()
+                        .Terrain(terrain).Start(center).Length(brush.size * 2f).FromItem(itemRef).FromConfig(cfg).Build();
+                    var slices = FacadeDetectionService.TraceVirtualFacade(req);
+                    if (slices != null && slices.Count > 0)
+                    {
+                        _preview.slices = slices;
+                        var bl = new System.Collections.Generic.List<Vector3>(slices.Count);
+                        var tl = new System.Collections.Generic.List<Vector3>(slices.Count);
+                        for (int i = 0; i < slices.Count; i++) { bl.Add(slices[i].BottomPosition); tl.Add(slices[i].TopPosition); }
+                        _preview.bottomLine = bl; _preview.topLine = tl;
+                        _preview.prefabW = BrushPainter.GetPrefabHorizontalExtentMeters(itemRef.prefab);
+                        _preview.prefabH = BrushPainter.GetPrefabHeightMeters(itemRef.prefab);
+                    }
+                }
             }
         }
 

@@ -13,35 +13,9 @@ MonoBehaviour:
   m_Name: VegetationProfile
   m_EditorClassIdentifier: 
   items:
-  - prefab: {fileID: 8851015596058497697, guid: c1ae2fa300555364093d8ff1630a1756,
-      type: 3}
-    weight: 0.828
+  - prefab: {fileID: 76899677786315245, guid: 146955b70373775478e63fdeb4491348, type: 3}
+    weight: 1
     prefabType: 0
-    uniformScaleRange: {x: 1.063177, y: 2.866821}
-    yRotationRange: {x: 0, y: 360}
-    heightRange: {x: 0, y: 1000}
-    slopeRange: {x: 0, y: 90}
-    baseDensity: 4.56
-    minSpacing: 6.57
-    alignToTerrainNormal: 1
-    edgeSlopeThreshold: 75
-    embedDepthRange: {x: 0.1, y: 0.3}
-    edgeReferenceWidthMeters: 1
-    edgeAutoHeight: 1
-    edgeReferenceHeightMeters: 1
-    edgeOffsets: {x: 0, y: 0, z: 0}
-    edgeLookAheadStep: 0.5
-    edgeMaxLookAhead: 5
-    edgeSlopeEnter: 30
-    edgeSlopeExit: 25
-    probeStep: 0.3
-    probeMaxDist: 6
-    referenceHeightMeters: 1
-    offsets: {x: 0, y: 0, z: 0}
-  - prefab: {fileID: 5165431589763082952, guid: 9bd3b0f737dc1ad4bb2c62e92df899f5,
-      type: 3}
-    weight: 0.085
-    prefabType: 2
     uniformScaleRange: {x: 1, y: 1}
     yRotationRange: {x: 0, y: 30}
     heightRange: {x: 0, y: 1000}
@@ -59,180 +33,17 @@ MonoBehaviour:
     edgeMaxLookAhead: 5
     edgeSlopeEnter: 30
     edgeSlopeExit: 25
-    probeStep: 0.3
+    probeStep: 0.5
     probeMaxDist: 6
     referenceHeightMeters: 1
     offsets: {x: 0, y: 0, z: 0}
-  - prefab: {fileID: 3803255655427722666, guid: 387e7e4cf18bbf54b8bb640a093f1be6,
-      type: 3}
-    weight: 1
-    prefabType: 2
-    uniformScaleRange: {x: 1, y: 1}
-    yRotationRange: {x: 0, y: 30}
-    heightRange: {x: 0, y: 1000}
-    slopeRange: {x: 0, y: 90}
-    baseDensity: 1
-    minSpacing: 1.5
-    alignToTerrainNormal: 1
-    edgeSlopeThreshold: 75
-    embedDepthRange: {x: 0.1, y: 0.3}
-    edgeReferenceWidthMeters: 1
-    edgeAutoHeight: 1
-    edgeReferenceHeightMeters: 1
-    edgeOffsets: {x: 0, y: 0, z: 0}
-    edgeLookAheadStep: 0.5
-    edgeMaxLookAhead: 5
-    edgeSlopeEnter: 30
-    edgeSlopeExit: 25
-    probeStep: 0.3
-    probeMaxDist: 6
-    referenceHeightMeters: 1
-    offsets: {x: 0, y: 0, z: 0}
-  - prefab: {fileID: 467230214150537627, guid: c4cde5fa09312a94795bc143d72451b7, type: 3}
-    weight: 1
-    prefabType: 2
-    uniformScaleRange: {x: 1, y: 1}
-    yRotationRange: {x: 0, y: 30}
-    heightRange: {x: 0, y: 1000}
-    slopeRange: {x: 0, y: 90}
-    baseDensity: 1
-    minSpacing: 1.5
-    alignToTerrainNormal: 1
-    edgeSlopeThreshold: 75
-    embedDepthRange: {x: 0.1, y: 0.3}
-    edgeReferenceWidthMeters: 1
-    edgeAutoHeight: 1
-    edgeReferenceHeightMeters: 1
-    edgeOffsets: {x: 0, y: 0, z: 0}
-    edgeLookAheadStep: 0.5
-    edgeMaxLookAhead: 5
-    edgeSlopeEnter: 30
-    edgeSlopeExit: 25
-    probeStep: 0.3
-    probeMaxDist: 6
-    referenceHeightMeters: 1
-    offsets: {x: 0, y: 0, z: 0}
-  - prefab: {fileID: 3803255655427722666, guid: 387e7e4cf18bbf54b8bb640a093f1be6,
-      type: 3}
-    weight: 1
-    prefabType: 2
-    uniformScaleRange: {x: 1, y: 1}
-    yRotationRange: {x: 0, y: 30}
-    heightRange: {x: 0, y: 1000}
-    slopeRange: {x: 0, y: 90}
-    baseDensity: 1
-    minSpacing: 1.5
-    alignToTerrainNormal: 1
-    edgeSlopeThreshold: 75
-    embedDepthRange: {x: 0.1, y: 0.3}
-    edgeReferenceWidthMeters: 1
-    edgeAutoHeight: 1
-    edgeReferenceHeightMeters: 1
-    edgeOffsets: {x: 0, y: 0, z: 0}
-    edgeLookAheadStep: 0.5
-    edgeMaxLookAhead: 5
-    edgeSlopeEnter: 30
-    edgeSlopeExit: 25
-    probeStep: 0.3
-    probeMaxDist: 6
-    referenceHeightMeters: 1
-    offsets: {x: 0, y: 0, z: 0}
-  - prefab: {fileID: 467230214150537627, guid: c4cde5fa09312a94795bc143d72451b7, type: 3}
-    weight: 1
-    prefabType: 2
-    uniformScaleRange: {x: 1, y: 1}
-    yRotationRange: {x: 0, y: 30}
-    heightRange: {x: 0, y: 1000}
-    slopeRange: {x: 0, y: 90}
-    baseDensity: 1
-    minSpacing: 1.5
-    alignToTerrainNormal: 1
-    edgeSlopeThreshold: 75
-    embedDepthRange: {x: 0.1, y: 0.3}
-    edgeReferenceWidthMeters: 1
-    edgeAutoHeight: 1
-    edgeReferenceHeightMeters: 1
-    edgeOffsets: {x: 0, y: 0, z: 0}
-    edgeLookAheadStep: 0.5
-    edgeMaxLookAhead: 5
-    edgeSlopeEnter: 30
-    edgeSlopeExit: 25
-    probeStep: 0.3
-    probeMaxDist: 6
-    referenceHeightMeters: 1
-    offsets: {x: 0, y: 0, z: 0}
-  - prefab: {fileID: 467230214150537627, guid: 453fff3f3aff80949aecc1e9897d67a5, type: 3}
-    weight: 1
-    prefabType: 2
-    uniformScaleRange: {x: 1, y: 1}
-    yRotationRange: {x: 0, y: 30}
-    heightRange: {x: 0, y: 1000}
-    slopeRange: {x: 0, y: 90}
-    baseDensity: 1
-    minSpacing: 1.5
-    alignToTerrainNormal: 1
-    edgeSlopeThreshold: 75
-    embedDepthRange: {x: 0.1, y: 0.3}
-    edgeReferenceWidthMeters: 1
-    edgeAutoHeight: 1
-    edgeReferenceHeightMeters: 1
-    edgeOffsets: {x: 0, y: 0, z: 0}
-    edgeLookAheadStep: 0.5
-    edgeMaxLookAhead: 5
-    edgeSlopeEnter: 30
-    edgeSlopeExit: 25
-    probeStep: 0.3
-    probeMaxDist: 6
-    referenceHeightMeters: 1
-    offsets: {x: 0, y: 0, z: 0}
-  - prefab: {fileID: 467230214150537627, guid: 3bf757dae4932be4383a0914c64169a4, type: 3}
-    weight: 1
-    prefabType: 2
-    uniformScaleRange: {x: 1, y: 1}
-    yRotationRange: {x: 0, y: 30}
-    heightRange: {x: 0, y: 1000}
-    slopeRange: {x: 0, y: 90}
-    baseDensity: 1
-    minSpacing: 1.5
-    alignToTerrainNormal: 1
-    edgeSlopeThreshold: 75
-    embedDepthRange: {x: 0.1, y: 0.3}
-    edgeReferenceWidthMeters: 1
-    edgeAutoHeight: 1
-    edgeReferenceHeightMeters: 1
-    edgeOffsets: {x: 0, y: 0, z: 0}
-    edgeLookAheadStep: 0.5
-    edgeMaxLookAhead: 5
-    edgeSlopeEnter: 30
-    edgeSlopeExit: 25
-    probeStep: 0.3
-    probeMaxDist: 6
-    referenceHeightMeters: 1
-    offsets: {x: 0, y: 0, z: 0}
-  - prefab: {fileID: 467230214150537627, guid: ee7fb70ab45dcbd43b836efb70db45a6, type: 3}
-    weight: 1
-    prefabType: 2
-    uniformScaleRange: {x: 1, y: 1}
-    yRotationRange: {x: 0, y: 30}
-    heightRange: {x: 0, y: 1000}
-    slopeRange: {x: 0, y: 90}
-    baseDensity: 1
-    minSpacing: 1.5
-    alignToTerrainNormal: 1
-    edgeSlopeThreshold: 75
-    embedDepthRange: {x: 0.1, y: 0.3}
-    edgeReferenceWidthMeters: 1
-    edgeAutoHeight: 1
-    edgeReferenceHeightMeters: 1
-    edgeOffsets: {x: 0, y: 0, z: 0}
-    edgeLookAheadStep: 0.5
-    edgeMaxLookAhead: 5
-    edgeSlopeEnter: 30
-    edgeSlopeExit: 25
-    probeStep: 0.3
-    probeMaxDist: 6
-    referenceHeightMeters: 1
-    offsets: {x: 0, y: 0, z: 0}
+    edgeStacking: 0
+    edgeStackingOffsetMeters: 0
+    edgeTopScaleBias: 1
+    facadeScaleOffset: {x: 0, y: 0, z: 0}
+    facadeSmoothingMode: 0
+    facadeSmoothingWindow: 3
+    facadeSmoothingSigma: 1
   initialized: 1
   randomSeed: 12345
   baseDensity: 1

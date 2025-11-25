@@ -174,13 +174,13 @@ MonoBehaviour:
     facadeSmoothingSigma: 1
   - prefab: {fileID: 8163843745520959520, guid: 39f16ce049bb4d641a433534ed6b9cbc,
       type: 3}
-    weight: 1
+    weight: 0.096
     prefabType: 2
-    uniformScaleRange: {x: 1, y: 1}
-    yRotationRange: {x: 0, y: 30}
+    uniformScaleRange: {x: 1, y: 4.663158}
+    yRotationRange: {x: 0, y: 360}
     heightRange: {x: 0, y: 1000}
     slopeRange: {x: 0, y: 90}
-    baseDensity: 1
+    baseDensity: 0.44
     minSpacing: 1.5
     alignToTerrainNormal: 1
     edgeSlopeThreshold: 75
