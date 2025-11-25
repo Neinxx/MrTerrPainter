@@ -6,6 +6,55 @@ namespace MrTerrainPainter.Editor.Services
 {
     public static class FacadeDetectionService
     {
+        public class FacadeTraceRequest
+        {
+            public Terrain terrain;
+            public Vector3 start;
+            public float lengthMeters;
+            public float enterSlopeDeg;
+            public float exitSlopeDeg;
+            public float stepMeters;
+            public MrTerrainPainter.Runtime.Profiles.FacadeSmoothingMode mode;
+            public int window;
+            public float sigma;
+            public bool useGlobalConstraints;
+            public float minHeightMeters;
+            public float offsetRightMeters;
+            public float offsetOutMeters;
+        }
+
+        public class FacadeTraceBuilder
+        {
+            private readonly FacadeTraceRequest r = new FacadeTraceRequest();
+            public FacadeTraceBuilder Terrain(Terrain t) { r.terrain = t; return this; }
+            public FacadeTraceBuilder Start(Vector3 s) { r.start = s; return this; }
+            public FacadeTraceBuilder Length(float l) { r.lengthMeters = l; return this; }
+            public FacadeTraceBuilder Slopes(float enter, float exit) { r.enterSlopeDeg = enter; r.exitSlopeDeg = exit; return this; }
+            public FacadeTraceBuilder Step(float step) { r.stepMeters = step; return this; }
+            public FacadeTraceBuilder Smoothing(MrTerrainPainter.Runtime.Profiles.FacadeSmoothingMode m, int win, float sig) { r.mode = m; r.window = win; r.sigma = sig; return this; }
+            public FacadeTraceBuilder FromItem(MrTerrainPainter.Runtime.Profiles.VegetationItem item)
+            {
+                if (item == null) return this;
+                r.enterSlopeDeg = item.edgeSlopeEnter;
+                r.exitSlopeDeg = item.edgeSlopeExit;
+                r.stepMeters = item.probeStep;
+                r.mode = item.facadeSmoothingMode;
+                r.window = item.facadeSmoothingWindow;
+                r.sigma = item.facadeSmoothingSigma;
+                return this;
+            }
+            public FacadeTraceBuilder FromConfig(MrTerrainPainter.Editor.Config.MrTerrainPainterConfig cfg)
+            {
+                if (cfg == null) return this;
+                r.useGlobalConstraints = true;
+                r.minHeightMeters = cfg.minFacadeHeightMeters;
+                r.offsetRightMeters = cfg.curveOffsetRightMeters;
+                r.offsetOutMeters = cfg.curveOffsetOutMeters;
+                return this;
+            }
+            public FacadeTraceRequest Build() { return r; }
+        }
+
         public class FacadePath
         {
             public Terrain SourceTerrain;
@@ -437,6 +486,16 @@ namespace MrTerrainPainter.Editor.Services
             return slices;
         }
 
+        public static System.Collections.Generic.List<CliffSlice> TraceVirtualFacade(FacadeTraceRequest req)
+        {
+            var slices = TraceVirtualFacade(req.terrain, req.start, req.lengthMeters, req.enterSlopeDeg, req.exitSlopeDeg, req.stepMeters, req.mode, req.window, req.sigma);
+            if (req.useGlobalConstraints)
+            {
+                slices = ApplyGlobalConstraints(slices, req.minHeightMeters, true, req.offsetRightMeters, req.offsetOutMeters);
+            }
+            return slices;
+        }
+
         public static System.Collections.Generic.List<CliffSlice> FilterByMinimumWidth(System.Collections.Generic.List<CliffSlice> slices, float minLenMeters, float spacingThreshold, float maxAngleDeg)
         {
             var res = new System.Collections.Generic.List<CliffSlice>();
@@ -513,17 +572,17 @@ namespace MrTerrainPainter.Editor.Services
         {
             if (terrain == null || item == null || onPlace == null) return;
             var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
-            var slices = TraceVirtualFacade(
-                terrain,
-                center,
-                radius * 2f,
-                item.edgeSlopeEnter,
-                item.edgeSlopeExit,
-                item.probeStep,
-                cfg != null ? cfg.facadeSmoothMode : MrTerrainPainter.Runtime.Profiles.FacadeSmoothingMode.Gaussian,
-                cfg != null ? Mathf.Max(3, cfg.facadeSmoothWindow) : 5,
-                cfg != null ? Mathf.Max(0.1f, cfg.facadeSmoothSigma) : 1f);
-            slices = ApplyGlobalConstraints(slices, cfg != null ? cfg.minFacadeHeightMeters : 0.3f, true, cfg != null ? cfg.curveOffsetRightMeters : 0f, cfg != null ? cfg.curveOffsetOutMeters : 0f);
+            var req = new FacadeTraceBuilder()
+                .Terrain(terrain)
+                .Start(center)
+                .Length(radius * 2f)
+                .FromItem(item)
+                .Smoothing(cfg != null ? cfg.facadeSmoothMode : MrTerrainPainter.Runtime.Profiles.FacadeSmoothingMode.Gaussian,
+                           cfg != null ? Mathf.Max(3, cfg.facadeSmoothWindow) : 5,
+                           cfg != null ? Mathf.Max(0.1f, cfg.facadeSmoothSigma) : 1f)
+                .FromConfig(cfg)
+                .Build();
+            var slices = TraceVirtualFacade(req);
             float rendererWMinLen = MrTerrainPainter.Editor.Services.BrushPainter.GetPrefabHorizontalExtentMeters(item.prefab);
             float minLenSeg = Mathf.Max(rendererWMinLen, item.edgeReferenceWidthMeters);
             slices = FilterByMinimumWidth(slices, minLenSeg, Mathf.Max(item.CoreSpacing, 0.01f), 30f);
@@ -614,25 +673,15 @@ namespace MrTerrainPainter.Editor.Services
             var paths = new System.Collections.Generic.List<FacadePath>();
             if (terrain == null || item == null) return paths;
             var cfg = MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
-            var slices = TraceVirtualFacade(
-                terrain,
-                scanBounds.center,
-                scanBounds.size.x,
-                item.edgeSlopeEnter,
-                item.edgeSlopeExit,
-                item.probeStep,
-                cfg != null ? cfg.facadeSmoothMode : MrTerrainPainter.Runtime.Profiles.FacadeSmoothingMode.Gaussian,
-                cfg != null ? Mathf.Max(3, cfg.facadeSmoothWindow) : 5,
-                cfg != null ? Mathf.Max(0.1f, cfg.facadeSmoothSigma) : 1f);
-            slices = ApplyGlobalConstraints(slices, cfg != null ? cfg.minFacadeHeightMeters : 0.3f, true, cfg != null ? cfg.curveOffsetRightMeters : 0f, cfg != null ? cfg.curveOffsetOutMeters : 0f);
-            if (slices == null || slices.Count == 0) return paths;
-            var segments = SplitIntoSegmentsInternal(slices, item.probeStep * 2f);
-            for (int seg = 0; seg < segments.Count; seg++)
+            var contours = ContourDetectionService.ScanContours(terrain, scanBounds, Mathf.Clamp(item.edgeSlopeThreshold, 0f, 90f));
+            for (int ci = 0; ci < contours.Count; ci++)
             {
-                var raw = segments[seg];
-                if (raw == null || raw.Count < 2) continue;
-                var pts = new System.Collections.Generic.List<Vector3>(raw.Count);
-                for (int i = 0; i < raw.Count; i++) pts.Add(raw[i].BottomPosition);
+                var contour = contours[ci];
+                if (contour.Points == null || contour.Points.Count < 5) continue;
+                var rawSlices = ContourDetectionService.ConvertToSlices(contour, terrain);
+                if (rawSlices == null || rawSlices.Count < 2) continue;
+                var pts = new System.Collections.Generic.List<Vector3>(rawSlices.Count);
+                for (int i = 0; i < rawSlices.Count; i++) pts.Add(rawSlices[i].BottomPosition);
                 var simple = MrTerrainPainter.Editor.Utils.GeometryUtils.SimplifyPathRDP(pts, Mathf.Max(0.01f, rdpEpsilon));
                 if (simple == null || simple.Count < 2) continue;
                 var rebuilt = new System.Collections.Generic.List<CliffSlice>();
@@ -646,14 +695,14 @@ namespace MrTerrainPainter.Editor.Services
                     int steps = Mathf.Max(1, Mathf.CeilToInt(segLen / Mathf.Max(0.01f, smoothSpacing)));
                     for (int k = 0; k <= steps; k++)
                     {
-                        float t = steps == 0 ? 0f : (k / (float)steps);
-                        var pos = MrTerrainPainter.Editor.Utils.SplineUtils.GetPoint(p0, p1, p2, p3, t);
+                        float tt = steps == 0 ? 0f : (k / (float)steps);
+                        var pos = MrTerrainPainter.Editor.Utils.SplineUtils.GetPoint(p0, p1, p2, p3, tt);
                         float lag = Mathf.Max(0.01f, smoothSpacing * 0.05f);
-                        var ahead = MrTerrainPainter.Editor.Utils.SplineUtils.GetPoint(p0, p1, p2, p3, Mathf.Clamp01(t + lag));
+                        var ahead = MrTerrainPainter.Editor.Utils.SplineUtils.GetPoint(p0, p1, p2, p3, Mathf.Clamp01(tt + lag));
                         var tan = ahead - pos; tan.y = 0f; if (tan.sqrMagnitude < 1e-6f) tan = p2 - p1; tan = tan.sqrMagnitude > 1e-6f ? tan.normalized : Vector3.right;
                         var up = Vector3.up;
                         var n = Vector3.Cross(tan, up).normalized;
-                        float height = ApproximateHeight(raw, pos);
+                        float height = ApproximateHeight(rawSlices, pos);
                         rebuilt.Add(new CliffSlice
                         {
                             BottomPosition = pos,

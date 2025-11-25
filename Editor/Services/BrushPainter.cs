@@ -481,16 +481,15 @@ namespace MrTerrainPainter.Editor.Services
                 var itemRef = profile != null ? profile.Items.FirstOrDefault(it => it != null && it.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape) : null;
                 if (t != null && itemRef != null)
                 {
-                    var slices = FacadeDetectionService.TraceVirtualFacade(
-                        t,
-                        center,
-                        bs.size * 2f,
-                        itemRef.edgeSlopeEnter,
-                        itemRef.edgeSlopeExit,
-                        itemRef.probeStep,
-                        itemRef.facadeSmoothingMode,
-                        itemRef.facadeSmoothingWindow,
-                        itemRef.facadeSmoothingSigma);
+                    var cfgPrev = MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+                    var req = new FacadeDetectionService.FacadeTraceBuilder()
+                        .Terrain(t)
+                        .Start(center)
+                        .Length(bs.size * 2f)
+                        .FromItem(itemRef)
+                        .FromConfig(cfgPrev)
+                        .Build();
+                    var slices = FacadeDetectionService.TraceVirtualFacade(req);
                     if (slices != null && slices.Count > 0)
                     {
                         var grid = new Grid(Mathf.Max(itemRef.CoreSpacing, 0.01f));
@@ -511,56 +510,7 @@ namespace MrTerrainPainter.Editor.Services
                         float rendererWPreview = GetPrefabHorizontalExtentMeters(itemRef.prefab);
                         float minLen = Mathf.Max(rendererWPreview, itemRef.edgeReferenceWidthMeters);
                         filtered = FacadeDetectionService.FilterByMinimumWidth(filtered, minLen, Mathf.Max(itemRef.CoreSpacing, 0.01f), 30f);
-                        float rendererWPreview2 = GetPrefabHorizontalExtentMeters(itemRef.prefab);
-                        float minLen2 = Mathf.Max(rendererWPreview2, itemRef.edgeReferenceWidthMeters);
-                        filtered = FacadeDetectionService.FilterByMinimumWidth(filtered, minLen2, Mathf.Max(itemRef.CoreSpacing, 0.01f), 30f);
-                        if (filtered.Count > 1)
-                        {
-                            var bottomLine = new Vector3[filtered.Count];
-                            var topLine = new Vector3[filtered.Count];
-                            for (int i = 0; i < filtered.Count; i++)
-                            {
-                                bottomLine[i] = filtered[i].BottomPosition;
-                                topLine[i] = filtered[i].TopPosition;
-                            }
-                            var cfgC = MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
-                            Handles.color = cfgC != null ? cfgC.facadePreviewBottomColor : new Color(0f, 1f, 0f, 0.8f);
-                            Handles.DrawAAPolyLine(st.ringWidth, bottomLine);
-                            Handles.color = cfgC != null ? cfgC.facadePreviewTopColor : new Color(1f, 0.2f, 0.2f, 0.8f);
-                            Handles.DrawAAPolyLine(st.ringWidth, topLine);
-                            Handles.color = new Color(1f, 1f, 1f, 0.3f);
-                            float acc = 0f;
-                            for (int i = 0; i < filtered.Count - 1; i++)
-                            {
-                                acc += Vector3.Distance(bottomLine[i], bottomLine[i + 1]);
-                                if (acc >= Mathf.Max(1f, itemRef.CoreSpacing) || i == 0 || i == filtered.Count - 2)
-                                {
-                                    Handles.DrawLine(bottomLine[i], topLine[i]);
-                                    acc = 0f;
-                                }
-                            }
-                            float rail = Mathf.Max(itemRef.edgeReferenceWidthMeters, 0.01f) * 0.5f;
-                            var leftRail = new Vector3[filtered.Count];
-                            var rightRail = new Vector3[filtered.Count];
-                            for (int i = 0; i < filtered.Count; i++)
-                            {
-                                var ss = filtered[i];
-                                leftRail[i] = ss.BottomPosition - ss.Normal * rail;
-                                rightRail[i] = ss.BottomPosition + ss.Normal * rail;
-                            }
-                            Handles.color = ring;
-                            Handles.DrawAAPolyLine(st.ringWidth, leftRail);
-                            Handles.DrawAAPolyLine(st.ringWidth, rightRail);
-                            float tickLen = rail * 0.3f;
-                            float spacing = Mathf.Max(itemRef.CoreSpacing, 0.01f);
-                            for (int i = 0; i < filtered.Count; i++)
-                            {
-                                var ss = filtered[i];
-                                var a = ss.BottomPosition - ss.Normal * tickLen;
-                                var b = ss.BottomPosition + ss.Normal * tickLen;
-                                Handles.DrawAAPolyLine(st.innerWidth, new Vector3[] { a, b });
-                            }
-                        }
+                        if (filtered.Count > 1) DrawFacadeRailsAndTicks(filtered, st, ring, itemRef);
                         DrawFacadeSlicesPreview(filtered, bs);
                     }
                     else Handles.Label(center, "未检测到立面，尝试提高 edgeSlopeEnter 或增大笔刷半径");
@@ -585,6 +535,9 @@ namespace MrTerrainPainter.Editor.Services
                         Handles.DrawAAPolyLine(st.ringWidth, left);
                         Handles.DrawAAPolyLine(st.ringWidth, rightPts);
                     }
+                    float rw = GetPrefabHorizontalExtentMeters(itemRef.prefab);
+                    float rh = GetPrefabHeightMeters(itemRef.prefab);
+                    Handles.Label(center + Vector3.up * 0.25f, $"Render {rw:F2}m x {rh:F2}m");
                 }
             }
         }
@@ -678,16 +631,15 @@ namespace MrTerrainPainter.Editor.Services
                 var itemRef = profile != null ? profile.Items.FirstOrDefault(it => it != null && it.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape) : null;
                 if (t != null && itemRef != null)
                 {
-                    var slices = FacadeDetectionService.TraceVirtualFacade(
-                        t,
-                        center,
-                        bs.size * 2f,
-                        itemRef.edgeSlopeEnter,
-                        itemRef.edgeSlopeExit,
-                        itemRef.probeStep,
-                        itemRef.facadeSmoothingMode,
-                        itemRef.facadeSmoothingWindow,
-                        itemRef.facadeSmoothingSigma);
+                    var cfgPrev2 = MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+                    var req2 = new FacadeDetectionService.FacadeTraceBuilder()
+                        .Terrain(t)
+                        .Start(center)
+                        .Length(bs.size * 2f)
+                        .FromItem(itemRef)
+                        .FromConfig(cfgPrev2)
+                        .Build();
+                    var slices = FacadeDetectionService.TraceVirtualFacade(req2);
                     if (slices != null && slices.Count > 0)
                     {
                         var grid = new Grid(Mathf.Max(itemRef.minSpacing, 0.01f));
@@ -705,53 +657,7 @@ namespace MrTerrainPainter.Editor.Services
                         {
                             filtered = MrTerrainPainter.Editor.Utils.SplineUtils.ResampleSlicesSmoothly(filtered, Mathf.Max(itemRef.CoreSpacing, 0.01f));
                         }
-                        if (filtered.Count > 1)
-                        {
-                            var bottomLine2 = new Vector3[filtered.Count];
-                            var topLine2 = new Vector3[filtered.Count];
-                            for (int i = 0; i < filtered.Count; i++)
-                            {
-                                bottomLine2[i] = filtered[i].BottomPosition;
-                                topLine2[i] = filtered[i].TopPosition;
-                            }
-                            var cfgC2 = MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
-                            Handles.color = cfgC2 != null ? cfgC2.facadePreviewBottomColor : new Color(0f, 1f, 0f, 0.8f);
-                            Handles.DrawAAPolyLine(st.ringWidth, bottomLine2);
-                            Handles.color = cfgC2 != null ? cfgC2.facadePreviewTopColor : new Color(1f, 0.2f, 0.2f, 0.8f);
-                            Handles.DrawAAPolyLine(st.ringWidth, topLine2);
-                            Handles.color = new Color(1f, 1f, 1f, 0.3f);
-                            float acc2 = 0f;
-                            for (int i = 0; i < filtered.Count - 1; i++)
-                            {
-                                acc2 += Vector3.Distance(bottomLine2[i], bottomLine2[i + 1]);
-                                if (acc2 >= Mathf.Max(1f, itemRef.CoreSpacing) || i == 0 || i == filtered.Count - 2)
-                                {
-                                    Handles.DrawLine(bottomLine2[i], topLine2[i]);
-                                    acc2 = 0f;
-                                }
-                            }
-                            float rail = Mathf.Max(itemRef.edgeReferenceWidthMeters, 0.01f) * 0.5f;
-                            var leftRail = new Vector3[filtered.Count];
-                            var rightRail = new Vector3[filtered.Count];
-                            for (int i = 0; i < filtered.Count; i++)
-                            {
-                                var ss = filtered[i];
-                                leftRail[i] = ss.BottomPosition - ss.Normal * rail;
-                                rightRail[i] = ss.BottomPosition + ss.Normal * rail;
-                            }
-                            Handles.color = ring;
-                            Handles.DrawAAPolyLine(st.ringWidth, leftRail);
-                            Handles.DrawAAPolyLine(st.ringWidth, rightRail);
-                            float tickLen = rail * 0.3f;
-                            float spacing = Mathf.Max(itemRef.CoreSpacing, 0.01f);
-                            for (int i = 0; i < filtered.Count; i++)
-                            {
-                                var ss = filtered[i];
-                                var a = ss.BottomPosition - ss.Normal * tickLen;
-                                var b = ss.BottomPosition + ss.Normal * tickLen;
-                                Handles.DrawAAPolyLine(st.innerWidth, new Vector3[] { a, b });
-                            }
-                        }
+                        if (filtered.Count > 1) DrawFacadeRailsAndTicks(filtered, st, ring, itemRef);
                         DrawFacadeSlicesPreview(filtered, bs);
                     }
                     else Handles.Label(center, "未检测到立面，尝试提高 edgeSlopeEnter 或增大笔刷半径");
@@ -776,7 +682,58 @@ namespace MrTerrainPainter.Editor.Services
                         Handles.DrawAAPolyLine(st.ringWidth, left2);
                         Handles.DrawAAPolyLine(st.ringWidth, rightPts2);
                     }
+                    float rw2 = GetPrefabHorizontalExtentMeters(itemRef.prefab);
+                    float rh2 = GetPrefabHeightMeters(itemRef.prefab);
+                    Handles.Label(center + planeN * 0.25f, $"Render {rw2:F2}m x {rh2:F2}m");
                 }
+            }
+        }
+
+        private static void DrawFacadeRailsAndTicks(System.Collections.Generic.List<FacadeDetectionService.CliffSlice> filtered, BrushPreviewStyle st, Color ring, MrTerrainPainter.Runtime.Profiles.VegetationItem itemRef)
+        {
+            var bottomLine = new Vector3[filtered.Count];
+            var topLine = new Vector3[filtered.Count];
+            for (int i = 0; i < filtered.Count; i++)
+            {
+                bottomLine[i] = filtered[i].BottomPosition;
+                topLine[i] = filtered[i].TopPosition;
+            }
+            var cfgC = MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+            Handles.color = cfgC != null ? cfgC.facadePreviewBottomColor : new Color(0f, 1f, 0f, 0.8f);
+            Handles.DrawAAPolyLine(st.ringWidth, bottomLine);
+            Handles.color = cfgC != null ? cfgC.facadePreviewTopColor : new Color(1f, 0.2f, 0.2f, 0.8f);
+            Handles.DrawAAPolyLine(st.ringWidth, topLine);
+            Handles.color = new Color(1f, 1f, 1f, 0.3f);
+            float acc = 0f;
+            for (int i = 0; i < filtered.Count - 1; i++)
+            {
+                acc += Vector3.Distance(bottomLine[i], bottomLine[i + 1]);
+                if (acc >= Mathf.Max(1f, itemRef.CoreSpacing) || i == 0 || i == filtered.Count - 2)
+                {
+                    Handles.DrawLine(bottomLine[i], topLine[i]);
+                    acc = 0f;
+                }
+            }
+            float rail = Mathf.Max(itemRef.edgeReferenceWidthMeters, 0.01f) * 0.5f;
+            var leftRail = new Vector3[filtered.Count];
+            var rightRail = new Vector3[filtered.Count];
+            for (int i = 0; i < filtered.Count; i++)
+            {
+                var ss = filtered[i];
+                leftRail[i] = ss.BottomPosition - ss.Normal * rail;
+                rightRail[i] = ss.BottomPosition + ss.Normal * rail;
+            }
+            Handles.color = ring;
+            Handles.DrawAAPolyLine(st.ringWidth, leftRail);
+            Handles.DrawAAPolyLine(st.ringWidth, rightRail);
+            float tickLen = rail * 0.3f;
+            float spacing = Mathf.Max(itemRef.CoreSpacing, 0.01f);
+            for (int i = 0; i < filtered.Count; i++)
+            {
+                var ss = filtered[i];
+                var a = ss.BottomPosition - ss.Normal * tickLen;
+                var b = ss.BottomPosition + ss.Normal * tickLen;
+                Handles.DrawAAPolyLine(st.innerWidth, new Vector3[] { a, b });
             }
         }
 
@@ -826,17 +783,18 @@ namespace MrTerrainPainter.Editor.Services
                     var itemRef = landItems.FirstOrDefault();
                     if (itemRef == null) { if (hbShared.heights.IsCreated) hbShared.heights.Dispose(); return; }
                     var cfg2 = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
-                    var slices = FacadeDetectionService.TraceVirtualFacade(
-                        terrain,
-                        center,
-                        radius * 2f,
-                        itemRef.edgeSlopeEnter,
-                        itemRef.edgeSlopeExit,
-                        itemRef.probeStep,
-                        cfg2 != null ? cfg2.facadeSmoothMode : MrTerrainPainter.Runtime.Profiles.FacadeSmoothingMode.Gaussian,
-                        cfg2 != null ? Mathf.Max(3, cfg2.facadeSmoothWindow) : 5,
-                        cfg2 != null ? Mathf.Max(0.1f, cfg2.facadeSmoothSigma) : 1f);
-                    slices = FacadeDetectionService.ApplyGlobalConstraints(slices, cfg2 != null ? cfg2.minFacadeHeightMeters : 0.3f, true, cfg2 != null ? cfg2.curveOffsetRightMeters : 0f, cfg2 != null ? cfg2.curveOffsetOutMeters : 0f);
+                    var req3 = new FacadeDetectionService.FacadeTraceBuilder()
+                        .Terrain(terrain)
+                        .Start(center)
+                        .Length(radius * 2f)
+                        .Slopes(itemRef.edgeSlopeEnter, itemRef.edgeSlopeExit)
+                        .Step(itemRef.probeStep)
+                        .Smoothing(cfg2 != null ? cfg2.facadeSmoothMode : MrTerrainPainter.Runtime.Profiles.FacadeSmoothingMode.Gaussian,
+                                   cfg2 != null ? Mathf.Max(3, cfg2.facadeSmoothWindow) : 5,
+                                   cfg2 != null ? Mathf.Max(0.1f, cfg2.facadeSmoothSigma) : 1f)
+                        .FromConfig(cfg2)
+                        .Build();
+                    var slices = FacadeDetectionService.TraceVirtualFacade(req3);
                     if (slices == null || slices.Count == 0)
                     {
                         Handles.Label(center, "未检测到立面，尝试提高 edgeSlopeEnter 或增大笔刷半径");
@@ -954,21 +912,18 @@ namespace MrTerrainPainter.Editor.Services
                 }
                 else
                 {
-                    candidates = VegetationGenerator.BuildCandidates(
-                        centerXZ,
-                        radius,
-                        bs.shape,
-                        candidateCount,
-                        minSpacingForAll,
-                        bs.minSpacingJitter,
-                        seed,
-                        bs.distribution,
-                        bs.useBurstPoisson,
-                        bs.cluster,
-                        bs.adaptiveMinFactor,
-                        bs.adaptiveMaxFactor,
-                        bs.adaptiveNoiseWeight,
-                        rnd);
+                    var candReq = new VegetationGenerator.CandidateBuilder()
+                        .Center(centerXZ)
+                        .Radius(radius)
+                        .Shape(bs.shape)
+                        .Desired(candidateCount)
+                        .MinSpacing(minSpacingForAll)
+                        .Jitter(bs.minSpacingJitter)
+                        .Seed(seed)
+                        .FromBrush(bs)
+                        .Random(rnd)
+                        .Build();
+                    candidates = VegetationGenerator.BuildCandidates(candReq);
                 }
                 foreach (var kv in s_itemGridCache) kv.Value.Clear();
                 Grid globalGrid = null;

@@ -17,6 +17,54 @@ namespace MrTerrainPainter.Editor.Services
 {
     public static class VegetationGenerator
     {
+        public class CandidateRequest
+        {
+            public UnityEngine.Vector2 centerXZ;
+            public float radius;
+            public BrushShape shape;
+            public int desired;
+            public float minSpacing;
+            public float jitter;
+            public int seed;
+            public DistributionType distribution;
+            public bool useBurst;
+            public ClusterSettings cluster;
+            public float minFactor;
+            public float maxFactor;
+            public float noiseWeight;
+            public System.Random rnd;
+        }
+
+        public class CandidateBuilder
+        {
+            private readonly CandidateRequest r = new CandidateRequest();
+            public CandidateBuilder Center(UnityEngine.Vector2 v) { r.centerXZ = v; return this; }
+            public CandidateBuilder Radius(float v) { r.radius = v; return this; }
+            public CandidateBuilder Shape(BrushShape v) { r.shape = v; return this; }
+            public CandidateBuilder Desired(int v) { r.desired = v; return this; }
+            public CandidateBuilder MinSpacing(float v) { r.minSpacing = v; return this; }
+            public CandidateBuilder Jitter(float v) { r.jitter = v; return this; }
+            public CandidateBuilder Seed(int v) { r.seed = v; return this; }
+            public CandidateBuilder Distribution(DistributionType v) { r.distribution = v; return this; }
+            public CandidateBuilder UseBurst(bool v) { r.useBurst = v; return this; }
+            public CandidateBuilder Cluster(ClusterSettings v) { r.cluster = v; return this; }
+            public CandidateBuilder MinFactor(float v) { r.minFactor = v; return this; }
+            public CandidateBuilder MaxFactor(float v) { r.maxFactor = v; return this; }
+            public CandidateBuilder NoiseWeight(float v) { r.noiseWeight = v; return this; }
+            public CandidateBuilder Random(System.Random v) { r.rnd = v; return this; }
+            public CandidateBuilder FromBrush(BrushSettings bs)
+            {
+                if (bs == null) return this;
+                r.distribution = bs.distribution;
+                r.useBurst = bs.useBurstPoisson;
+                r.cluster = bs.cluster;
+                r.minFactor = bs.adaptiveMinFactor;
+                r.maxFactor = bs.adaptiveMaxFactor;
+                r.noiseWeight = bs.adaptiveNoiseWeight;
+                return this;
+            }
+            public CandidateRequest Build() { return r; }
+        }
         public static bool UseBurstPoisson = true;
         private static readonly System.Collections.Generic.Dictionary<Runtime.Profiles.PrefabType, double> s_missingLogTimes = new();
         public static void LogMissingMappingOnce(Runtime.Profiles.PrefabType type, double throttleSecondsDefault = 3.0)
@@ -84,6 +132,11 @@ namespace MrTerrainPainter.Editor.Services
                 default:
                     return BrushEngine.SampleUniform(centerXZ, radius, shape, desired, rnd);
             }
+        }
+
+        public static System.Collections.Generic.List<Vector2> BuildCandidates(CandidateRequest req)
+        {
+            return BuildCandidates(req.centerXZ, req.radius, req.shape, req.desired, req.minSpacing, req.jitter, req.seed, req.distribution, req.useBurst, req.cluster, req.minFactor, req.maxFactor, req.noiseWeight, req.rnd);
         }
 
         public static System.Collections.Generic.List<Vector2> SampleEdgeLine(

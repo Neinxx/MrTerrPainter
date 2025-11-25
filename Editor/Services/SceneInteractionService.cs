@@ -11,6 +11,45 @@ namespace MrTerrainPainter.Editor.Services
 {
     public class SceneInteractionService
     {
+        public class Options
+        {
+            public TerrainController terrainController;
+            public PaintingController paintingController;
+            public System.Func<VegetationProfile> getCurrentProfile;
+            public System.Func<System.Collections.Generic.List<Terrain>> getSelectedTerrains;
+            public BrushSettings brush;
+            public IFilterStrategy filterStrategy;
+            public IPlacementOverrideStrategy placementStrategy;
+            public System.Func<bool> isGenerateMode;
+            public System.Func<bool> isPaintMode;
+            public System.Action markSceneDirty;
+            public System.Func<Vector3, Terrain> nearestTerrain;
+            public System.Func<System.Random> getRandom;
+            public bool allowWhenBrushToolActive;
+            public System.Func<System.Collections.Generic.List<FacadeDetectionService.FacadePath>> getCachedPaths;
+            public System.Func<System.Collections.Generic.List<GlobalTerrainScanner.FacadePath>> getGlobalPaths;
+        }
+
+        public class Builder
+        {
+            private readonly Options _o = new Options();
+            public Builder TerrainController(TerrainController v) { _o.terrainController = v; return this; }
+            public Builder PaintingController(PaintingController v) { _o.paintingController = v; return this; }
+            public Builder GetCurrentProfile(System.Func<VegetationProfile> v) { _o.getCurrentProfile = v; return this; }
+            public Builder GetSelectedTerrains(System.Func<System.Collections.Generic.List<Terrain>> v) { _o.getSelectedTerrains = v; return this; }
+            public Builder Brush(BrushSettings v) { _o.brush = v; return this; }
+            public Builder FilterStrategy(IFilterStrategy v) { _o.filterStrategy = v; return this; }
+            public Builder PlacementStrategy(IPlacementOverrideStrategy v) { _o.placementStrategy = v; return this; }
+            public Builder IsGenerateMode(System.Func<bool> v) { _o.isGenerateMode = v; return this; }
+            public Builder IsPaintMode(System.Func<bool> v) { _o.isPaintMode = v; return this; }
+            public Builder MarkSceneDirty(System.Action v) { _o.markSceneDirty = v; return this; }
+            public Builder NearestTerrain(System.Func<Vector3, Terrain> v) { _o.nearestTerrain = v; return this; }
+            public Builder GetRandom(System.Func<System.Random> v) { _o.getRandom = v; return this; }
+            public Builder AllowWhenBrushToolActive(bool v) { _o.allowWhenBrushToolActive = v; return this; }
+            public Builder GetCachedPaths(System.Func<System.Collections.Generic.List<FacadeDetectionService.FacadePath>> v) { _o.getCachedPaths = v; return this; }
+            public Builder GetGlobalPaths(System.Func<System.Collections.Generic.List<GlobalTerrainScanner.FacadePath>> v) { _o.getGlobalPaths = v; return this; }
+            public Options Build() { return _o; }
+        }
         private readonly TerrainController terrainController;
         private readonly PaintingController paintingController;
         private readonly System.Func<VegetationProfile> getCurrentProfile;
@@ -24,40 +63,28 @@ namespace MrTerrainPainter.Editor.Services
         private readonly System.Func<Vector3, Terrain> nearestTerrain;
         private readonly System.Func<System.Random> getRandom;
         private readonly System.Func<List<FacadeDetectionService.FacadePath>> getCachedPaths;
+        private readonly System.Func<List<GlobalTerrainScanner.FacadePath>> getGlobalPaths;
         private readonly bool allowWhenBrushToolActive;
         private Vector3 _lastPaintPos;
         private bool _hasLastPaintPos;
 
-        public SceneInteractionService(
-            TerrainController terrainController,
-            PaintingController paintingController,
-            System.Func<VegetationProfile> getCurrentProfile,
-            System.Func<List<Terrain>> getSelectedTerrains,
-            BrushSettings brush,
-            IFilterStrategy filterStrategy,
-            IPlacementOverrideStrategy placementStrategy,
-            System.Func<bool> isGenerateMode,
-            System.Func<bool> isPaintMode,
-            System.Action markSceneDirty,
-            System.Func<Vector3, Terrain> nearestTerrain,
-            System.Func<System.Random> getRandom,
-            bool allowWhenBrushToolActive = false,
-            System.Func<List<FacadeDetectionService.FacadePath>> getCachedPaths = null)
+        public SceneInteractionService(Options o)
         {
-            this.terrainController = terrainController;
-            this.paintingController = paintingController;
-            this.getCurrentProfile = getCurrentProfile;
-            this.getSelectedTerrains = getSelectedTerrains;
-            this.brush = brush;
-            this.filterStrategy = filterStrategy;
-            this.placementStrategy = placementStrategy;
-            this.isGenerateMode = isGenerateMode;
-            this.isPaintMode = isPaintMode;
-            this.markSceneDirty = markSceneDirty;
-            this.nearestTerrain = nearestTerrain;
-            this.getRandom = getRandom;
-            this.getCachedPaths = getCachedPaths;
-            this.allowWhenBrushToolActive = allowWhenBrushToolActive;
+            this.terrainController = o.terrainController;
+            this.paintingController = o.paintingController;
+            this.getCurrentProfile = o.getCurrentProfile;
+            this.getSelectedTerrains = o.getSelectedTerrains;
+            this.brush = o.brush;
+            this.filterStrategy = o.filterStrategy;
+            this.placementStrategy = o.placementStrategy;
+            this.isGenerateMode = o.isGenerateMode;
+            this.isPaintMode = o.isPaintMode;
+            this.markSceneDirty = o.markSceneDirty;
+            this.nearestTerrain = o.nearestTerrain;
+            this.getRandom = o.getRandom;
+            this.getCachedPaths = o.getCachedPaths;
+            this.getGlobalPaths = o.getGlobalPaths;
+            this.allowWhenBrushToolActive = o.allowWhenBrushToolActive;
             MrTerrainPainter.Editor.Tools.MTPBrushContext.BrushReplaced += OnBrushReplaced;
         }
 
@@ -97,9 +124,26 @@ namespace MrTerrainPainter.Editor.Services
 
         private void RenderCachedFacades()
         {
+            var gpaths = getGlobalPaths != null ? getGlobalPaths.Invoke() : null;
             var paths = getCachedPaths != null ? getCachedPaths.Invoke() : null;
-            if (paths == null || paths.Count == 0) return;
             var cfg = MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+            if (gpaths != null && gpaths.Count > 0)
+            {
+                var color = cfg != null ? cfg.facadePreviewBottomColor : new Color(0f, 1f, 0f, 0.8f);
+                foreach (var gp in gpaths)
+                {
+                    var pts = gp.WorldPoints;
+                    if (pts == null || pts.Count < 2) continue;
+                    Handles.color = color;
+                    Handles.DrawAAPolyLine(3f, pts.ToArray());
+                    float total = 0f;
+                    for (int i = 0; i < pts.Count - 1; i++) total += Vector3.Distance(pts[i], pts[i + 1]);
+                    Handles.Label(pts[0] + Vector3.up * 0.25f, $"Length: {total:F1}m");
+                    Handles.Label(pts[pts.Count - 1] + Vector3.up * 0.25f, $"Length: {total:F1}m");
+                }
+                return;
+            }
+            if (paths == null || paths.Count == 0) return;
             var bottomColor = cfg != null ? cfg.facadePreviewBottomColor : new Color(0f, 1f, 0f, 0.8f);
             var topColor = cfg != null ? cfg.facadePreviewTopColor : new Color(1f, 0.2f, 0.2f, 0.8f);
             foreach (var path in paths)

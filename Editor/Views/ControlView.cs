@@ -64,7 +64,7 @@ namespace MrTerrainPainter.Editor.Views
             }
 
             lv.selectionType = SelectionType.None;
-            lv.reorderable = true;
+            lv.reorderable = false;
             lv.itemsSource = availableProfiles;
             lv.virtualizationMethod = CollectionVirtualizationMethod.DynamicHeight;
             lv.RegisterCallback<GeometryChangedEvent>(e =>
@@ -187,9 +187,12 @@ namespace MrTerrainPainter.Editor.Views
             {
                 if (evt.button != 0) return;
                 if (profile == null) return;
-                cb.SetCurrentProfile?.Invoke(profile);
-                cb.ResetSelectionForProfileChange?.Invoke();
-                cb.RefreshAllUI?.Invoke();
+                MrTerrainPainter.Editor.Utils.UIThrottle.RunNextFrame(() =>
+                {
+                    cb.SetCurrentProfile?.Invoke(profile);
+                    cb.ResetSelectionForProfileChange?.Invoke();
+                    cb.RefreshAllUI?.Invoke();
+                });
                 evt.StopPropagation();
             });
 
@@ -199,7 +202,6 @@ namespace MrTerrainPainter.Editor.Views
             }
 
             // 删除按钮
-            if (delBtn.userData is Action oldDelHandler) delBtn.clicked -= oldDelHandler;
             void newDelHandler()
             {
                 if (profile == null) return;
@@ -209,8 +211,7 @@ namespace MrTerrainPainter.Editor.Views
                 cb.ReloadAvailableProfiles?.Invoke();
                 cb.RefreshAllUI?.Invoke();
             }
-            delBtn.userData = (Action)newDelHandler;
-            delBtn.clicked += (Action)newDelHandler;
+            MrTerrainPainter.Editor.Utils.SubscriptionGuard.ResetClick(delBtn, newDelHandler);
 
             // Profile 字段变更
             if (profileFld != null)
@@ -218,7 +219,6 @@ namespace MrTerrainPainter.Editor.Views
                 profileFld.objectType = typeof(VegetationProfile);
                 profileFld.allowSceneObjects = false;
                 profileFld.SetValueWithoutNotify(profile);
-                if (profileFld.userData is EventCallback<ChangeEvent<UnityEngine.Object>> oldProfileCb) profileFld.UnregisterCallback(oldProfileCb);
                 EventCallback<ChangeEvent<UnityEngine.Object>> newProfileCb = evt =>
                 {
                     if (evt.newValue is not VegetationProfile p) return;
@@ -227,8 +227,7 @@ namespace MrTerrainPainter.Editor.Views
                     cb.RefreshAllUI?.Invoke();
                     if (nameLabel != null) nameLabel.text = p.name;
                 };
-                profileFld.userData = newProfileCb;
-                profileFld.RegisterCallback(newProfileCb);
+                MrTerrainPainter.Editor.Utils.SubscriptionGuard.ResetObjectField(profileFld, newProfileCb);
             }
 
             // 复选：批量生成用
@@ -240,8 +239,6 @@ namespace MrTerrainPainter.Editor.Views
                 if (isExtra) row.AddToClassList("profile-row--checked");
                 else row.RemoveFromClassList("profile-row--checked");
 
-                var oldSelectCb = selectToggle.userData as EventCallback<ChangeEvent<bool>>;
-                if (oldSelectCb != null) selectToggle.UnregisterCallback(oldSelectCb);
                 EventCallback<ChangeEvent<bool>> newSelectCb = evt =>
                 {
                     bool on = evt.newValue;
@@ -258,34 +255,67 @@ namespace MrTerrainPainter.Editor.Views
                         row.RemoveFromClassList("profile-row--checked");
                     }
                 };
-                selectToggle.userData = newSelectCb;
-                selectToggle.RegisterCallback(newSelectCb);
+                MrTerrainPainter.Editor.Utils.SubscriptionGuard.ResetToggle(selectToggle, newSelectCb);
             }
 
             // 缩略图区域
-            thumbs.Clear();
             thumbs.pickingMode = PickingMode.Position;
             thumbs.style.flexDirection = FlexDirection.Row;
             thumbs.style.flexWrap = Wrap.Wrap;
             thumbs.style.justifyContent = Justify.FlexStart;
             if (profile != null && profile.Items != null)
             {
+                int desired = 0;
                 var addArea = makeDraggableArea?.Invoke(profile);
-                if (addArea != null) thumbs.Add(addArea);
+                if (addArea != null)
+                {
+                    if (thumbs.childCount == 0) thumbs.Add(addArea);
+                    else thumbs.Insert(0, addArea);
+                    desired++;
+                }
                 var count = Math.Min(9, profile.Items.Count);
                 for (int i = 0; i < count; i++)
                 {
                     var item = profile.Items[i];
                     var thumb = makeThumb?.Invoke(profile, item, i);
-                    if (thumb != null) thumbs.Add(thumb);
+                    int idx = desired + i;
+                    if (thumb == null) continue;
+                    if (thumbs.childCount > idx)
+                    {
+                        thumbs.RemoveAt(idx);
+                        thumbs.Insert(idx, thumb);
+                    }
+                    else
+                    {
+                        thumbs.Add(thumb);
+                    }
                 }
+                desired += count;
+                int total = desired;
                 var remaining = profile.Items.Count - count;
                 if (remaining > 0)
                 {
                     var more = new Label($"+{remaining}");
                     more.AddToClassList("thumb-item__placeholder");
-                    thumbs.Add(more);
+                    if (thumbs.childCount > desired)
+                    {
+                        thumbs.RemoveAt(desired);
+                        thumbs.Insert(desired, more);
+                    }
+                    else thumbs.Add(more);
+                    desired++;
                 }
+                while (thumbs.childCount > desired) thumbs.RemoveAt(thumbs.childCount - 1);
+                MrTerrainPainter.Editor.Utils.UIThrottle.RunOnPanel(row, () =>
+                {
+                    float w = Mathf.Max(thumbs.resolvedStyle.width, row.resolvedStyle.width - 40f);
+                    float cell = ThumbSize + ThumbGap;
+                    int cols = Mathf.Max(1, Mathf.FloorToInt(w / Mathf.Max(1f, cell)));
+                    int rows = Mathf.Max(1, Mathf.CeilToInt(Mathf.Max(1, total) / cols));
+                    float headerH = 48f;
+                    float thumbsH = rows * cell + 12f;
+                    row.style.minHeight = headerH + thumbsH;
+                });
             }
         }
     }

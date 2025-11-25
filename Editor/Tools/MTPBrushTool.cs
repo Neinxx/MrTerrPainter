@@ -27,31 +27,32 @@ namespace MrTerrainPainter.Editor.Tools
                 () => new Vector2(0f, 1000f),
                 () => new Vector2(0f, 90f)
             );
-            sceneService = new SceneInteractionService(
-                terrainController,
-                paintingController,
-                () => MTPBrushContext.CurrentProfile,
-                () => new System.Collections.Generic.List<Terrain>(terrainController.GetSelectedTerrains()),
-                MTPBrushContext.Brush,
-                filter,
-                placement,
-                () => false,
-                () => true,
-                () => MrTerrainPainter.Editor.Utils.EditorSceneUtils.MarkSceneDirty(),
-                pos =>
+            var opts = new SceneInteractionService.Builder()
+                .TerrainController(terrainController)
+                .PaintingController(paintingController)
+                .GetCurrentProfile(() => MTPBrushContext.CurrentProfile)
+                .GetSelectedTerrains(() => new System.Collections.Generic.List<Terrain>(terrainController.GetSelectedTerrains()))
+                .Brush(MTPBrushContext.Brush)
+                .FilterStrategy(filter)
+                .PlacementStrategy(placement)
+                .IsGenerateMode(() => false)
+                .IsPaintMode(() => true)
+                .MarkSceneDirty(() => MrTerrainPainter.Editor.Utils.EditorSceneUtils.MarkSceneDirty())
+                .NearestTerrain(pos =>
                 {
                     if (terrainController.TryFindNearestTerrain(pos, out var nearest)) return nearest;
                     return null;
-                },
-                () =>
+                })
+                .GetRandom(() =>
                 {
                     var p = MTPBrushContext.CurrentProfile;
                     var seed = p != null ? p.randomSeed : 12345;
                     if (rnd == null || lastSeed != seed) { rnd = new System.Random(seed); lastSeed = seed; }
                     return rnd;
-                },
-                true
-            );
+                })
+                .AllowWhenBrushToolActive(true)
+                .Build();
+            sceneService = new SceneInteractionService(opts);
         }
 
         public override void OnToolGUI(EditorWindow window)

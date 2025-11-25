@@ -17,6 +17,29 @@ namespace MrTerrainPainter.Editor.State
     /// </summary>
     public class PainterSession : IDisposable
     {
+        public class SessionInitOptions
+        {
+            public Action onRefreshList;
+            public Action onRefreshPreview;
+            public Action onUpdateProperties;
+            public Func<bool> isGenerateMode;
+            public Func<bool> isPaintMode;
+            public Func<Vector3, Terrain> findNearestTerrain;
+            public Action markSceneDirty;
+        }
+
+        public class SessionInitBuilder
+        {
+            private readonly SessionInitOptions _o = new SessionInitOptions();
+            public SessionInitBuilder OnRefreshList(Action a) { _o.onRefreshList = a; return this; }
+            public SessionInitBuilder OnRefreshPreview(Action a) { _o.onRefreshPreview = a; return this; }
+            public SessionInitBuilder OnUpdateProperties(Action a) { _o.onUpdateProperties = a; return this; }
+            public SessionInitBuilder IsGenerateMode(Func<bool> f) { _o.isGenerateMode = f; return this; }
+            public SessionInitBuilder IsPaintMode(Func<bool> f) { _o.isPaintMode = f; return this; }
+            public SessionInitBuilder FindNearestTerrain(Func<Vector3, Terrain> f) { _o.findNearestTerrain = f; return this; }
+            public SessionInitBuilder MarkSceneDirty(Action a) { _o.markSceneDirty = a; return this; }
+            public SessionInitOptions Build() { return _o; }
+        }
         #region Core Data (配置与核心数据)
 
         public MrTerrainPainterConfig Config { get; set; }
@@ -104,14 +127,7 @@ namespace MrTerrainPainter.Editor.State
         /// <summary>
         /// 初始化所有控制器并建立依赖关系
         /// </summary>
-        public void InitializeControllers(
-            Action onRefreshList,
-            Action onRefreshPreview,
-            Action onUpdateProperties,
-            Func<bool> isGenerateMode,
-            Func<bool> isPaintMode,
-            Func<Vector3, Terrain> findNearestTerrain,
-            Action markSceneDirty)
+        public void InitializeControllers(SessionInitOptions opts)
         {
             EditorState = new EditorState();
 
@@ -125,9 +141,9 @@ namespace MrTerrainPainter.Editor.State
             // 2. 初始化控制器
             RefreshController = new RefreshController(
                 EditorState,
-                onRefreshList,
-                onRefreshPreview,
-                onUpdateProperties
+                opts.onRefreshList,
+                opts.onRefreshPreview,
+                opts.onUpdateProperties
             );
 
             PrefabAssignment = new PrefabAssignmentController(
@@ -158,22 +174,45 @@ namespace MrTerrainPainter.Editor.State
             );
 
             // 4. 初始化场景交互服务
-            SceneService = new SceneInteractionService(
-                TerrainController,
-                PaintingController,
-                () => CurrentProfile,
-                () => SelectedTerrains,
-                Brush,
-                _filterStrategy,
-                _placementStrategy,
-                isGenerateMode,
-                isPaintMode,
-                markSceneDirty,
-                findNearestTerrain,
-                EnsureRandom,
-                false,
-                () => CachedFacadePaths
-            );
+            var sceneOpts = new SceneInteractionService.Builder()
+                .TerrainController(TerrainController)
+                .PaintingController(PaintingController)
+                .GetCurrentProfile(() => CurrentProfile)
+                .GetSelectedTerrains(() => SelectedTerrains)
+                .Brush(Brush)
+                .FilterStrategy(_filterStrategy)
+                .PlacementStrategy(_placementStrategy)
+                .IsGenerateMode(opts.isGenerateMode)
+                .IsPaintMode(opts.isPaintMode)
+                .MarkSceneDirty(opts.markSceneDirty)
+                .NearestTerrain(opts.findNearestTerrain)
+                .GetRandom(EnsureRandom)
+                .AllowWhenBrushToolActive(false)
+                .GetCachedPaths(() => CachedFacadePaths)
+                .GetGlobalPaths(() => GlobalFacadePaths)
+                .Build();
+            SceneService = new SceneInteractionService(sceneOpts);
+        }
+
+        public void InitializeControllers(
+            Action onRefreshList,
+            Action onRefreshPreview,
+            Action onUpdateProperties,
+            Func<bool> isGenerateMode,
+            Func<bool> isPaintMode,
+            Func<Vector3, Terrain> findNearestTerrain,
+            Action markSceneDirty)
+        {
+            var opts = new SessionInitBuilder()
+                .OnRefreshList(onRefreshList)
+                .OnRefreshPreview(onRefreshPreview)
+                .OnUpdateProperties(onUpdateProperties)
+                .IsGenerateMode(isGenerateMode)
+                .IsPaintMode(isPaintMode)
+                .FindNearestTerrain(findNearestTerrain)
+                .MarkSceneDirty(markSceneDirty)
+                .Build();
+            InitializeControllers(opts);
         }
 
         public void ApplyConfigDefaults()
@@ -322,67 +361,26 @@ namespace MrTerrainPainter.Editor.State
         {
             if (!AutoPopulateSelectedTerrains()) return;
             ClearFacadeCache();
+            ClearGlobalFacadeCache();
             var prof = CurrentProfile;
             var item = prof?.Items?.FirstOrDefault(it => it != null && it.prefabType == PrefabType.Landscape);
             if (item == null) return;
             var cfg = ConfigTools.GetCachedConfig();
             float eps = cfg != null ? Mathf.Max(0.01f, cfg.facadeRdpEpsilon) : 0.5f;
             float spacing = item.CoreSpacing;
-            foreach (var t in SelectedTerrains)
+            if (cfg != null && cfg.useContourDetection)
             {
-                var bounds = new Bounds(t.transform.position + new Vector3(t.terrainData.size.x * 0.5f, 0f, t.terrainData.size.z * 0.5f), new Vector3(t.terrainData.size.x, 0.1f, t.terrainData.size.z));
-                if (cfg != null && cfg.useContourDetection)
+                var terrains = SelectedTerrains;
+                float slopeDeg = Mathf.Clamp(cfg.contourSlopeDeg, 0f, 90f);
+                float minLen = 5f;
+                var global = Services.GlobalTerrainScanner.ScanAllTerrains(terrains, slopeDeg, minLen, eps);
+                GlobalFacadePaths.AddRange(global);
+            }
+            else
+            {
+                foreach (var t in SelectedTerrains)
                 {
-                    var contourPaths = ContourDetectionService.ScanContours(t, bounds, cfg.contourSlopeDeg);
-                    foreach (var c in contourPaths)
-                    {
-                        if (c.Points == null || c.Points.Count < 2) continue;
-                        // RDP + 样条重采样（已近似在轮廓内消除锯齿）
-                        var pts = MrTerrainPainter.Editor.Utils.GeometryUtils.SimplifyPathRDP(c.Points, eps);
-                        if (pts == null || pts.Count < 2) continue;
-                        var rebuilt = new List<FacadeDetectionService.CliffSlice>();
-                        for (int i = 0; i < pts.Count - 1; i++)
-                        {
-                            Vector3 p0 = i > 0 ? pts[i - 1] : pts[i];
-                            Vector3 p1 = pts[i];
-                            Vector3 p2 = pts[i + 1];
-                            Vector3 p3 = i < pts.Count - 2 ? pts[i + 2] : p2;
-                            float segLen = Vector3.Distance(p1, p2);
-                            int steps = Mathf.Max(1, Mathf.CeilToInt(segLen / Mathf.Max(0.01f, spacing)));
-                            for (int k = 0; k <= steps; k++)
-                            {
-                                float tParam = steps == 0 ? 0f : (k / (float)steps);
-                                var pos = MrTerrainPainter.Editor.Utils.SplineUtils.GetPoint(p0, p1, p2, p3, tParam);
-                                float lag = Mathf.Max(0.01f, spacing * 0.05f);
-                                var ahead = MrTerrainPainter.Editor.Utils.SplineUtils.GetPoint(p0, p1, p2, p3, Mathf.Clamp01(tParam + lag));
-                                var tan = ahead - pos; tan.y = 0f; if (tan.sqrMagnitude < 1e-6f) tan = p2 - p1; tan = tan.sqrMagnitude > 1e-6f ? tan.normalized : Vector3.right;
-                                var up = Vector3.up;
-                                var n = Vector3.Cross(tan, up).normalized;
-                                // 近似高度：采样pos与沿-n方向偏移的高度差
-                                float h0 = t.terrainData.GetInterpolatedHeight((pos.x - t.transform.position.x) / t.terrainData.size.x, (pos.z - t.transform.position.z) / t.terrainData.size.z);
-                                var back = pos - n * Mathf.Max(0.5f, item.edgeReferenceWidthMeters);
-                                float h1 = t.terrainData.GetInterpolatedHeight((back.x - t.transform.position.x) / t.terrainData.size.x, (back.z - t.transform.position.z) / t.terrainData.size.z);
-                                float height = Mathf.Max(0f, h1 - h0);
-                                var slice = new FacadeDetectionService.CliffSlice
-                                {
-                                    BottomPosition = new Vector3(pos.x, h0, pos.z),
-                                    TopPosition = new Vector3(pos.x, h0 + height, pos.z),
-                                    Normal = n,
-                                    Direction = up
-                                };
-                                rebuilt.Add(slice);
-                            }
-                        }
-                        if (rebuilt.Count > 1)
-                        {
-                            float total = 0f;
-                            for (int i = 0; i < rebuilt.Count - 1; i++) total += Vector3.Distance(rebuilt[i].BottomPosition, rebuilt[i + 1].BottomPosition);
-                            CachedFacadePaths.Add(new FacadeDetectionService.FacadePath { SourceTerrain = t, SmoothSlices = rebuilt, TotalLength = total });
-                        }
-                    }
-                }
-                else
-                {
+                    var bounds = new Bounds(t.transform.position + new Vector3(t.terrainData.size.x * 0.5f, 0f, t.terrainData.size.z * 0.5f), new Vector3(t.terrainData.size.x, 0.1f, t.terrainData.size.z));
                     var paths = FacadeDetectionService.ScanTerrainForFacades(t, bounds, item, eps, spacing);
                     CachedFacadePaths.AddRange(paths);
                 }
@@ -496,5 +494,7 @@ namespace MrTerrainPainter.Editor.State
         #endregion
         public List<FacadeDetectionService.FacadePath> CachedFacadePaths { get; } = new List<FacadeDetectionService.FacadePath>();
         public void ClearFacadeCache() => CachedFacadePaths.Clear();
+        public List<Services.GlobalTerrainScanner.FacadePath> GlobalFacadePaths { get; } = new List<Services.GlobalTerrainScanner.FacadePath>();
+        public void ClearGlobalFacadeCache() => GlobalFacadePaths.Clear();
     }
 }

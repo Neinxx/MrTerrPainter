@@ -11,12 +11,22 @@ namespace MrTerrainPainter.Editor.Utils
             if (styleSheet == null)
             {
                 reason = "样式未配置：请在 Settings 中设置 StylesUSS";
-                root.Add(new Label(reason));
+                var box = new VisualElement();
+                var lab = new Label(reason);
+                var btn = new Button(() => MrTerrainPainter.Editor.MrTerrainPainterSettingsWindow.Open()) { text = "打开设置" };
+                box.Add(lab);
+                box.Add(btn);
+                root.Add(box);
                 return false;
             }
             if (!Config.ConfigTools.IsComplete(cfg, out reason))
             {
-                root.Add(new Label(reason));
+                var box = new VisualElement();
+                var lab = new Label(reason);
+                var btn = new Button(() => MrTerrainPainter.Editor.MrTerrainPainterSettingsWindow.Open()) { text = "打开设置" };
+                box.Add(lab);
+                box.Add(btn);
+                root.Add(box);
                 return false;
             }
             root.styleSheets.Add(styleSheet);

@@ -17,7 +17,7 @@ MonoBehaviour:
       type: 3}
     weight: 0.121
     prefabType: 2
-    uniformScaleRange: {x: 0.44444442, y: 1.8703701}
+    uniformScaleRange: {x: 0.44444442, y: 2.9920712}
     yRotationRange: {x: 0, y: 360}
     heightRange: {x: 0, y: 1000}
     slopeRange: {x: 0, y: 90}
@@ -81,7 +81,7 @@ MonoBehaviour:
       type: 3}
     weight: 0.267
     prefabType: 0
-    uniformScaleRange: {x: 0.33333337, y: 1.5925928}
+    uniformScaleRange: {x: 0.33333337, y: 2.8242643}
     yRotationRange: {x: 0, y: 360}
     heightRange: {x: 0, y: 1000}
     slopeRange: {x: 0, y: 90}
@@ -113,7 +113,7 @@ MonoBehaviour:
       type: 3}
     weight: 0.625
     prefabType: 2
-    uniformScaleRange: {x: 1, y: 2.6618078}
+    uniformScaleRange: {x: 1, y: 3.6735382}
     yRotationRange: {x: 0, y: 360}
     heightRange: {x: 0, y: 1000}
     slopeRange: {x: 0, y: 90}
@@ -144,7 +144,7 @@ MonoBehaviour:
   - prefab: {fileID: 589605590901698377, guid: 1cbc17b5a53d9da468720ce8ee8f304b, type: 3}
     weight: 0.435
     prefabType: 2
-    uniformScaleRange: {x: 1, y: 3.3177843}
+    uniformScaleRange: {x: 1, y: 4.3735027}
     yRotationRange: {x: 0, y: 360}
     heightRange: {x: 0, y: 1000}
     slopeRange: {x: 0, y: 90}

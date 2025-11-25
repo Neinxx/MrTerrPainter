@@ -50,6 +50,7 @@ namespace MrTerrainPainter.Editor
         internal VisualElement startRoot;
 
         public static event Action<bool, bool, bool> WindowStateChanged;
+        public static event Action ProfilesUpdated;
 
         // --- 4. 兼容性代理属性 ---
         public Controllers.TerrainController terrainController => session?.TerrainController;
@@ -89,15 +90,16 @@ namespace MrTerrainPainter.Editor
             session = new PainterSession { Config = config };
             session.ApplyConfigDefaults();
 
-            session.InitializeControllers(
-                onRefreshList: RefreshProfileListUI,
-                onRefreshPreview: RefreshPreviewUI,
-                onUpdateProperties: UpdatePropertyPanel,
-                isGenerateMode: () => currentTab == TabType.Generate,
-                isPaintMode: () => currentTab == TabType.Paint,
-                findNearestTerrain: (pos) => session.TerrainController.NearestTerrain(pos, session.SelectedTerrains),
-                markSceneDirty: EditorSceneUtils.MarkSceneDirty
-            );
+            var initOpts = new PainterSession.SessionInitBuilder()
+                .OnRefreshList(RefreshProfileListUI)
+                .OnRefreshPreview(RefreshPreviewUI)
+                .OnUpdateProperties(UpdatePropertyPanel)
+                .IsGenerateMode(() => currentTab == TabType.Generate)
+                .IsPaintMode(() => currentTab == TabType.Paint)
+                .FindNearestTerrain((pos) => session.TerrainController.NearestTerrain(pos, session.SelectedTerrains))
+                .MarkSceneDirty(EditorSceneUtils.MarkSceneDirty)
+                .Build();
+            session.InitializeControllers(initOpts);
 
             Tools.MTPBrushContext.SetSharedBrush(session.Brush);
             Tools.MTPBrushContext.SetConfig(config);
@@ -131,9 +133,11 @@ namespace MrTerrainPainter.Editor
 
         private void OnProjectChanged()
         {
-            session?.ReloadAvailableProfiles();
-            Editor.Services.BrushPainter.ClearCache();
-            RefreshAllUI();
+            var batch = new Editor.Utils.UIUpdateBatch();
+            batch.Enqueue(() => session?.ReloadAvailableProfiles());
+            batch.Enqueue(() => Editor.Services.BrushPainter.ClearCache());
+            batch.Enqueue(() => RefreshAllUI());
+            batch.Enqueue(() => ProfilesUpdated?.Invoke());
         }
 
         private void OnSceneOpened(UnityEngine.SceneManagement.Scene scene, UnityEditor.SceneManagement.OpenSceneMode mode)
@@ -176,6 +180,7 @@ namespace MrTerrainPainter.Editor
 
                 // 刷新 Overlay 状态
                 CelebrateMappingCompleted(); // 如果 Mapping 修复了，更新 Start 页状态
+                ProfilesUpdated?.Invoke();
             });
         }
 

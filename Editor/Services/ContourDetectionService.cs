@@ -163,5 +163,40 @@ namespace MrTerrainPainter.Editor.Services
             }
             return paths;
         }
+
+        public static List<FacadeDetectionService.CliffSlice> ConvertToSlices(ContourPath path, Terrain t)
+        {
+            var slices = new List<FacadeDetectionService.CliffSlice>();
+            if (path == null || path.Points == null || path.Points.Count < 2 || t == null) return slices;
+            for (int i = 0; i < path.Points.Count; i++)
+            {
+                var pos = path.Points[i];
+                if (MrTerrainPainter.Editor.Utils.TerrainUtils.TryGetHeightAndNormal(t, pos, out float h, out Vector3 n))
+                {
+                    pos.y = h;
+                }
+                var prev = path.Points[Mathf.Max(0, i - 1)];
+                var next = path.Points[Mathf.Min(path.Points.Count - 1, i + 1)];
+                var tangent = (next - prev);
+                tangent.y = 0f;
+                if (tangent.sqrMagnitude < 1e-6f) tangent = Vector3.forward;
+                tangent = tangent.normalized;
+                var up = Vector3.up;
+                var normal = Vector3.Cross(tangent, up).normalized;
+                // 修正法线指向低处
+                float hForward = t.SampleHeight(pos + normal * 0.5f);
+                float hBack = t.SampleHeight(pos - normal * 0.5f);
+                if (hBack < hForward) normal = -normal;
+                float estimatedHeight = 2f;
+                slices.Add(new FacadeDetectionService.CliffSlice
+                {
+                    BottomPosition = pos,
+                    TopPosition = pos + Vector3.up * estimatedHeight,
+                    Normal = normal,
+                    Direction = up
+                });
+            }
+            return slices;
+        }
     }
 }

@@ -237,7 +237,6 @@ namespace MrTerrainPainter.Editor.Config
         public static void Save(MrTerrainPainterConfig cfg)
         {
             if (cfg == null) return;
-            Debug.Log("1");
             EditorUtility.SetDirty(cfg);
             AssetDatabase.SaveAssets();
 

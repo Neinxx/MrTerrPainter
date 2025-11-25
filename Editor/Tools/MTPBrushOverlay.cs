@@ -74,7 +74,7 @@ namespace MrTerrainPainter.Editor.Tools
             SubscribeEvents();
 
             // 6. 绑定数据与初始状态
-            BindBrushSettings(MTPBrushContext.Brush);
+            new BrushBinder().Bind(MTPBrushContext.Brush, _sizeSlider, _strengthSlider, _densitySlider, _hardnessSlider, _distributionField, _mixExtraToggle, _spacingFactorSlider, _spacingAbsSlider, _useAbsSpacingToggle);
             RefreshProfilesIfNeeded();
             RefreshVisibility(cfg);
 
@@ -149,6 +149,7 @@ namespace MrTerrainPainter.Editor.Tools
             ConfigTools.NormalDirectionChanged += OnNormalDirectionExternalChanged;
 
             MrTerrainPainterWindow.WindowStateChanged += OnWindowStateChanged;
+            MrTerrainPainterWindow.ProfilesUpdated += OnProfilesUpdated;
 
             MTPBrushContext.BrushReplaced += OnBrushReplaced;
             MTPBrushContext.ProfileChanged += OnExternalProfileChanged;
@@ -169,6 +170,7 @@ namespace MrTerrainPainter.Editor.Tools
             ConfigTools.NormalDirectionChanged -= OnNormalDirectionExternalChanged;
 
             MrTerrainPainterWindow.WindowStateChanged -= OnWindowStateChanged;
+            MrTerrainPainterWindow.ProfilesUpdated -= OnProfilesUpdated;
 
             MTPBrushContext.BrushReplaced -= OnBrushReplaced;
             MTPBrushContext.ProfileChanged -= OnExternalProfileChanged;
@@ -209,75 +211,14 @@ namespace MrTerrainPainter.Editor.Tools
             });
         }
 
-        private void BindBrushSettings(BrushSettings brush)
-        {
-            UnbindBrushSettings();
-            _boundBrush = brush;
-            if (_boundBrush == null) return;
+        private void BindBrushSettings(BrushSettings brush) { }
 
-            _boundBrush.Changed += OnBrushPropertyChanged;
-
-            // 使用缓存的 UI 元素进行绑定
-            BindControl(_sizeSlider, () => brush.size, v => brush.size = v);
-            BindControl(_strengthSlider, () => brush.strength, v => brush.strength = v);
-            BindControl(_densitySlider, () => brush.densityScale, v => brush.densityScale = v);
-            BindControl(_hardnessSlider, () => brush.hardness, v => brush.hardness = v);
-
-            BindControl(_spacingFactorSlider, () => brush.strokeSpacingFactor, v => brush.strokeSpacingFactor = v);
-            BindControl(_spacingAbsSlider, () => brush.strokeSpacingAbsolute, v => brush.strokeSpacingAbsolute = v);
-
-            BindControl(_mixExtraToggle, () => brush.mixExtraProfiles, v => brush.mixExtraProfiles = v);
-
-            // Enum 特殊处理
-            if (_distributionField != null)
-            {
-                _distributionField.Init(brush.distribution);
-                _distributionField.SetValueWithoutNotify(brush.distribution);
-                _distributionField.RegisterValueChangedCallback(evt => brush.distribution = (DistributionType)evt.newValue);
-            }
-
-            // 联动逻辑：绝对间距
-            if (_useAbsSpacingToggle != null)
-            {
-                _useAbsSpacingToggle.SetValueWithoutNotify(brush.useAbsoluteStrokeSpacing);
-                _spacingAbsSlider?.SetEnabled(brush.useAbsoluteStrokeSpacing);
-
-                _useAbsSpacingToggle.RegisterValueChangedCallback(evt =>
-                {
-                    brush.useAbsoluteStrokeSpacing = evt.newValue;
-                    _spacingAbsSlider?.SetEnabled(evt.newValue);
-                });
-            }
-        }
-
-        private void UnbindBrushSettings()
-        {
-            if (_boundBrush != null)
-            {
-                _boundBrush.Changed -= OnBrushPropertyChanged;
-                _boundBrush = null;
-            }
-        }
+        private void UnbindBrushSettings() { }
 
         /// <summary>
         /// UI 双向绑定响应：数据变了 -> 更新 UI
         /// </summary>
-        private void OnBrushPropertyChanged(string propertyName)
-        {
-            var b = _boundBrush;
-            if (b == null) return;
-
-            switch (propertyName)
-            {
-                case nameof(BrushSettings.size): UpdateValue(_sizeSlider, b.size); break;
-                case nameof(BrushSettings.strength): UpdateValue(_strengthSlider, b.strength); break;
-                case nameof(BrushSettings.densityScale): UpdateValue(_densitySlider, b.densityScale); break;
-                case nameof(BrushSettings.hardness): UpdateValue(_hardnessSlider, b.hardness); break;
-                case nameof(BrushSettings.strokeSpacingFactor): UpdateValue(_spacingFactorSlider, b.strokeSpacingFactor); break;
-                case nameof(BrushSettings.strokeSpacingAbsolute): UpdateValue(_spacingAbsSlider, b.strokeSpacingAbsolute); break;
-            }
-            RequestSceneRepaint();
-        }
+        private void OnBrushPropertyChanged(string propertyName) { }
 
         #endregion
 
@@ -296,21 +237,13 @@ namespace MrTerrainPainter.Editor.Tools
             if (_profilesDirty || _cachedProfiles.Count == 0)
             {
                 _cachedProfiles.Clear();
-
-                // 优先从 Session 获取
                 if (MrTerrainPainterWindow.TryGet(out var win) && win.Session != null)
                 {
                     _cachedProfiles.AddRange(win.Session.AvailableProfiles);
                 }
                 else
                 {
-                    // Session 不存在时扫描资源库
-                    foreach (var guid in AssetDatabase.FindAssets("t:VegetationProfile"))
-                    {
-                        var path = AssetDatabase.GUIDToAssetPath(guid);
-                        var vp = AssetDatabase.LoadAssetAtPath<VegetationProfile>(path);
-                        if (vp != null) _cachedProfiles.Add(vp);
-                    }
+                    _profilesDirty = false;
                 }
 
                 _profilesDirty = false; // 重置脏标记
@@ -318,7 +251,14 @@ namespace MrTerrainPainter.Editor.Tools
                 // 同步更新下拉框的“选项列表” (Choices)
                 if (_profilesDropdown != null)
                 {
-                    _profilesDropdown.choices = _cachedProfiles.Select(p => p ? p.name : "<Null>").ToList();
+                    var next = _cachedProfiles.Select(p => p ? p.name : "<Null>").ToList();
+                    var prev = _profilesDropdown.choices ?? new System.Collections.Generic.List<string>();
+                    bool same = prev.Count == next.Count;
+                    if (same)
+                    {
+                        for (int i = 0; i < prev.Count; i++) { if (prev[i] != next[i]) { same = false; break; } }
+                    }
+                    if (!same) _profilesDropdown.choices = next;
                 }
             }
 
@@ -452,6 +392,12 @@ namespace MrTerrainPainter.Editor.Tools
         {
             RefreshVisibility();
             RequestSceneRepaint();
+        }
+
+        private void OnProfilesUpdated()
+        {
+            _profilesDirty = true;
+            RefreshProfilesIfNeeded();
         }
 
         #endregion
