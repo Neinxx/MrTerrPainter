@@ -339,8 +339,31 @@ namespace MrTerrainPainter.Editor
         private void RefreshPreviewUI()
         {
             if (uiPreviewPrefabList == null) return;
-            RefreshProfileListUI();
-
+            uiPreviewPrefabList.Clear();
+            var profile = session.CurrentProfile;
+            if (profile == null || profile.Items == null) return;
+            var dragView = new Views.DraggableAddSlotView(
+                ConfigTools.GetDraggableAreaUxml(config),
+                new Views.DraggableAddSlotView.DraggableAddSlotViewCallbacks
+                {
+                    OpenPrefabPickerForNewItem = (p) => session.PrefabPicker?.OpenForNew(p),
+                    AddPrefabAsNewItem = (p, go) => session.PrefabAssignment?.AddPrefabAsNewItem(p, go)
+                }
+            );
+            var addArea = dragView.MakeDraggableArea(profile);
+            if (addArea != null) uiPreviewPrefabList.Add(addArea);
+            var thumbView = new Views.ThumbListView(
+                ConfigTools.GetPrefabIconUxml(config),
+                CreateThumbCallbacks()
+            );
+            int count = Mathf.Min(9, profile.Items.Count);
+            for (int i = 0; i < count; i++)
+            {
+                var item = profile.Items[i];
+                if (item != null) item.Index = i;
+                var ve = thumbView.MakeThumb(profile, item, i);
+                if (ve != null) uiPreviewPrefabList.Add(ve);
+            }
         }
 
         private void UpdatePropertyPanel() => propertyPanelView?.UpdateFromSelectedItem();

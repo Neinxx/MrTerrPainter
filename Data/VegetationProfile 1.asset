@@ -13,11 +13,11 @@ MonoBehaviour:
   m_Name: VegetationProfile 1
   m_EditorClassIdentifier: 
   items:
-  - prefab: {fileID: 7054060797056600678, guid: e6e38bb1a883aa44e911a1627ee066f6,
+  - prefab: {fileID: 7107062641963108685, guid: 46bb519eb6f2fb94584313abba825d25,
       type: 3}
     weight: 0.121
     prefabType: 2
-    uniformScaleRange: {x: 0.44444442, y: 2.9920712}
+    uniformScaleRange: {x: 1.004399, y: 3.1787224}
     yRotationRange: {x: 0, y: 360}
     heightRange: {x: 0, y: 1000}
     slopeRange: {x: 0, y: 90}
@@ -45,11 +45,13 @@ MonoBehaviour:
     facadeSmoothingMode: 0
     facadeSmoothingWindow: 3
     facadeSmoothingSigma: 1
+    placementSettings:
+      rid: -2
   - prefab: {fileID: 7596274264633063344, guid: 2c922a53da90d3c46b3104e1532940f5,
       type: 3}
     weight: 0.03
     prefabType: 2
-    uniformScaleRange: {x: 0.44444454, y: 3.0479968}
+    uniformScaleRange: {x: 0.39418507, y: 2.9977374}
     yRotationRange: {x: 0, y: 360}
     heightRange: {x: 0, y: 1000}
     slopeRange: {x: 0, y: 90}
@@ -77,6 +79,8 @@ MonoBehaviour:
     facadeSmoothingMode: 0
     facadeSmoothingWindow: 3
     facadeSmoothingSigma: 1
+    placementSettings:
+      rid: -2
   - prefab: {fileID: 7054060797056600678, guid: 1f3a4dfd8e286fb49aa99f262f5ff8a3,
       type: 3}
     weight: 0.267
@@ -109,38 +113,8 @@ MonoBehaviour:
     facadeSmoothingMode: 0
     facadeSmoothingWindow: 3
     facadeSmoothingSigma: 1
-  - prefab: {fileID: 6530072322093872315, guid: 8cb93ade096d25d4bb4d8b19bd6673f2,
-      type: 3}
-    weight: 0.625
-    prefabType: 2
-    uniformScaleRange: {x: 1, y: 3.6735382}
-    yRotationRange: {x: 0, y: 360}
-    heightRange: {x: 0, y: 1000}
-    slopeRange: {x: 0, y: 90}
-    baseDensity: 0.32
-    minSpacing: 1.5
-    alignToTerrainNormal: 1
-    edgeSlopeThreshold: 75
-    embedDepthRange: {x: 0.1, y: 0.3}
-    edgeReferenceWidthMeters: 1
-    edgeAutoHeight: 1
-    edgeReferenceHeightMeters: 1
-    edgeOffsets: {x: 0, y: 0, z: 0}
-    edgeLookAheadStep: 0.5
-    edgeMaxLookAhead: 5
-    edgeSlopeEnter: 30
-    edgeSlopeExit: 25
-    probeStep: 0.5
-    probeMaxDist: 6
-    referenceHeightMeters: 1
-    offsets: {x: 0, y: 0, z: 0}
-    edgeStacking: 0
-    edgeStackingOffsetMeters: 0
-    edgeTopScaleBias: 1
-    facadeScaleOffset: {x: 0, y: 0, z: 0}
-    facadeSmoothingMode: 0
-    facadeSmoothingWindow: 3
-    facadeSmoothingSigma: 1
+    placementSettings:
+      rid: -2
   - prefab: {fileID: 589605590901698377, guid: 1cbc17b5a53d9da468720ce8ee8f304b, type: 3}
     weight: 0.435
     prefabType: 2
@@ -172,39 +146,14 @@ MonoBehaviour:
     facadeSmoothingMode: 0
     facadeSmoothingWindow: 3
     facadeSmoothingSigma: 1
-  - prefab: {fileID: 8163843745520959520, guid: 39f16ce049bb4d641a433534ed6b9cbc,
-      type: 3}
-    weight: 0.096
-    prefabType: 2
-    uniformScaleRange: {x: 1, y: 4.663158}
-    yRotationRange: {x: 0, y: 360}
-    heightRange: {x: 0, y: 1000}
-    slopeRange: {x: 0, y: 90}
-    baseDensity: 0.44
-    minSpacing: 1.5
-    alignToTerrainNormal: 1
-    edgeSlopeThreshold: 75
-    embedDepthRange: {x: 0.1, y: 0.3}
-    edgeReferenceWidthMeters: 1
-    edgeAutoHeight: 1
-    edgeReferenceHeightMeters: 1
-    edgeOffsets: {x: 0, y: 0, z: 0}
-    edgeLookAheadStep: 0.5
-    edgeMaxLookAhead: 5
-    edgeSlopeEnter: 30
-    edgeSlopeExit: 25
-    probeStep: 0.5
-    probeMaxDist: 6
-    referenceHeightMeters: 1
-    offsets: {x: 0, y: 0, z: 0}
-    edgeStacking: 0
-    edgeStackingOffsetMeters: 0
-    edgeTopScaleBias: 1
-    facadeScaleOffset: {x: 0, y: 0, z: 0}
-    facadeSmoothingMode: 0
-    facadeSmoothingWindow: 3
-    facadeSmoothingSigma: 1
+    placementSettings:
+      rid: -2
   initialized: 1
   randomSeed: 12345
   baseDensity: 1
   minSpacing: 1.5
+  references:
+    version: 2
+    RefIds:
+    - rid: -2
+      type: {class: , ns: , asm: }

@@ -67,6 +67,7 @@ namespace MrTerrainPainter.Editor.Services
         private readonly bool allowWhenBrushToolActive;
         private Vector3 _lastPaintPos;
         private bool _hasLastPaintPos;
+        private IMouseState _state;
         private PreviewData _preview = new PreviewData();
         private double _lastPreviewTime;
         private const double _previewIntervalSeconds = 0.05; // 50ms throttle
@@ -107,6 +108,7 @@ namespace MrTerrainPainter.Editor.Services
             this.getGlobalPaths = o.getGlobalPaths;
             this.allowWhenBrushToolActive = o.allowWhenBrushToolActive;
             MrTerrainPainter.Editor.Tools.MTPBrushContext.BrushReplaced += OnBrushReplaced;
+            _state = new IdleState(this);
         }
 
         private void OnBrushReplaced()
@@ -144,16 +146,15 @@ namespace MrTerrainPainter.Editor.Services
             RenderBrushPreview(hasHit, hitPos, hitNormal, e);
             if (e.type == EventType.Repaint) RenderCachedFacades();
 
-            // 处理鼠标按下和拖拽事件
-            if (e.type == EventType.MouseDown || e.type == EventType.MouseDrag)
+            if (!hasHit) return;
+            if (!isPaintMode()) return;
+            if (e.type == EventType.MouseDown)
             {
-                if (!hasHit) return;
-                if (isPaintMode()) { HandlePaintMouse(e, hitTerrain, hitPos); return; }
+                if (e.button == 1) _state = new ErasingState(this);
+                else if (e.button == 0) _state = new PaintingState(this);
             }
-            else if (e.type == EventType.MouseUp)
-            {
-                _hasLastPaintPos = false;
-            }
+            if (e.type == EventType.MouseUp) { _state = new IdleState(this); _hasLastPaintPos = false; }
+            if (e.type == EventType.MouseDown || e.type == EventType.MouseDrag) _state.Handle(e, hitTerrain, hitPos);
         }
 
         private void RenderCachedFacades()
@@ -226,56 +227,58 @@ namespace MrTerrainPainter.Editor.Services
         }
 
         // 移除Generate模式的处理逻辑，确保只有绘画模式生效
-        private void HandlePaintMouse(Event e, Terrain hitTerrain, Vector3 hitPos)
+        private interface IMouseState { void Handle(Event e, Terrain terrain, Vector3 pos); }
+        private class IdleState : IMouseState
         {
-            Terrain terrain = hitTerrain;
-            if (terrain == null && terrainController != null)
+            private readonly SceneInteractionService s;
+            public IdleState(SceneInteractionService s) { this.s = s; }
+            public void Handle(Event e, Terrain terrain, Vector3 pos) { }
+        }
+        private class PaintingState : IMouseState
+        {
+            private readonly SceneInteractionService s;
+            public PaintingState(SceneInteractionService s) { this.s = s; }
+            public void Handle(Event e, Terrain terrain, Vector3 pos)
             {
-                if (terrainController.TryFindNearestTerrain(hitPos, out var nearest)) terrain = nearest;
-            }
-            if (terrain == null) return;
-
-            // 严格判断：只有右键（button == 1）且无修饰键时擦除
-            if (e.button == 1 && !e.shift && !e.control && !e.alt)
-            {
-                BrushPainter.Erase(terrain, hitPos, brush, true);
-                markSceneDirty?.Invoke();
-                e.Use();
-            }
-            // 严格判断：只有左键（button == 0）且无修饰键时绘制
-            else if (e.button == 0 && !e.shift && !e.control && !e.alt)
-            {
-                float factor = Mathf.Max(0f, brush.strokeSpacingFactor);
-                float spacing = brush.useAbsoluteStrokeSpacing ? brush.strokeSpacingAbsolute : brush.size * factor;
-                if (spacing <= 0f || !_hasLastPaintPos)
+                if (terrain == null && s.terrainController != null) { if (s.terrainController.TryFindNearestTerrain(pos, out var nearest)) terrain = nearest; }
+                if (terrain == null) return;
+                if (e.shift || e.control || e.alt) return;
+                float factor = Mathf.Max(0f, s.brush.strokeSpacingFactor);
+                float spacing = s.brush.useAbsoluteStrokeSpacing ? s.brush.strokeSpacingAbsolute : s.brush.size * factor;
+                if (spacing <= 0f || !s._hasLastPaintPos)
                 {
-                    VegetationPainterOnTerrain(terrain, hitPos);
-                    _lastPaintPos = hitPos;
-                    _hasLastPaintPos = true;
-                    e.Use();
-                    return;
+                    s.VegetationPainterOnTerrain(terrain, pos);
+                    s._lastPaintPos = pos; s._hasLastPaintPos = true; e.Use(); return;
                 }
                 float threshold = Mathf.Max(0.01f, spacing);
-                if ((hitPos - _lastPaintPos).sqrMagnitude >= threshold * threshold)
+                if ((pos - s._lastPaintPos).sqrMagnitude >= threshold * threshold)
                 {
-                    // FacadeStone+EdgeLine 检测失败阻止绘制
-                    var profile = getCurrentProfile?.Invoke();
-                    bool isFacadeEdgeMode = brush != null && brush.distribution == DistributionType.EdgeLine && profile != null && profile.Items.Any(it => it != null && it.prefabType == PrefabType.Landscape);
+                    var profile = s.getCurrentProfile?.Invoke();
+                    bool isFacadeEdgeMode = s.brush != null && s.brush.distribution == DistributionType.EdgeLine && profile != null && profile.Items.Any(it => it != null && it.prefabType == PrefabType.Landscape);
                     if (isFacadeEdgeMode)
                     {
                         var item = profile.Items.FirstOrDefault(it => it != null && it.prefabType == PrefabType.Landscape);
                         if (item != null)
                         {
-                            if (!FacadeDetectionService.TryDetectFacade(terrain, hitPos, item.edgeSlopeEnter, item.edgeSlopeExit, item.probeStep, item.probeMaxDist, out var _))
-                            {
-                                Handles.Label(hitPos + Vector3.up * 0.2f, "未检测到立面（坡度不足或探测范围不足）");
-                                return;
-                            }
+                            if (!FacadeDetectionService.TryDetectFacade(terrain, pos, item.edgeSlopeEnter, item.edgeSlopeExit, item.probeStep, item.probeMaxDist, out var _)) { Handles.Label(pos + Vector3.up * 0.2f, "未检测到立面（坡度不足或探测范围不足）"); return; }
                         }
                     }
-                    VegetationPainterOnTerrain(terrain, hitPos);
-                    _lastPaintPos = hitPos;
+                    s.VegetationPainterOnTerrain(terrain, pos);
+                    s._lastPaintPos = pos; e.Use();
                 }
+            }
+        }
+        private class ErasingState : IMouseState
+        {
+            private readonly SceneInteractionService s;
+            public ErasingState(SceneInteractionService s) { this.s = s; }
+            public void Handle(Event e, Terrain terrain, Vector3 pos)
+            {
+                if (terrain == null && s.terrainController != null) { if (s.terrainController.TryFindNearestTerrain(pos, out var nearest)) terrain = nearest; }
+                if (terrain == null) return;
+                if (e.shift || e.control || e.alt) return;
+                BrushPainter.Erase(terrain, pos, s.brush, true);
+                s.markSceneDirty?.Invoke();
                 e.Use();
             }
         }

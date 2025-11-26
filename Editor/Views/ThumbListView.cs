@@ -123,15 +123,26 @@ namespace MrTerrainPainter.Editor.Views
             }
             else
             {
-                // 处理空预制体的情况
-                thumb.AddToClassList(EmptyClassName);
-                if (icon != null)
+                // 处理空预制体与异步预览
+                if (go == null)
                 {
-                    icon.style.alignItems = Align.Center;
-                    icon.style.justifyContent = Justify.Center;
+                    thumb.AddToClassList(EmptyClassName);
+                    if (icon != null)
+                    {
+                        icon.style.alignItems = Align.Center;
+                        icon.style.justifyContent = Justify.Center;
+                    }
+                    // 仅在 Null 时点击打开 Prefab Picker
+                    thumb.RegisterCallback<PointerDownEvent>(evt =>
+                    {
+                        if (evt.button != 0) return;
+                        cb.OpenPrefabPickerForItem?.Invoke(cb.GetCurrentProfile?.Invoke(), item?.Index ?? -1);
+                        evt.StopPropagation();
+                    });
                 }
-                if (go != null)
+                else
                 {
+                    // 异步加载缩略图，不改变点击行为
                     MrTerrainPainter.Editor.Services.AssetPreviewCache.Request(go, t =>
                     {
                         if (t == null) return;
@@ -147,14 +158,6 @@ namespace MrTerrainPainter.Editor.Views
                         thumb.RemoveFromClassList(EmptyClassName);
                     });
                 }
-
-                // 注册点击打开 Prefab Picker 的事件（仅左键）
-                thumb.RegisterCallback<PointerDownEvent>(evt =>
-                {
-                    if (evt.button != 0) return;
-                    cb.OpenPrefabPickerForItem?.Invoke(cb.GetCurrentProfile?.Invoke(), item?.Index ?? -1);
-                    evt.StopPropagation();
-                });
             }
 
             // 设置类型标签

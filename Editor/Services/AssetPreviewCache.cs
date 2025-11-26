@@ -44,12 +44,20 @@ namespace MrTerrainPainter.Editor.Services
                     onReady?.Invoke(existing.tex);
                     return;
                 }
-                existing.callbacks.Add(onReady);
+                if (onReady != null)
+                {
+                    bool dup = false;
+                    for (int i = 0; i < existing.callbacks.Count; i++)
+                    {
+                        if (existing.callbacks[i] == onReady) { dup = true; break; }
+                    }
+                    if (!dup) existing.callbacks.Add(onReady);
+                }
                 EnsureUpdate();
                 return;
             }
             var e = new Entry { obj = obj, ready = false };
-            e.callbacks.Add(onReady);
+            if (onReady != null) e.callbacks.Add(onReady);
             s_entries[id] = e;
             EnsureUpdate();
         }
@@ -65,11 +73,11 @@ namespace MrTerrainPainter.Editor.Services
         {
             int processed = 0;
             const int BudgetPerFrame = 8;
-            var ids = new List<int>(s_entries.Keys);
-            for (int i = 0; i < ids.Count && processed < BudgetPerFrame; i++)
+            foreach (var kv in s_entries)
             {
-                var id = ids[i];
-                var e = s_entries[id];
+                if (processed >= BudgetPerFrame) break;
+                var id = kv.Key;
+                var e = kv.Value;
                 if (e.ready) continue;
                 var tex = AssetPreview.GetAssetPreview(e.obj) ?? AssetPreview.GetMiniThumbnail(e.obj);
                 if (tex == null) continue;

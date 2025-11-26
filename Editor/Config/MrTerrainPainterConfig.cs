@@ -250,9 +250,7 @@ namespace MrTerrainPainter.Editor.Config
         {
             if (cfg == null) return;
             cfg.normalDirection = value;
-            EditorUtility.SetDirty(cfg);
             NormalDirectionChanged?.Invoke(value);
-            ConfigUpdated?.Invoke();
         }
 
         /// <summary>

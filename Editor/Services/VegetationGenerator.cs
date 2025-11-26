@@ -892,15 +892,22 @@ namespace MrTerrainPainter.Editor.Services
 
             float yRot = item.prefabType == Runtime.Profiles.PrefabType.Landscape ? 0f : item.SampleYRotation(rnd);
             var rot = Quaternion.Euler(0f, yRot, 0f);
-            var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
-            bool useNormal = cfg != null ? (cfg.normalDirection || item.alignToTerrainNormal || item.prefabType == Runtime.Profiles.PrefabType.Landscape) : (item.alignToTerrainNormal || item.prefabType == Runtime.Profiles.PrefabType.Landscape);
+            var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? ConfigTools.GetCachedConfig();
+            bool useNormal = cfg != null && cfg.normalDirection;
             if (item.prefabType == Runtime.Profiles.PrefabType.Landscape)
             {
-                var forward = normal.normalized;
-                var upOnPlane = Vector3.ProjectOnPlane(Vector3.up, forward);
-                if (upOnPlane.sqrMagnitude < 1e-6f) upOnPlane = Vector3.Cross(forward, Vector3.right).normalized;
-                var baseRot = Quaternion.LookRotation(forward, upOnPlane);
-                rot = Quaternion.AngleAxis(yRot, forward) * baseRot;
+                if (useNormal)
+                {
+                    var forward = normal.normalized;
+                    var upOnPlane = Vector3.ProjectOnPlane(Vector3.up, forward);
+                    if (upOnPlane.sqrMagnitude < 1e-6f) upOnPlane = Vector3.Cross(forward, Vector3.right).normalized;
+                    var baseRot = Quaternion.LookRotation(forward, upOnPlane);
+                    rot = Quaternion.AngleAxis(yRot, forward) * baseRot;
+                }
+                else
+                {
+                    rot = Quaternion.Euler(0f, yRot, 0f);
+                }
             }
             else if (useNormal)
             {

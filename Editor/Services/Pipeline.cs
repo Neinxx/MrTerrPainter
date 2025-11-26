@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using MrTerrainPainter.Editor.Utils;
 using UnityEngine;
+using Unity.Collections;
+using Unity.Mathematics;
 
 namespace MrTerrainPainter.Editor.Services
 {
@@ -136,7 +138,9 @@ namespace MrTerrainPainter.Editor.Services
             float s = item.SampleScale(rnd);
             scale = new Vector3(s, s, s);
             float y = item.SampleYRotation(rnd);
-            rot = item.alignToTerrainNormal ? Quaternion.LookRotation(Vector3.ProjectOnPlane(Vector3.forward, normal), normal) * Quaternion.Euler(0f, y, 0f) : Quaternion.Euler(0f, y, 0f);
+            var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+            bool alignNormal = cfg != null && cfg.normalDirection;
+            rot = alignNormal ? Quaternion.LookRotation(Vector3.ProjectOnPlane(Vector3.forward, normal), normal) * Quaternion.Euler(0f, y, 0f) : Quaternion.Euler(0f, y, 0f);
         }
     }
 
@@ -155,8 +159,9 @@ namespace MrTerrainPainter.Editor.Services
                 Mathf.Max(0.0001f, baseScale.y + item.facadeScaleOffset.y),
                 Mathf.Max(0.0001f, baseScale.z + item.facadeScaleOffset.z));
             scale = finalScale;
+            bool alignNormal = cfg != null && cfg.normalDirection;
             var up = Vector3.up;
-            rot = Quaternion.LookRotation(normal, up);
+            rot = alignNormal ? Quaternion.LookRotation(normal, up) : Quaternion.LookRotation(Vector3.forward, up);
             float depth = Mathf.Clamp(item.SampleEmbedDepth(rnd), 0f, 1f);
             var horiz = Vector3.ProjectOnPlane(-normal.normalized, Vector3.up);
             if (horiz.sqrMagnitude > 1e-6f)
@@ -187,21 +192,22 @@ namespace MrTerrainPainter.Editor.Services
 
     public class VegetationPipeline
     {
-        private readonly IPointSampler _sampler;
-        private readonly ICandidateFilter _filter;
-        private readonly IInstanceMutator _mutator;
-        private readonly IInstanceSpawner _spawner;
-        public VegetationPipeline(IPointSampler s, ICandidateFilter f, IInstanceMutator m, IInstanceSpawner p) { _sampler = s; _filter = f; _mutator = m; _spawner = p; }
-        public void Run(Terrain terrain, Vector3 center, float radius, MrTerrainPainter.Runtime.Profiles.VegetationItem item, int itemIndex, Transform parent, List<Vector3> candidates, float[] heights, float[] slopes, Vector3[] normals)
+        private IPointSampler _sampler;
+        private ICandidateFilter _filter;
+        private IInstanceMutator _mutator;
+        private IInstanceSpawner _spawner;
+        public static readonly VegetationPipeline Shared = new VegetationPipeline();
+        public VegetationPipeline Setup(IPointSampler s, ICandidateFilter f, IInstanceMutator m, IInstanceSpawner p) { _sampler = s; _filter = f; _mutator = m; _spawner = p; return this; }
+        public void Run(Terrain terrain, Vector3 center, float radius, MrTerrainPainter.Runtime.Profiles.VegetationItem item, int itemIndex, Transform parent, List<Vector3> candidates, NativeArray<float> heights, NativeArray<float> slopes, NativeArray<float3> normals)
         {
             var grid = new BrushPainter.Grid(Mathf.Max(item.CoreSpacing, 0.01f));
             for (int ci = 0; ci < candidates.Count; ci++)
             {
                 var pos = candidates[ci];
                 if (!TerrainUtils.IsWithinTerrainBounds(terrain, pos)) continue;
-                float h = heights != null && heights.Length > ci ? heights[ci] + terrain.transform.position.y : pos.y;
-                float slope = slopes != null && slopes.Length > ci ? slopes[ci] : 0f;
-                var normal = normals != null && normals.Length > ci ? (Vector3)normals[ci] : Vector3.up;
+                float h = heights.IsCreated && ci < heights.Length ? heights[ci] + terrain.transform.position.y : pos.y;
+                float slope = slopes.IsCreated && ci < slopes.Length ? slopes[ci] : 0f;
+                var normal = normals.IsCreated && ci < normals.Length ? (Vector3)normals[ci] : Vector3.up;
                 if (!_filter.Pass(ci, pos, h - terrain.transform.position.y, slope)) continue;
                 var p2 = new Vector2(pos.x - terrain.transform.position.x, pos.z - terrain.transform.position.z);
                 if (grid.HasNearby(p2, Mathf.Max(item.CoreSpacing, 0.01f))) continue;

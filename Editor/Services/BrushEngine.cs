@@ -35,6 +35,25 @@ namespace MrTerrainPainter.Editor.Services
             s_listPool.Push(list);
         }
 
+        private static readonly Stack<List<Vector3>> s_listPool3 = new();
+        public static List<Vector3> AcquireList3(int capacity)
+        {
+            if (s_listPool3.Count > 0)
+            {
+                var l = s_listPool3.Pop();
+                l.Clear();
+                if (l.Capacity < capacity) l.Capacity = capacity;
+                return l;
+            }
+            return new System.Collections.Generic.List<Vector3>(capacity);
+        }
+        public static void ReleaseList3(System.Collections.Generic.List<Vector3> list)
+        {
+            if (list == null) return;
+            list.Clear();
+            s_listPool3.Push(list);
+        }
+
 #if UNITY_BURST
         [Unity.Burst.BurstCompile]
         private struct PoissonDiskJob : Unity.Jobs.IJob

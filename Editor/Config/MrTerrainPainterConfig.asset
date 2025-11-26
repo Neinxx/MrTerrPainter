@@ -17,7 +17,7 @@ MonoBehaviour:
   defaultBrushStrength: 1
   defaultBrushDensityScale: 1
   defaultBrushHardness: 1
-  showPoolInHierarchy: 0
+  showPoolInHierarchy: 1
   recipeGenerationPath: Assets/MrTerrPainterV1/Data
   defaultGenerationType: 0
   normalDirection: 1
@@ -49,8 +49,6 @@ MonoBehaviour:
   - node: {fileID: 0}
     type: 0
   - node: {fileID: 0}
-    type: 3
-  - node: {fileID: 0}
     type: 5
   missingMappingLogThrottleSeconds: 3
   autoOpenSettingsOnMissingMapping: 0
@@ -64,8 +62,8 @@ MonoBehaviour:
   minFacadeHeightMeters: 0.3
   curveOffsetRightMeters: 0
   curveOffsetOutMeters: 0
-  facadeRdpEpsilon: 0.46
+  facadeRdpEpsilon: 0.04
   useContourDetection: 0
-  contourSlopeDeg: 11.54
+  contourSlopeDeg: 7.82
   facadePreviewBottomColor: {r: 0, g: 1, b: 0, a: 0.8}
   facadePreviewTopColor: {r: 1, g: 0.2, b: 0.2, a: 0.8}

@@ -1,41 +1,25 @@
-/* ==========================================================================
-   Variables & Theme
-   ========================================================================== */
 :root {
-    /* 基础颜色 */
     --mt-col-bg-panel: rgba(30, 30, 30, 0.2);
     --mt-col-bg-input: rgba(40, 40, 40, 0.8);
     --mt-col-border: rgb(80, 80, 80);
     --mt-col-border-hover: rgb(100, 100, 100);
-    
-    /* 文本颜色 */
     --mt-col-text: rgb(220, 220, 220);
     --mt-col-text-sub: rgb(160, 160, 160);
-
-    /* 状态颜色 */
-    --mt-col-accent: rgb(64, 128, 230);         /* 蓝色 - 选中/主要 */
+    --mt-col-accent: rgb(64, 128, 230);
     --mt-col-accent-bg: rgba(64, 128, 230, 0.25);
-    
-    --mt-col-success: rgb(120, 200, 77);        /* 绿色 - 完成/激活 */
+    --mt-col-success: rgb(120, 200, 77);
     --mt-col-success-bg: rgba(78, 120, 60, 0.25);
-    
-    --mt-col-danger: rgb(200, 77, 106);         /* 红色 - 警告/删除 */
+    --mt-col-danger: rgb(200, 77, 106);
     --mt-col-danger-bg: rgba(120, 60, 62, 0.25);
-    
-    --mt-col-warning: rgb(226, 131, 72);        /* 橙色 - Logo/重点 */
-
-    /* 尺寸 */
+    --mt-col-warning: rgb(226, 131, 72);
     --mt-radius: 4px;
     --mt-spacing: 6px;
 }
 
-/* ==========================================================================
-   General Layout
-   ========================================================================== */
 .mt-frame {
     margin: var(--mt-spacing) 0;
     padding: 8px;
-    border-width: 0px;
+    border-width: 0;
     border-color: var(--mt-col-border);
     border-radius: 6px;
     background-color: var(--mt-col-bg-panel);
@@ -43,14 +27,10 @@
 
 .mt-scroll {
     flex-grow: 1;
-    padding-right: 12px; /* 预留滚动条空间 */
+    padding-right: 12px;
 }
 
-/* ==========================================================================
-   Buttons (Consolidated)
-   ========================================================================== */
-/* 基础按钮样式共用 */
-.mt-button, .mt-buttonG, .mt-buttonR, .mt-tabbutton {
+.mt-button {
     min-height: 24px;
     padding: 6px 10px;
     border-radius: var(--mt-radius);
@@ -62,34 +42,108 @@
     transition-duration: 0.1s;
 }
 
-/* 交互状态 */
-.mt-button:hover, .mt-buttonG:hover, .mt-buttonR:hover, .mt-tabbutton:hover {
-    background-color: rgba(60, 60, 60, 1);
+.mt-buttonG {
+    min-height: 24px;
+    padding: 6px 10px;
+    border-radius: var(--mt-radius);
+    border-width: 1px;
+    border-color: rgb(90, 90, 90);
+    background-color: rgba(45, 45, 45, 0.8);
+    color: var(--mt-col-text);
+    -unity-text-align: middle-center;
+    transition-duration: 0.1s;
+}
+
+.mt-buttonR {
+    min-height: 24px;
+    padding: 6px 10px;
+    border-radius: var(--mt-radius);
+    border-width: 1px;
+    border-color: rgb(90, 90, 90);
+    background-color: rgba(45, 45, 45, 0.8);
+    color: var(--mt-col-text);
+    -unity-text-align: middle-center;
+    transition-duration: 0.1s;
+}
+
+.mt-tabbutton {
+    min-height: 24px;
+    padding: 6px 10px;
+    border-radius: var(--mt-radius);
+    border-width: 1px;
+    border-color: rgb(90, 90, 90);
+    background-color: rgba(45, 45, 45, 0.8);
+    color: var(--mt-col-text);
+    -unity-text-align: middle-center;
+    transition-duration: 0.1s;
+}
+
+.mt-button:hover {
+    background-color: rgb(60, 60, 60);
     border-color: rgb(110, 110, 110);
     scale: 1.01 1.01;
 }
 
-.mt-button:active, .mt-buttonG:active, .mt-buttonR:active, .mt-tabbutton:active {
-    background-color: rgba(30, 30, 30, 1);
+.mt-buttonG:hover {
+    background-color: rgb(60, 60, 60);
+    border-color: rgb(110, 110, 110);
+    scale: 1.01 1.01;
+}
+
+.mt-buttonR:hover {
+    background-color: rgb(60, 60, 60);
+    border-color: rgb(110, 110, 110);
+    scale: 1.01 1.01;
+}
+
+.mt-tabbutton:hover {
+    background-color: rgb(60, 60, 60);
+    border-color: rgb(110, 110, 110);
+    scale: 1.01 1.01;
+}
+
+.mt-button:active {
+    background-color: rgb(30, 30, 30);
     opacity: 0.9;
     scale: 0.98 0.98;
 }
 
-/* 特殊颜色变种 - 绿色 (Generate/Active) */
-.mt-buttonG:hover, .mt-button--activeG {
-    border-color: var(--mt-col-success);
-    background-color: var(--mt-col-success-bg);
-    color: #fff;
+.mt-buttonG:active {
+    background-color: rgb(30, 30, 30);
+    opacity: 0.9;
+    scale: 0.98 0.98;
 }
 
-/* 特殊颜色变种 - 红色 (Delete/Clear) */
+.mt-buttonR:active {
+    background-color: rgb(30, 30, 30);
+    opacity: 0.9;
+    scale: 0.98 0.98;
+}
+
+.mt-tabbutton:active {
+    background-color: rgb(30, 30, 30);
+    opacity: 0.9;
+    scale: 0.98 0.98;
+}
+
+.mt-buttonG:hover {
+    border-color: var(--mt-col-success);
+    background-color: var(--mt-col-success-bg);
+    color: rgb(255, 255, 255);
+}
+
+.mt-button--activeG {
+    border-color: var(--mt-col-success);
+    background-color: var(--mt-col-success-bg);
+    color: rgb(255, 255, 255);
+}
+
 .mt-buttonR:hover {
     border-color: var(--mt-col-danger);
     background-color: var(--mt-col-danger-bg);
-    color: #fff;
+    color: rgb(255, 255, 255);
 }
 
-/* Tab 按钮 */
 .mt-tabbutton {
     margin-right: 8px;
     background-color: rgba(40, 40, 40, 0.6);
@@ -98,7 +152,7 @@
 .mt-tabbutton--active {
     border-color: var(--mt-col-accent);
     background-color: var(--mt-col-accent-bg);
-    color: #fff;
+    color: rgb(255, 255, 255);
     -unity-font-style: bold;
 }
 
@@ -111,9 +165,6 @@
     margin-bottom: 4px;
 }
 
-/* ==========================================================================
-   Profile & Thumb Items (Animations)
-   ========================================================================== */
 .profile-row {
     border-radius: var(--mt-radius);
     background-color: rgba(0, 0, 0, 0.1);
@@ -123,14 +174,12 @@
     min-height: 112px;
 }
 
-/* 选中整行 Profile */
 .profile-row--selected {
     border-width: 1px;
     border-color: var(--mt-col-accent);
     background-color: rgba(255, 255, 255, 0.03);
 }
 
-/* 在场景中被选中的 Profile (混合模式) */
 .profile-row--checked {
     border-left-width: 3px;
     border-left-color: var(--mt-col-success);
@@ -155,22 +204,19 @@
     flex-shrink: 0;
 }
 
-/* 缩略图项 */
 .thumb-item {
     width: 64px;
     height: 64px;
     margin: 3px;
-     flex-shrink: 0;
-     
-    border-width: 0px;
+    flex-shrink: 0;
+    border-width: 0;
     border-color: rgb(60, 60, 60);
     background-color: rgba(80, 80, 80, 0.2);
-    border-radius: 0px;
+    border-radius: 0;
     transition-duration: 0.15s;
     transition-timing-function: ease-out-back;
 }
 
-/* 缩略图 Hover 动画 */
 .thumb-item:hover {
     border-color: rgb(255, 207, 107);
     border-width: 2px;
@@ -178,13 +224,21 @@
     background-color: rgba(255, 255, 255, 0.1);
 }
 
-/* 缩略图选中状态 */
 .thumb-item--selected {
-    border-color: var(--mt-col-accent);
-    border-width: 2px;
-     border-color: rgb(255, 207, 107);
-    background-color: rgba(64, 128, 230, 0.1);
-    scale: 1.05 1.05;
+    width: 64px;
+    height: 64px;
+    margin: 3px;
+    flex-shrink: 0;
+    border-width: 0;
+    border-color: rgb(60, 60, 60);
+    background-color: rgba(80, 80, 80, 0.2);
+    border-radius: 0;
+    transition-duration: 0.15s;
+    transition-timing-function: ease-out-back;
+    border-left-color: rgb(226, 131, 72);
+    border-right-color: rgb(226, 131, 72);
+    border-top-color: rgb(226, 131, 72);
+    border-bottom-color: rgb(226, 131, 72);
 }
 
 .thumb-item--empty {
@@ -207,18 +261,20 @@
     -unity-font-style: bold;
 }
 
-/* ==========================================================================
-   Terrain List & Actions
-   ========================================================================== */
 .mt-terrain-list {
-    background-color: rgba(0,0,0,0.2);
+    background-color: rgba(0, 0, 0, 0.2);
     border-width: 1px;
     border-color: var(--mt-col-border);
     border-radius: 4px;
 }
 
-.mt-terrain-list--max10 { max-height: 200px; }
-.mt-terrain-list--auto { height: auto; }
+.mt-terrain-list--max10 {
+    max-height: 200px;
+}
+
+.mt-terrain-list--auto {
+    height: auto;
+}
 
 .mt-terrain-list__item {
     padding-left: 4px;
@@ -231,12 +287,10 @@
     margin-top: 8px;
 }
 
-.mt-btn--stretch { flex-grow: 1; }
+.mt-btn--stretch {
+    flex-grow: 1;
+}
 
-/* ==========================================================================
-   Overlay Styles (New & Optimized)
-   用于 MTPBrushOverlay 的新样式，解决难看的问题
-   ========================================================================== */
 .mtp-root {
     width: 260px;
     background-color: rgba(35, 35, 35, 0.95);
@@ -244,8 +298,7 @@
     border-color: rgba(0, 0, 0, 0.5);
     border-radius: 6px;
     padding: 8px;
-    /* 增加阴影让其更有层次感 */
-    -unity-slice-left: 0; 
+    -unity-slice-left: 0;
     -unity-slice-top: 0;
 }
 
@@ -262,13 +315,13 @@
 .mtp-title {
     font-size: 13px;
     -unity-font-style: bold;
-    color: #ddd;
+    color: rgb(221, 221, 221);
 }
 
 .mtp-icon-btn {
     background-color: transparent;
     border-width: 0;
-    color: #aaa;
+    color: rgb(170, 170, 170);
     font-size: 14px;
     width: 24px;
     height: 20px;
@@ -276,14 +329,14 @@
 }
 
 .mtp-icon-btn:hover {
-    color: #fff;
-    background-color: rgba(255,255,255,0.1);
+    color: rgb(255, 255, 255);
+    background-color: rgba(255, 255, 255, 0.1);
     border-radius: 3px;
 }
 
 .mtp-section-label {
     font-size: 10px;
-    color: #888;
+    color: rgb(136, 136, 136);
     -unity-font-style: bold;
     margin-top: 8px;
     margin-bottom: 2px;
@@ -303,7 +356,7 @@
 }
 
 .mtp-warning-label {
-    color: #ffaaaa;
+    color: rgb(255, 170, 170);
     font-size: 11px;
 }
 
@@ -327,49 +380,72 @@
 .mtp-toggle-label {
     flex-grow: 1;
     font-size: 11px;
-    color: #ccc;
+    color: rgb(204, 204, 204);
 }
 
-/* 统一 Overlay 内 Slider 的 Label 宽度 */
 .mtp-root .unity-base-slider__label {
     min-width: 85px;
     font-size: 11px;
-    color: #ccc;
+    color: rgb(204, 204, 204);
 }
 
 .mtp-root .unity-base-field__label {
     min-width: 85px;
     font-size: 11px;
-    color: #ccc;
+    color: rgb(204, 204, 204);
 }
 
-/* ==========================================================================
-   Logo & Documentation
-   ========================================================================== */
 .mt-logo {
     font-size: 42px;
     -unity-text-align: middle-center;
     -unity-font-style: bold;
     color: var(--mt-col-warning);
-    text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
     transition-duration: 0.2s;
 }
 
-.mt-logo--complete { color: var(--mt-col-success); }
+.mt-logo--complete {
+    color: var(--mt-col-success);
+}
 
-/* 脉冲动画关键帧模拟 */
-.mt-logo--pulse1 { scale: 1.1 1.1; }
-.mt-logo--pulse2 { scale: 0.95 0.95; }
-.mt-logo--pulse3 { scale: 1.05 1.05; }
+.mt-logo--pulse1 {
+    scale: 1.1 1.1;
+}
 
-.mt-docs__h1 { font-size: 18px; -unity-font-style: bold; margin-bottom: 8px; color: #eee; }
-.mt-docs__h2 { font-size: 14px; -unity-font-style: bold; margin-top: 12px; color: var(--mt-col-warning); }
-.mt-docs__p { font-size: 12px; color: #bbb; margin-bottom: 4px; white-space: normal; }
+.mt-logo--pulse2 {
+    scale: 0.95 0.95;
+}
+
+.mt-logo--pulse3 {
+    scale: 1.05 1.05;
+}
+
+.mt-docs__h1 {
+    font-size: 18px;
+    -unity-font-style: bold;
+    margin-bottom: 8px;
+    color: rgb(238, 238, 238);
+}
+
+.mt-docs__h2 {
+    font-size: 14px;
+    -unity-font-style: bold;
+    margin-top: 12px;
+    color: var(--mt-col-warning);
+}
+
+.mt-docs__p {
+    font-size: 12px;
+    color: rgb(187, 187, 187);
+    margin-bottom: 4px;
+    white-space: normal;
+}
+
 .mt-docs__code {
-    background-color: rgba(0,0,0,0.3);
+    background-color: rgba(0, 0, 0, 0.3);
     padding: 4px;
     border-radius: 3px;
     font-size: 11px;
-    color: #aaa;
+    color: rgb(170, 170, 170);
     margin: 4px 0;
 }

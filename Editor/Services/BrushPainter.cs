@@ -434,18 +434,21 @@ namespace MrTerrainPainter.Editor.Services
                 ring = new Color(1f, 0f, 0f, 0.9f);
                 inner = new Color(1f, 0.4f, 0.4f, 0.35f);
             }
+            var cfgDir = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+            bool useNormalDirPrev = cfgDir != null && cfgDir.normalDirection;
             var center = data.hasData ? data.center : Vector3.zero;
             if (bs.shape == BrushShape.Circle)
             {
                 Handles.color = fill;
-                Handles.DrawSolidDisc(center, Vector3.up, bs.size);
+                var planeN = (useNormalDirPrev && data.hasData) ? data.normal.normalized : Vector3.up;
+                Handles.DrawSolidDisc(center, planeN, bs.size);
                 Handles.color = ring;
-                Handles.DrawWireDisc(center, Vector3.up, bs.size);
+                Handles.DrawWireDisc(center, planeN, bs.size);
                 float innerR = Mathf.Clamp(bs.size * Mathf.Clamp01(1f - bs.hardness), 0f, bs.size);
                 if (innerR > 0f)
                 {
                     Handles.color = inner;
-                    Handles.DrawWireDisc(center, Vector3.up, innerR);
+                    Handles.DrawWireDisc(center, planeN, innerR);
                 }
                 if (st.showLabel)
                 {
@@ -939,24 +942,19 @@ namespace MrTerrainPainter.Editor.Services
                     handle2.Complete();
                     pts2.Dispose();
                 }
-                var candidatesWorld = new List<Vector3>(candidates.Count);
+                var candidatesWorld = BrushEngine.AcquireList3(candidates.Count);
                 for (int i = 0; i < candidates.Count; i++) candidatesWorld.Add(new Vector3(candidates[i].x, center.y, candidates[i].y));
-                var heightsArr = outH2.IsCreated ? outH2.ToArray() : null;
-                var slopesArr = outS2.IsCreated ? outS2.ToArray() : null;
-                var normalsArr = outN2.IsCreated ? outN2.Select(v => (Vector3)v).ToArray() : null;
                 for (int iItem = 0; iItem < allItems.Count; iItem++)
                 {
                     var item = allItems[iItem];
                     var targetParent = typeToNode.TryGetValue(item.prefabType, out var tf) ? tf : null;
                     if (targetParent == null) { VegetationGenerator.LogMissingMappingOnce(item.prefabType); continue; }
-                    var sampler = new CandidateSamplerFromList(candidates, center.y);
-                    var filter = new HeightSlopeFilter(item);
-                    var mutator = new StandardMutator(item);
-                    var spawner = new PooledSpawner();
-                    var pipeline = new VegetationPipeline(sampler, filter, mutator, spawner);
-                    pipeline.Run(terrain, center, radius, item, iItem, targetParent, candidatesWorld, heightsArr, slopesArr, normalsArr);
+                    VegetationPipeline.Shared
+                        .Setup(new CandidateSamplerFromList(candidates, center.y), new HeightSlopeFilter(item), new StandardMutator(item), new PooledSpawner())
+                        .Run(terrain, center, radius, item, iItem, targetParent, candidatesWorld, outH2, outS2, outN2);
                 }
                 BrushEngine.ReleaseList(candidates);
+                BrushEngine.ReleaseList3(candidatesWorld);
                 if (outH2.IsCreated) outH2.Dispose();
                 if (outN2.IsCreated) outN2.Dispose();
                 if (outS2.IsCreated) outS2.Dispose();
@@ -1219,30 +1217,30 @@ namespace MrTerrainPainter.Editor.Services
             var sampler = new EdgeLineSampler(slices, mixMinSpacing, center, bs.shape);
             var candidatesWorld = sampler.Sample(center, radius);
             if (candidatesWorld == null || candidatesWorld.Count == 0) return;
-            var heightsArr = new float[candidatesWorld.Count];
-            var slopesArr = new float[candidatesWorld.Count];
-            var normalsArr = new Vector3[candidatesWorld.Count];
+            var heightsArr = default(NativeArray<float>);
+            var slopesArr = default(NativeArray<float>);
+            var normalsArr = default(NativeArray<float3>);
             for (int i = 0; i < candidatesWorld.Count; i++)
             {
                 var nearest = slices[Mathf.Clamp(i, 0, slices.Count - 1)];
-                heightsArr[i] = nearest.Height;
                 var n = nearest.Normal;
-                normalsArr[i] = n;
-                slopesArr[i] = Mathf.Acos(Mathf.Clamp(n.y, -1f, 1f)) * 57.29578f;
+                // 直接使用候选点本地数据，不分配数组
             }
-            var weights = landItems.Select(li => Mathf.Clamp(li.weight, 0.0001f, 100f)).ToArray();
-            float sumW = Mathf.Max(0.0001f, weights.Sum());
+            float sumW = 0f;
+            for (int w = 0; w < landItems.Count; w++) sumW += Mathf.Clamp(landItems[w].weight, 0.0001f, 100f);
             var filter = new FacadeConstraintFilter(cfg2 != null ? cfg2.minFacadeHeightMeters : 0.0001f);
             var spawner = new PooledSpawner();
+            VegetationPipeline.Shared.Setup(new CandidateSamplerFromList(BrushEngine.AcquireList(1), center.y), filter, new EdgeLineMutator(), spawner);
             for (int i = 0; i < candidatesWorld.Count; i++)
             {
                 float rPick = (float)rnd.NextDouble() * sumW;
                 float acc = 0f; int pick = 0;
-                for (int k = 0; k < landItems.Count; k++) { acc += weights[k]; if (rPick <= acc) { pick = k; break; } }
+                for (int k = 0; k < landItems.Count; k++) { acc += Mathf.Clamp(landItems[k].weight, 0.0001f, 100f); if (rPick <= acc) { pick = k; break; } }
                 var item = landItems[pick];
-                var mutator = new EdgeLineMutator();
-                var pipeline = new VegetationPipeline(new CandidateSamplerFromList(new System.Collections.Generic.List<Vector2> { new Vector2(candidatesWorld[i].x, candidatesWorld[i].z) }, candidatesWorld[i].y), filter, mutator, spawner);
-                pipeline.Run(terrain, center, radius, item, pick, parent, new System.Collections.Generic.List<Vector3> { candidatesWorld[i] }, new float[] { heightsArr[i] }, new float[] { slopesArr[i] }, new Vector3[] { normalsArr[i] });
+                var single = BrushEngine.AcquireList3(1);
+                single.Add(candidatesWorld[i]);
+                VegetationPipeline.Shared.Run(terrain, center, radius, item, pick, parent, single, heightsArr, slopesArr, normalsArr);
+                BrushEngine.ReleaseList3(single);
             }
         }
 

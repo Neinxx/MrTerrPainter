@@ -13,7 +13,8 @@ MonoBehaviour:
   m_Name: VegetationProfile 3
   m_EditorClassIdentifier: 
   items:
-  - prefab: {fileID: 0}
+  - prefab: {fileID: 2275569450760439715, guid: abeb530a6f649c74c858903318eff238,
+      type: 3}
     weight: 1
     prefabType: 2
     uniformScaleRange: {x: 1, y: 1}
@@ -44,7 +45,9 @@ MonoBehaviour:
     facadeSmoothingMode: 0
     facadeSmoothingWindow: 3
     facadeSmoothingSigma: 1
-  - prefab: {fileID: 7235186063050280355, guid: 93fa31f31077f63458c19027d0ae67a2,
+    placementSettings:
+      rid: -2
+  - prefab: {fileID: 8751776247453558961, guid: d73b90597bd05bf47b97182e11bd87bb,
       type: 3}
     weight: 1
     prefabType: 2
@@ -76,7 +79,14 @@ MonoBehaviour:
     facadeSmoothingMode: 0
     facadeSmoothingWindow: 3
     facadeSmoothingSigma: 1
+    placementSettings:
+      rid: -2
   initialized: 1
   randomSeed: 12345
   baseDensity: 1
   minSpacing: 1.5
+  references:
+    version: 2
+    RefIds:
+    - rid: -2
+      type: {class: , ns: , asm: }
