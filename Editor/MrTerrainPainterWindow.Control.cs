@@ -331,9 +331,16 @@ namespace MrTerrainPainter.Editor
 
         private void RefreshProfileListUI()
         {
-            if (uiVegetationList == null) return;
-            uiVegetationList.itemsSource = session.AvailableProfiles;
-            uiVegetationList.Rebuild();
+            if (controlView != null)
+            {
+                controlView.Refresh();
+            }
+            // 回退兼容（如果还保留了旧逻辑）
+            else if (uiVegetationList != null)
+            {
+                uiVegetationList.itemsSource = session.AvailableProfiles;
+                uiVegetationList.Rebuild();
+            }
         }
 
         private void RefreshPreviewUI()

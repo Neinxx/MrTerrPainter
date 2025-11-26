@@ -1,15 +1,17 @@
 using System;
+using System.Collections.Generic;
 using MrTerrainPainter.Runtime.Profiles;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 using UnityEditor.UIElements;
+using PrefabType = MrTerrainPainter.Runtime.Profiles.PrefabType;
 
 namespace MrTerrainPainter.Editor.Views
 {
-    // 属性面板视图：负责 Prefab 选择、权重、范围与密度/间距等控件的绑定与刷新
     public class PropertyPanelView
     {
+        #region Callbacks & Definitions
         public struct PropertyPanelCallbacks
         {
             public Func<VegetationItem> GetSelectedItem;
@@ -24,38 +26,23 @@ namespace MrTerrainPainter.Editor.Views
             public Action ScanSelectedTerrainsForFacades;
             public Action BakeCachedFacades;
         }
+        #endregion
 
         private readonly VisualElement root;
+        private PropertyPanelCallbacks callbacks;
 
+        // 自动化列表
+        private readonly List<Action<VegetationItem>> _valueUpdaters = new List<Action<VegetationItem>>();
+        private readonly List<VisualElement> _landscapeGroup = new List<VisualElement>();
+
+        // 特殊控件引用
         private ObjectField uiSelectPrefab;
-        private Slider uiWeigth;
         private MinMaxSlider uiSceleRange;
         private MinMaxSlider uiYrotationRange;
         private MinMaxSlider uiHeigthRange;
         private MinMaxSlider uiSlopeRange;
-        private Slider uiBaseDensity;
-        private FloatField uiMinSpacing;
-        private FloatField uiEdgeSlopeThreshold;
-        private MinMaxSlider uiEmbedDepthRange;
-        private FloatField uiFacadeEnterSlope;
-        private FloatField uiFacadeExitSlope;
-        private FloatField uiProbeStep;
-        private FloatField uiProbeMaxDist;
-        private FloatField uiFacadeRefHeight;
-        private Vector3Field uiFacadeScaleOffset;
-        private Vector3Field uiFacadeOffsets;
-        private EnumField uiFacadeSmoothMode;
-        private IntegerField uiFacadeSmoothWindow;
-        private FloatField uiFacadeSmoothSigma;
-        private FloatField uiRdpEpsilon;
-        private ColorField uiPreviewBottomColor;
-        private ColorField uiPreviewTopColor;
-        private Button uiScanFacadesButton;
-        private Button uiBakeFacadesButton;
         private Toggle uiUseContourDetection;
         private FloatField uiContourSlopeDeg;
-
-        private PropertyPanelCallbacks callbacks;
 
         public PropertyPanelView(VisualElement queryRoot)
         {
@@ -65,433 +52,302 @@ namespace MrTerrainPainter.Editor.Views
         public void Bind(PropertyPanelCallbacks cb)
         {
             callbacks = cb;
-
             if (root == null) return;
 
-            uiSelectPrefab = root.Q<ObjectField>("SelectPrefab");
-            uiWeigth = root.Q<Slider>("Weigth");
-            uiSceleRange = root.Q<MinMaxSlider>("SceleRange");
-            uiYrotationRange = root.Q<MinMaxSlider>("YrotationRange");
-            uiHeigthRange = root.Q<MinMaxSlider>("HeigthRange");
-            uiSlopeRange = root.Q<MinMaxSlider>("SlopeRange");
-            uiBaseDensity = root.Q<Slider>("BaseDensity");
-            uiMinSpacing = root.Q<FloatField>("MinSpacing");
-            uiEdgeSlopeThreshold = root.Q<FloatField>("EdgeSlopeThreshold");
-            uiEmbedDepthRange = root.Q<MinMaxSlider>("EmbedDepthRange");
-            uiFacadeEnterSlope = root.Q<FloatField>("FacadeEnterSlope");
-            uiFacadeExitSlope = root.Q<FloatField>("FacadeExitSlope");
-            uiProbeStep = root.Q<FloatField>("ProbeStep");
-            uiProbeMaxDist = root.Q<FloatField>("ProbeMaxDist");
-            uiFacadeRefHeight = root.Q<FloatField>("FacadeRefHeight");
-            uiFacadeScaleOffset = root.Q<Vector3Field>("FacadeScaleOffset");
-            uiFacadeOffsets = root.Q<Vector3Field>("FacadeOffsets");
-            uiFacadeSmoothMode = root.Q<EnumField>("FacadeSmoothMode");
-            uiFacadeSmoothWindow = root.Q<IntegerField>("FacadeSmoothWindow");
-            uiFacadeSmoothSigma = root.Q<FloatField>("FacadeSmoothSigma");
-            uiRdpEpsilon = root.Q<FloatField>("RdpEpsilon");
-            uiPreviewBottomColor = root.Q<ColorField>("PreviewBottomColor");
-            uiPreviewTopColor = root.Q<ColorField>("PreviewTopColor");
-            uiScanFacadesButton = root.Q<Button>("ScanFacadesButton");
-            uiBakeFacadesButton = root.Q<Button>("BakeFacadesButton");
-            uiUseContourDetection = root.Q<Toggle>("UseContourDetection");
-            uiContourSlopeDeg = root.Q<FloatField>("ContourSlopeDeg");
+            _valueUpdaters.Clear();
+            _landscapeGroup.Clear();
 
-            // 所有控件均来自 UXML；不在 C# 中动态创建
+            // =========================================================
+            // 1. 绑定通用字段 (Always Visible)
+            // =========================================================
 
-            // 上下限初始化（遵循提前返回与单一职责）
-            if (uiWeigth != null) { uiWeigth.lowValue = 0f; uiWeigth.highValue = 1f; }
-            if (uiSceleRange != null) { uiSceleRange.lowLimit = 0f; uiSceleRange.highLimit = 5f; }
-            if (uiHeigthRange != null) { uiHeigthRange.lowLimit = 0f; uiHeigthRange.highLimit = 1000f; }
-            if (uiSlopeRange != null) { uiSlopeRange.lowLimit = 0f; uiSlopeRange.highLimit = 90f; }
-            if (uiBaseDensity != null) { uiBaseDensity.lowValue = 0f; uiBaseDensity.highValue = 10f; }
-            if (uiMinSpacing != null) { uiMinSpacing.tooltip = "条目级最小间距（米）"; }
-            if (uiEdgeSlopeThreshold != null) { uiEdgeSlopeThreshold.tooltip = "Landscape 最小坡度阈值（度）"; }
-            if (uiEmbedDepthRange != null) { uiEmbedDepthRange.lowLimit = 0f; uiEmbedDepthRange.highLimit = 1f; }
-            if (uiFacadeEnterSlope != null) { uiFacadeEnterSlope.tooltip = "Facade 进入陡坡阈值（度）"; }
-            if (uiFacadeExitSlope != null) { uiFacadeExitSlope.tooltip = "Facade 退出至平缓阈值（度）"; }
-            if (uiProbeStep != null) { uiProbeStep.tooltip = "Facade 探测步长（米）"; }
-            if (uiProbeMaxDist != null) { uiProbeMaxDist.tooltip = "Facade 最大探测距离（米）"; }
-            if (uiFacadeRefHeight != null) { uiFacadeRefHeight.tooltip = "Facade 参考高度（米）"; }
-            if (uiFacadeOffsets != null) { uiFacadeOffsets.tooltip = "Facade 偏移：X沿right，Y沿up，Z沿水平-Forward"; }
-            if (uiFacadeScaleOffset != null) { uiFacadeScaleOffset.tooltip = "Facade 自适应后的逐轴缩放偏移（XYZ加法），用于微调最终缩放"; }
-            if (uiFacadeSmoothMode != null) { uiFacadeSmoothMode.tooltip = "虚拟立面平滑模式：Mean/Gaussian/Median"; }
-            if (uiFacadeSmoothWindow != null) { uiFacadeSmoothWindow.tooltip = "平滑窗口大小（奇数>=3）"; }
-            if (uiFacadeSmoothSigma != null) { uiFacadeSmoothSigma.tooltip = "高斯平滑Sigma"; }
-            if (uiRdpEpsilon != null) { uiRdpEpsilon.tooltip = "RDP 简化容差（米），增大将更直"; }
-            if (uiPreviewBottomColor != null) { uiPreviewBottomColor.tooltip = "底轨预览颜色"; }
-            if (uiPreviewTopColor != null) { uiPreviewTopColor.tooltip = "顶轨预览颜色"; }
+            BindPrefabSelector();
 
-            // 类型约束与事件绑定
-            if (uiSelectPrefab != null)
+            BindField<Slider, float>("Weigth",
+                i => i.weight, (i, v) => i.weight = Mathf.Clamp01(v),
+                setup: s => { s.lowValue = 0f; s.highValue = 1f; });
+
+            BindField<Slider, float>("BaseDensity",
+                i => i.baseDensity, (i, v) => i.baseDensity = Mathf.Clamp(v, 0f, 10f),
+                setup: s => { s.lowValue = 0f; s.highValue = 10f; });
+
+            // 范围滑条
+            BindRangeSlider("SceleRange", i => i.uniformScaleRange, (i, v) => i.uniformScaleRange = SanitizeRange(v, 0f), ref uiSceleRange, 0f, 5f);
+            BindRangeSlider("YrotationRange", i => i.yRotationRange, (i, v) => i.yRotationRange = SanitizeRange(v, 0f, 360f), ref uiYrotationRange, 0f, 360f);
+            BindRangeSlider("HeigthRange", i => i.heightRange, (i, v) => i.heightRange = SanitizeRange(v, 0f), ref uiHeigthRange, 0f, 1000f);
+            BindRangeSlider("SlopeRange", i => i.slopeRange, (i, v) => i.slopeRange = SanitizeRange(v, 0f, 90f), ref uiSlopeRange, 0f, 90f);
+
+            // =========================================================
+            // 2. 绑定 Landscape 专属字段 (Landscape Only)
+            // =========================================================
+
+            // [修改] 名称改为 FacadeMinSpacing，并归入 Landscape 组
+            BindField<FloatField, float>("FacadeMinSpacing",
+                i => i.minSpacing, (i, v) => i.minSpacing = Mathf.Max(0f, v),
+                setup: f => f.tooltip = "条目级最小间距（米）", isLandscapeOnly: true);
+
+            BindField<FloatField, float>("EdgeSlopeThreshold",
+                i => i.edgeSlopeThreshold, (i, v) => i.edgeSlopeThreshold = Mathf.Clamp(v, 0f, 90f),
+                setup: f => f.tooltip = "Landscape 最小坡度阈值（度）", isLandscapeOnly: true);
+
+            BindField<MinMaxSlider, Vector2>("EmbedDepthRange",
+                i => i.embedDepthRange, (i, v) => i.embedDepthRange = SanitizeRange(v, 0f, 1f),
+                setup: s => { s.lowLimit = 0f; s.highLimit = 1f; }, isLandscapeOnly: true);
+
+            BindField<FloatField, float>("FacadeEnterSlope", i => i.edgeSlopeEnter, (i, v) => i.edgeSlopeEnter = Mathf.Clamp(v, 0f, 90f), isLandscapeOnly: true);
+            BindField<FloatField, float>("FacadeExitSlope", i => i.edgeSlopeExit, (i, v) => i.edgeSlopeExit = Mathf.Clamp(v, 0f, 90f), isLandscapeOnly: true);
+            BindField<FloatField, float>("ProbeStep", i => i.probeStep, (i, v) => i.probeStep = Mathf.Clamp(v, 0.1f, 5f), isLandscapeOnly: true);
+            BindField<FloatField, float>("ProbeMaxDist", i => i.probeMaxDist, (i, v) => i.probeMaxDist = Mathf.Clamp(v, 0.5f, 20f), isLandscapeOnly: true);
+            BindField<FloatField, float>("FacadeRefHeight", i => i.referenceHeightMeters, (i, v) => i.referenceHeightMeters = Mathf.Max(0.0001f, v), isLandscapeOnly: true);
+
+            BindField<Vector3Field, Vector3>("FacadeScaleOffset", i => i.facadeScaleOffset, (i, v) => i.facadeScaleOffset = v, isLandscapeOnly: true);
+            BindField<Vector3Field, Vector3>("FacadeOffsets", i => i.offsets, (i, v) => i.offsets = v, isLandscapeOnly: true);
+
+            // =========================================================
+            // 3. 绑定全局配置字段 (Landscape Only)
+            // =========================================================
+
+            BindConfigField<EnumField, Enum>("FacadeSmoothMode",
+                c => c.facadeSmoothMode, (c, v) => c.facadeSmoothMode = (FacadeSmoothingMode)v, isLandscapeOnly: true);
+
+            BindConfigField<IntegerField, int>("FacadeSmoothWindow",
+                c => c.facadeSmoothWindow, (c, v) => c.facadeSmoothWindow = EnsureOdd(v), isLandscapeOnly: true);
+
+            BindConfigField<FloatField, float>("FacadeSmoothSigma",
+                c => c.facadeSmoothSigma, (c, v) => c.facadeSmoothSigma = Mathf.Max(0.1f, v), isLandscapeOnly: true);
+
+            BindConfigField<FloatField, float>("RdpEpsilon",
+                c => c.facadeRdpEpsilon, (c, v) => c.facadeRdpEpsilon = Mathf.Max(0.01f, v), isLandscapeOnly: true);
+            BindConfigField<ColorField, Color>("PreviewBottomColor",
+                c => c.facadePreviewBottomColor, (c, v) => c.facadePreviewBottomColor = v, isLandscapeOnly: true);
+            BindConfigField<ColorField, Color>("PreviewTopColor",
+                c => c.facadePreviewTopColor, (c, v) => c.facadePreviewTopColor = v, isLandscapeOnly: true);
+
+            // =========================================================
+            // 4. 按钮与特殊交互 (Landscape Only)
+            // =========================================================
+
+            var btnScan = root.Q<Button>("ScanFacadesButton");
+            if (btnScan != null)
             {
-                uiSelectPrefab.objectType = typeof(GameObject);
-                uiSelectPrefab.allowSceneObjects = false;
-                uiSelectPrefab.RegisterValueChangedCallback(evt =>
-                {
-                    var item = callbacks.GetSelectedItem?.Invoke();
-                    if (item == null) return; // 提前返回
-
-                    var newGo = evt.newValue as GameObject;
-                    if (newGo == null)
-                    {
-                        var index = callbacks.GetSelectedItemIndex != null ? callbacks.GetSelectedItemIndex() : -1;
-                        callbacks.RemoveItemAt?.Invoke(index);
-                        callbacks.RefreshPreviewListUI?.Invoke();
-                        callbacks.UpdatePropertyPanelFromSelectedItem?.Invoke();
-                        return; // 提前返回
-                    }
-                    var profile = callbacks.GetCurrentProfile?.Invoke();
-                    var i = callbacks.GetSelectedItemIndex != null ? callbacks.GetSelectedItemIndex() : -1;
-                    callbacks.AssignPrefabToItem?.Invoke(profile, i, newGo);
-                });
+                btnScan.SetClickHandler(() => callbacks.ScanSelectedTerrainsForFacades?.Invoke());
+                _landscapeGroup.Add(btnScan);
             }
 
-            uiWeigth?.RegisterValueChangedCallback(evt =>
+            var btnBake = root.Q<Button>("BakeFacadesButton");
+            if (btnBake != null)
             {
-                var item = callbacks.GetSelectedItem?.Invoke();
-                if (item == null) return;
-                var v = Mathf.Clamp(evt.newValue, 0f, 1f);
-                item.weight = v;
-                uiWeigth.SetValueWithoutNotify(v);
-                callbacks.MarkCurrentProfileDirty?.Invoke();
-            });
+                btnBake.SetClickHandler(() => callbacks.BakeCachedFacades?.Invoke());
+                _landscapeGroup.Add(btnBake);
+            }
 
-            uiSceleRange?.RegisterValueChangedCallback(evt =>
+            uiUseContourDetection = root.Q<Toggle>("UseContourDetection");
+            if (uiUseContourDetection != null)
             {
-                var item = callbacks.GetSelectedItem?.Invoke();
-                if (item == null) return;
-                var v = evt.newValue;
-                v.x = Mathf.Max(0f, v.x);
-                v.y = Mathf.Max(v.x, v.y);
-                item.uniformScaleRange = v;
-                uiSceleRange.SetValueWithoutNotify(v);
-                callbacks.MarkCurrentProfileDirty?.Invoke();
-            });
+                uiUseContourDetection.tooltip = "使用高度图等值线扫描替代射线扫描";
+                BindConfigField<Toggle, bool>("UseContourDetection",
+                    c => c.useContourDetection, (c, v) => c.useContourDetection = v, isLandscapeOnly: true);
+            }
 
-            uiYrotationRange?.RegisterValueChangedCallback(evt =>
+            uiContourSlopeDeg = root.Q<FloatField>("ContourSlopeDeg");
+            if (uiContourSlopeDeg != null)
             {
-                var item = callbacks.GetSelectedItem?.Invoke();
-                if (item == null) return;
-                var v = evt.newValue;
-                float maxRot = uiYrotationRange != null ? uiYrotationRange.highLimit : 30f;
-                v.x = Mathf.Clamp(v.x, 0f, maxRot);
-                v.y = Mathf.Clamp(v.y, 0f, maxRot);
-                if (v.y < v.x) v.y = v.x;
-                item.yRotationRange = v;
-                uiYrotationRange.SetValueWithoutNotify(v);
-                callbacks.MarkCurrentProfileDirty?.Invoke();
-            });
-
-            uiHeigthRange?.RegisterValueChangedCallback(evt =>
-            {
-                var item = callbacks.GetSelectedItem?.Invoke();
-                if (item == null) return;
-                var v = evt.newValue;
-                if (v.y < v.x) v.y = v.x;
-                item.heightRange = v;
-                uiHeigthRange.SetValueWithoutNotify(v);
-                callbacks.MarkCurrentProfileDirty?.Invoke();
-            });
-
-            uiSlopeRange?.RegisterValueChangedCallback(evt =>
-            {
-                var item = callbacks.GetSelectedItem?.Invoke();
-                if (item == null) return;
-                var v = evt.newValue;
-                v.x = Mathf.Clamp(v.x, 0f, 90f);
-                v.y = Mathf.Clamp(v.y, 0f, 90f);
-                if (v.y < v.x) v.y = v.x;
-                item.slopeRange = v;
-                uiSlopeRange.SetValueWithoutNotify(v);
-                callbacks.MarkCurrentProfileDirty?.Invoke();
-            });
-
-            uiBaseDensity?.RegisterValueChangedCallback(evt =>
-            {
-                var item = callbacks.GetSelectedItem?.Invoke();
-                if (item == null) return;
-                var v = Mathf.Clamp(evt.newValue, 0f, 10f);
-                item.baseDensity = v;
-                uiBaseDensity.SetValueWithoutNotify(v);
-                callbacks.MarkCurrentProfileDirty?.Invoke();
-            });
-
-            uiMinSpacing?.RegisterValueChangedCallback(evt =>
-            {
-                var item = callbacks.GetSelectedItem?.Invoke();
-                if (item == null) return;
-                var v = Mathf.Max(evt.newValue, 0f);
-                item.minSpacing = v;
-                uiMinSpacing.SetValueWithoutNotify(v);
-                callbacks.MarkCurrentProfileDirty?.Invoke();
-            });
-
-            uiEdgeSlopeThreshold?.RegisterValueChangedCallback(evt =>
-            {
-                var item = callbacks.GetSelectedItem?.Invoke();
-                if (item == null) return;
-                var v = Mathf.Clamp(evt.newValue, 0f, 90f);
-                item.edgeSlopeThreshold = v;
-                uiEdgeSlopeThreshold.SetValueWithoutNotify(v);
-                callbacks.MarkCurrentProfileDirty?.Invoke();
-            });
-
-            uiEmbedDepthRange?.RegisterValueChangedCallback(evt =>
-            {
-                var item = callbacks.GetSelectedItem?.Invoke();
-                if (item == null) return;
-                var v = evt.newValue;
-                v.x = Mathf.Clamp(v.x, 0f, 1f);
-                v.y = Mathf.Clamp(v.y, v.x, 1f);
-                item.embedDepthRange = v;
-                uiEmbedDepthRange.SetValueWithoutNotify(v);
-                callbacks.MarkCurrentProfileDirty?.Invoke();
-            });
-
-            uiFacadeEnterSlope?.RegisterValueChangedCallback(evt =>
-            {
-                var item = callbacks.GetSelectedItem?.Invoke();
-                if (item == null) return;
-                var v = Mathf.Clamp(evt.newValue, 0f, 90f);
-                item.edgeSlopeEnter = v;
-                uiFacadeEnterSlope.SetValueWithoutNotify(v);
-                callbacks.MarkCurrentProfileDirty?.Invoke();
-            });
-            uiFacadeExitSlope?.RegisterValueChangedCallback(evt =>
-            {
-                var item = callbacks.GetSelectedItem?.Invoke();
-                if (item == null) return;
-                var v = Mathf.Clamp(evt.newValue, 0f, 90f);
-                item.edgeSlopeExit = v;
-                uiFacadeExitSlope.SetValueWithoutNotify(v);
-                callbacks.MarkCurrentProfileDirty?.Invoke();
-            });
-            uiProbeStep?.RegisterValueChangedCallback(evt =>
-            {
-                var item = callbacks.GetSelectedItem?.Invoke();
-                if (item == null) return;
-                var v = Mathf.Clamp(evt.newValue, 0.1f, 5f);
-                item.probeStep = v;
-                uiProbeStep.SetValueWithoutNotify(v);
-                callbacks.MarkCurrentProfileDirty?.Invoke();
-            });
-            uiProbeMaxDist?.RegisterValueChangedCallback(evt =>
-            {
-                var item = callbacks.GetSelectedItem?.Invoke();
-                if (item == null) return;
-                var v = Mathf.Clamp(evt.newValue, 0.5f, 20f);
-                item.probeMaxDist = v;
-                uiProbeMaxDist.SetValueWithoutNotify(v);
-                callbacks.MarkCurrentProfileDirty?.Invoke();
-            });
-            uiFacadeRefHeight?.RegisterValueChangedCallback(evt =>
-            {
-                var item = callbacks.GetSelectedItem?.Invoke();
-                if (item == null) return;
-                var v = Mathf.Max(evt.newValue, 0.0001f);
-                item.referenceHeightMeters = v;
-                uiFacadeRefHeight.SetValueWithoutNotify(v);
-                callbacks.MarkCurrentProfileDirty?.Invoke();
-            });
-            uiFacadeOffsets?.RegisterValueChangedCallback(evt =>
-            {
-                var item = callbacks.GetSelectedItem?.Invoke();
-                if (item == null) return;
-                var v = evt.newValue;
-                item.offsets = v;
-                uiFacadeOffsets.SetValueWithoutNotify(v);
-                callbacks.MarkCurrentProfileDirty?.Invoke();
-            });
-            uiFacadeScaleOffset?.RegisterValueChangedCallback(evt =>
-            {
-                var item = callbacks.GetSelectedItem?.Invoke();
-                if (item == null) return;
-                var v = evt.newValue;
-                item.facadeScaleOffset = v;
-                uiFacadeScaleOffset.SetValueWithoutNotify(v);
-                callbacks.MarkCurrentProfileDirty?.Invoke();
-            });
-            uiFacadeSmoothMode?.RegisterValueChangedCallback(evt =>
-            {
-                var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
-                if (cfg == null) return;
-                var v = (MrTerrainPainter.Runtime.Profiles.FacadeSmoothingMode)evt.newValue;
-                cfg.facadeSmoothMode = v;
-                uiFacadeSmoothMode.SetValueWithoutNotify(v);
-                // 避免频繁保存触发资产读条：仅更新内存，刷新视图
-            });
-            uiFacadeSmoothWindow?.RegisterValueChangedCallback(evt =>
-            {
-                var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
-                if (cfg == null) return;
-                var v = Mathf.Max(evt.newValue, 3);
-                if ((v % 2) == 0) v += 1;
-                cfg.facadeSmoothWindow = v;
-                uiFacadeSmoothWindow.SetValueWithoutNotify(v);
-                // 避免频繁保存触发资产读条：仅更新内存，刷新视图
-            });
-            uiFacadeSmoothSigma?.RegisterValueChangedCallback(evt =>
-            {
-                var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
-                if (cfg == null) return;
-                var v = Mathf.Max(evt.newValue, 0.1f);
-                cfg.facadeSmoothSigma = v;
-                uiFacadeSmoothSigma.SetValueWithoutNotify(v);
-                // 避免频繁保存触发资产读条：仅更新内存，刷新视图
-            });
-
-            uiRdpEpsilon?.RegisterValueChangedCallback(evt =>
-            {
-                var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
-                if (cfg == null) return;
-                var v = Mathf.Max(evt.newValue, 0.01f);
-                cfg.facadeRdpEpsilon = v;
-                uiRdpEpsilon.SetValueWithoutNotify(v);
-                SceneView.RepaintAll();
-            });
-
-            uiPreviewBottomColor?.RegisterValueChangedCallback(evt =>
-            {
-                var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
-                if (cfg == null) return;
-                cfg.facadePreviewBottomColor = evt.newValue;
-                uiPreviewBottomColor.SetValueWithoutNotify(evt.newValue);
-                SceneView.RepaintAll();
-            });
-
-            uiPreviewTopColor?.RegisterValueChangedCallback(evt =>
-            {
-                var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
-                if (cfg == null) return;
-                cfg.facadePreviewTopColor = evt.newValue;
-                uiPreviewTopColor.SetValueWithoutNotify(evt.newValue);
-                SceneView.RepaintAll();
-            });
-
-            uiScanFacadesButton?.RegisterCallback<ClickEvent>(_ =>
-            {
-                callbacks.ScanSelectedTerrainsForFacades?.Invoke();
-            });
-
-            uiBakeFacadesButton?.RegisterCallback<ClickEvent>(_ =>
-            {
-                callbacks.BakeCachedFacades?.Invoke();
-            });
+                uiContourSlopeDeg.tooltip = "等值线坡度阈值（度）";
+                BindConfigField<FloatField, float>("ContourSlopeDeg",
+                    c => c.contourSlopeDeg, (c, v) => c.contourSlopeDeg = Mathf.Clamp(v, 0f, 90f), isLandscapeOnly: true);
+            }
         }
 
-        // 从选中条目刷新属性面板显示（保持与窗口逻辑一致）
+        // 刷新面板数据 (从 Item -> UI)
         public void UpdateFromSelectedItem()
         {
             var item = callbacks.GetSelectedItem?.Invoke();
+
             if (item == null)
             {
-                uiSelectPrefab?.SetValueWithoutNotify(null);
-                uiWeigth?.SetValueWithoutNotify(0f);
-                uiSceleRange?.SetValueWithoutNotify(Vector2.one);
-                var maxRot = uiYrotationRange != null ? uiYrotationRange.highLimit : 30f;
-                uiYrotationRange?.SetValueWithoutNotify(new Vector2(0f, maxRot));
-                uiHeigthRange?.SetValueWithoutNotify(new Vector2(0f, 1000f));
-                uiSlopeRange?.SetValueWithoutNotify(new Vector2(0f, 90f));
-                uiBaseDensity?.SetValueWithoutNotify(0f);
-                uiMinSpacing?.SetValueWithoutNotify(0f);
-                uiEdgeSlopeThreshold?.SetValueWithoutNotify(75f);
-                uiEmbedDepthRange?.SetValueWithoutNotify(new Vector2(0.1f, 0.3f));
-                if (uiEdgeSlopeThreshold != null) uiEdgeSlopeThreshold.style.display = DisplayStyle.None;
-                if (uiEmbedDepthRange != null) uiEmbedDepthRange.style.display = DisplayStyle.None;
-                if (uiFacadeEnterSlope != null) uiFacadeEnterSlope.style.display = DisplayStyle.None;
-                if (uiFacadeExitSlope != null) uiFacadeExitSlope.style.display = DisplayStyle.None;
-                if (uiProbeStep != null) uiProbeStep.style.display = DisplayStyle.None;
-                if (uiProbeMaxDist != null) uiProbeMaxDist.style.display = DisplayStyle.None;
-                if (uiFacadeRefHeight != null) uiFacadeRefHeight.style.display = DisplayStyle.None;
-                if (uiFacadeOffsets != null) uiFacadeOffsets.style.display = DisplayStyle.None;
+                root.SetEnabled(false);
                 return;
             }
+            root.SetEnabled(true);
 
-            uiSelectPrefab?.SetValueWithoutNotify(item.prefab);
-            uiWeigth?.SetValueWithoutNotify(item.weight);
-            uiSceleRange?.SetValueWithoutNotify(item.uniformScaleRange);
-            uiYrotationRange?.SetValueWithoutNotify(item.yRotationRange);
-            uiHeigthRange?.SetValueWithoutNotify(item.heightRange);
-            uiSlopeRange?.SetValueWithoutNotify(item.slopeRange);
-            uiBaseDensity?.SetValueWithoutNotify(item.baseDensity);
-            uiMinSpacing?.SetValueWithoutNotify(item.minSpacing);
-            uiEdgeSlopeThreshold?.SetValueWithoutNotify(item.edgeSlopeThreshold);
-            uiEmbedDepthRange?.SetValueWithoutNotify(item.embedDepthRange);
-            uiFacadeEnterSlope?.SetValueWithoutNotify(item.edgeSlopeEnter);
-            uiFacadeExitSlope?.SetValueWithoutNotify(item.edgeSlopeExit);
-            uiProbeStep?.SetValueWithoutNotify(item.probeStep);
-            uiProbeMaxDist?.SetValueWithoutNotify(item.probeMaxDist);
-            uiFacadeRefHeight?.SetValueWithoutNotify(item.referenceHeightMeters);
-            uiFacadeScaleOffset?.SetValueWithoutNotify(item.facadeScaleOffset);
-            uiFacadeOffsets?.SetValueWithoutNotify(item.offsets);
-            var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
-            if (cfg != null)
-            {
-                uiFacadeSmoothMode?.Init(cfg.facadeSmoothMode);
-                uiFacadeSmoothMode?.SetValueWithoutNotify(cfg.facadeSmoothMode);
-                uiFacadeSmoothWindow?.SetValueWithoutNotify(cfg.facadeSmoothWindow);
-                uiFacadeSmoothSigma?.SetValueWithoutNotify(cfg.facadeSmoothSigma);
-                uiRdpEpsilon?.SetValueWithoutNotify(cfg.facadeRdpEpsilon);
-                uiPreviewBottomColor?.SetValueWithoutNotify(cfg.facadePreviewBottomColor);
-                uiPreviewTopColor?.SetValueWithoutNotify(cfg.facadePreviewTopColor);
-                uiUseContourDetection?.SetValueWithoutNotify(cfg.useContourDetection);
-                uiContourSlopeDeg?.SetValueWithoutNotify(cfg.contourSlopeDeg);
-            }
+            // 执行所有注册的值更新器
+            foreach (var updater in _valueUpdaters) updater(item);
 
-            var isLandscape = item.prefabType == MrTerrainPainter.Runtime.Profiles.PrefabType.Landscape;
-            if (uiEdgeSlopeThreshold != null) uiEdgeSlopeThreshold.style.display = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
-            if (uiEmbedDepthRange != null) uiEmbedDepthRange.style.display = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
-            if (uiFacadeEnterSlope != null) uiFacadeEnterSlope.style.display = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
-            if (uiFacadeExitSlope != null) uiFacadeExitSlope.style.display = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
-            if (uiProbeStep != null) uiProbeStep.style.display = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
-            if (uiMinSpacing != null) uiMinSpacing.style.display = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
-            if (uiProbeMaxDist != null) uiProbeMaxDist.style.display = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
-            if (uiFacadeRefHeight != null) uiFacadeRefHeight.style.display = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
-            if (uiFacadeScaleOffset != null) uiFacadeScaleOffset.style.display = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
-            if (uiFacadeOffsets != null) uiFacadeOffsets.style.display = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
-            if (uiFacadeSmoothMode != null) uiFacadeSmoothMode.style.display = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
-            if (uiFacadeSmoothWindow != null) uiFacadeSmoothWindow.style.display = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
-            if (uiFacadeSmoothSigma != null) uiFacadeSmoothSigma.style.display = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
+            // 特殊字段手动更新
+            if (uiSelectPrefab != null) uiSelectPrefab.SetValueWithoutNotify(item.prefab);
 
-            // —— 动态匹配上下限 ——
-            if (uiSceleRange != null)
+            // 更新 Config 类字段
+            UpdateConfigFields();
+
+            // 控制可见性
+            UpdateVisibility(item);
+        }
+
+        private void UpdateVisibility(VegetationItem item)
+        {
+            bool isLandscape = item.prefabType == PrefabType.Landscape;
+            DisplayStyle style = isLandscape ? DisplayStyle.Flex : DisplayStyle.None;
+
+            foreach (var el in _landscapeGroup)
             {
-                uiSceleRange.lowLimit = Mathf.Min(0f, item.uniformScaleRange.x);
-                uiSceleRange.highLimit = Mathf.Max(5f, item.uniformScaleRange.y);
+                el.style.display = style;
             }
-            if (uiHeigthRange != null)
+        }
+
+        // --- 核心辅助方法 ---
+
+        private void BindField<TElement, TValue>(
+            string name,
+            Func<VegetationItem, TValue> getter,
+            Action<VegetationItem, TValue> setter,
+            Action<TElement> setup = null,
+            bool isLandscapeOnly = false)
+            where TElement : VisualElement, INotifyValueChanged<TValue>
+        {
+            var field = root.Q<TElement>(name);
+            if (field == null) return;
+
+            setup?.Invoke(field);
+
+            field.RegisterValueChangedCallback(evt =>
             {
-                uiHeigthRange.lowLimit = Mathf.Min(0f, item.heightRange.x);
-                uiHeigthRange.highLimit = Mathf.Max(1000f, item.heightRange.y);
-            }
-            if (uiSlopeRange != null)
-            {
-                uiSlopeRange.lowLimit = Mathf.Min(0f, item.slopeRange.x);
-                uiSlopeRange.highLimit = Mathf.Max(90f, item.slopeRange.y);
-            }
-            if (uiUseContourDetection != null) { uiUseContourDetection.tooltip = "使用高度图等值线扫描替代射线扫描"; }
-            if (uiContourSlopeDeg != null) { uiContourSlopeDeg.tooltip = "等值线坡度阈值（度）"; }
-            uiUseContourDetection?.RegisterValueChangedCallback(evt =>
-            {
-                var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
-                if (cfg == null) return;
-                cfg.useContourDetection = evt.newValue;
-                uiUseContourDetection.SetValueWithoutNotify(evt.newValue);
-                SceneView.RepaintAll();
+                var item = callbacks.GetSelectedItem?.Invoke();
+                if (item == null) return;
+                setter(item, evt.newValue);
+                callbacks.MarkCurrentProfileDirty?.Invoke();
             });
 
-            uiContourSlopeDeg?.RegisterValueChangedCallback(evt =>
+            _valueUpdaters.Add(item => field.SetValueWithoutNotify(getter(item)));
+
+            if (isLandscapeOnly) _landscapeGroup.Add(field);
+        }
+
+        private void BindRangeSlider(
+            string name,
+            Func<VegetationItem, Vector2> getter,
+            Action<VegetationItem, Vector2> setter,
+            ref MinMaxSlider fieldRef,
+            float absMin, float absMax)
+        {
+            var field = root.Q<MinMaxSlider>(name);
+            fieldRef = field;
+            if (field == null) return;
+
+            field.lowLimit = absMin;
+            field.highLimit = absMax;
+
+            field.RegisterValueChangedCallback(evt =>
             {
-                var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
-                if (cfg == null) return;
-                var v = Mathf.Clamp(evt.newValue, 0f, 90f);
-                cfg.contourSlopeDeg = v;
-                uiContourSlopeDeg.SetValueWithoutNotify(v);
-                SceneView.RepaintAll();
+                var item = callbacks.GetSelectedItem?.Invoke();
+                if (item == null) return;
+                setter(item, evt.newValue);
+                UpdateSliderLimits(field, evt.newValue, absMin, absMax);
+                callbacks.MarkCurrentProfileDirty?.Invoke();
+            });
+
+            _valueUpdaters.Add(item =>
+            {
+                var val = getter(item);
+                UpdateSliderLimits(field, val, absMin, absMax);
+                field.SetValueWithoutNotify(val);
             });
         }
 
+        private void BindConfigField<TElement, TValue>(
+            string name,
+            Func<Editor.Config.MrTerrainPainterConfig, TValue> getter,
+            Action<Editor.Config.MrTerrainPainterConfig, TValue> setter,
+            bool isLandscapeOnly = false)
+            where TElement : VisualElement, INotifyValueChanged<TValue>
+        {
+            var field = root.Q<TElement>(name);
+            if (field == null) return;
 
+            field.RegisterValueChangedCallback(evt =>
+            {
+                var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
+                if (cfg == null) return;
+                setter(cfg, evt.newValue);
+                SceneView.RepaintAll();
+            });
+
+            _configUpdaters.Add(cfg =>
+            {
+                if (field is EnumField ef && typeof(TValue).IsEnum) ef.Init((Enum)(object)getter(cfg));
+                field.SetValueWithoutNotify(getter(cfg));
+            });
+
+            if (isLandscapeOnly) _landscapeGroup.Add(field);
+        }
+
+        private readonly List<Action<Editor.Config.MrTerrainPainterConfig>> _configUpdaters = new List<Action<Editor.Config.MrTerrainPainterConfig>>();
+
+        private void UpdateConfigFields()
+        {
+            var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
+            if (cfg == null) return;
+            foreach (var updater in _configUpdaters) updater(cfg);
+        }
+
+        private void BindPrefabSelector()
+        {
+            uiSelectPrefab = root.Q<ObjectField>("SelectPrefab");
+            if (uiSelectPrefab == null) return;
+
+            uiSelectPrefab.objectType = typeof(GameObject);
+            uiSelectPrefab.allowSceneObjects = false;
+            uiSelectPrefab.RegisterValueChangedCallback(evt =>
+            {
+                var item = callbacks.GetSelectedItem?.Invoke();
+                if (item == null) return;
+
+                var newGo = evt.newValue as GameObject;
+                if (newGo == null)
+                {
+                    int index = callbacks.GetSelectedItemIndex?.Invoke() ?? -1;
+                    callbacks.RemoveItemAt?.Invoke(index);
+                    callbacks.RefreshPreviewListUI?.Invoke();
+                    callbacks.UpdatePropertyPanelFromSelectedItem?.Invoke();
+                }
+                else
+                {
+                    var profile = callbacks.GetCurrentProfile?.Invoke();
+                    int index = callbacks.GetSelectedItemIndex?.Invoke() ?? -1;
+                    callbacks.AssignPrefabToItem?.Invoke(profile, index, newGo);
+                }
+            });
+        }
+
+        private Vector2 SanitizeRange(Vector2 v, float min, float max = float.MaxValue)
+        {
+            v.x = Mathf.Clamp(v.x, min, max);
+            v.y = Mathf.Clamp(v.y, v.x, max);
+            return v;
+        }
+
+        private int EnsureOdd(int v)
+        {
+            v = Mathf.Max(3, v);
+            return (v % 2 == 0) ? v + 1 : v;
+        }
+
+        private void UpdateSliderLimits(MinMaxSlider slider, Vector2 value, float absMin, float absMax)
+        {
+            slider.lowLimit = Mathf.Min(absMin, value.x);
+            slider.highLimit = Mathf.Max(absMax, value.y);
+        }
+    }
+
+    internal static class ViewExtensions
+    {
+        public static void SetClickHandler(this Button b, Action a)
+        {
+            if (b != null)
+            {
+                if (b.userData is Action old) b.clicked -= old;
+                b.userData = a;
+                b.clicked += a;
+            }
+        }
     }
 }
-

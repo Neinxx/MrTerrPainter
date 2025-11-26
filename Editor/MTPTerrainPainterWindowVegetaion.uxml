@@ -11,7 +11,6 @@
             <uie:ObjectField label="CurrentPrefab" name="SelectPrefab" />
             <ui:Slider label="权重" value="0.5" high-value="1" name="Weigth" show-input-field="true" />
             <ui:Slider label="基础密度" value="1" high-value="10" name="BaseDensity" show-input-field="true" />
-            <uie:FloatField label="Min Spacing (m)" name="MinSpacing" />
             <ui:MinMaxSlider label="缩放范围" min-value="0.5" max-value="5" low-limit="0" high-limit="2" name="SceleRange" />
             <ui:MinMaxSlider label="Y旋转范围" min-value="0" max-value="360" low-limit="0" high-limit="360" name="YrotationRange" />
             <ui:MinMaxSlider label="高度范围" min-value="1" max-value="12" low-limit="-10" high-limit="10" name="HeigthRange" />
@@ -20,6 +19,7 @@
             <ui:MinMaxSlider label="Embed Depth Range" min-value="0" max-value="1" low-limit="0" high-limit="1" name="EmbedDepthRange" />
             <uie:FloatField label="Facade Enter Slope" name="FacadeEnterSlope" />
             <uie:FloatField label="Facade Exit Slope" name="FacadeExitSlope" />
+            <uie:FloatField label="Facade Min Spacing (m)" name="FacadeMinSpacing" />
             <uie:FloatField label="Probe Step (m)" name="ProbeStep" />
             <uie:FloatField label="Probe Max Dist (m)" name="ProbeMaxDist" />
             <uie:FloatField label="Facade Reference Height (m)" name="FacadeRefHeight" />

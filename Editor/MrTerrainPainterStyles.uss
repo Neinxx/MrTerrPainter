@@ -204,41 +204,51 @@
     flex-shrink: 0;
 }
 
+/* === 默认状态 (未选中) === */
 .thumb-item {
+    /* 布局与尺寸 (保持与原设计一致) */
     width: 64px;
     height: 64px;
     margin: 3px;
     flex-shrink: 0;
-    border-width: 0;
-    border-color: rgb(60, 60, 60);
-    background-color: rgba(80, 80, 80, 0.2);
-    border-radius: 0;
-    transition-duration: 0.15s;
-    transition-timing-function: ease-out-back;
-}
+    justify-content: space-between; 
+    align-items: center;
 
-.thumb-item:hover {
-    border-color: rgb(255, 207, 107);
+    /* 外观：这里定义默认的深色背景和灰色边框 */
+    background-color: rgb(58, 58, 58);
+    
+    /* 边框：默认 3px 宽，深灰色 (对应您之前 UXML 里的设置) */
     border-width: 2px;
-    scale: 1.08 1.08;
-    background-color: rgba(255, 255, 255, 0.1);
+    border-color: rgb(71, 71, 71);
+    border-radius: 4px; /* 稍微加一点圆角更现代 */
+
+    /* 动画过渡 */
+    transition-duration: 0.1s;
+    transition-timing-function: ease-out;
 }
 
-.thumb-item--selected {
-    width: 64px;
-    height: 64px;
-    margin: 3px;
-    flex-shrink: 0;
-    border-width: 0;
-    border-color: rgb(60, 60, 60);
-    background-color: rgba(80, 80, 80, 0.2);
-    border-radius: 0;
-    transition-duration: 0.15s;
-    transition-timing-function: ease-out-back;
-    border-left-color: rgb(226, 131, 72);
-    border-right-color: rgb(226, 131, 72);
-    border-top-color: rgb(226, 131, 72);
-    border-bottom-color: rgb(226, 131, 72);
+/* === 悬停状态 === */
+.thumb-item:hover {
+    /* 悬停时边框变亮，稍微放大 */
+    border-color: rgb(100, 100, 100);
+    scale: 1.02 1.02;
+}
+
+/* === 选中状态 (优先级最高) === */
+/* 将选择器修改为同时包含 :hover 状态，确保优先级最高 */
+.thumb-item--selected,
+.thumb-item--selected:hover { 
+    /* 核心修复：设置边框宽度 (之前是 0，导致不可见) */
+    border-width: 2px; 
+    
+    /* 核心修复：选中状态强制为橙色，覆盖默认悬停颜色 */
+    border-color: rgb(226, 131, 72); 
+    
+    background-color: rgba(226, 131, 72, 0.15);
+    border-radius: 6px;
+    
+    /* 保持选中时不大缩放，或者你可以设为 1.05 保持一致 */
+    scale: 1 1; 
 }
 
 .thumb-item--empty {
