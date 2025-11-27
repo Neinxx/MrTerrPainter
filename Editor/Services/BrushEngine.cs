@@ -1,5 +1,9 @@
 using System;
 using System.Collections.Generic;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
 using UnityEngine;
 
 namespace MrTerrainPainter.Editor.Services
@@ -52,6 +56,78 @@ namespace MrTerrainPainter.Editor.Services
             if (list == null) return;
             list.Clear();
             s_listPool3.Push(list);
+        }
+
+
+        // [新增] 对候选点进行松弛优化，使其分布更有机
+        public static void ApplyRelaxation(List<Vector2> points, float radius, float repelDist, int iterations = 3)
+        {
+            if (points == null || points.Count < 2) return;
+
+            int count = points.Count;
+            var nativePoints = new NativeArray<float2>(count, Allocator.TempJob);
+            for (int i = 0; i < count; i++) nativePoints[i] = points[i];
+
+            var job = new RelaxationJob
+            {
+                points = nativePoints,
+                repelDistSq = repelDist * repelDist,
+                center = float2.zero, // 假设 points 是局部坐标
+                radiusSq = radius * radius,
+                strength = 0.5f // 移动力度
+            };
+
+            // 执行多次迭代
+            for (int i = 0; i < iterations; i++)
+            {
+                job.Schedule(count, 64).Complete();
+            }
+
+            for (int i = 0; i < count; i++) points[i] = nativePoints[i];
+            nativePoints.Dispose();
+        }
+
+        [BurstCompile]
+        struct RelaxationJob : IJobParallelFor
+        {
+            [NativeDisableParallelForRestriction] // 允许并行读写（注意：这在严谨物理中需双缓冲，但此处为艺术效果允许少量竞态）
+            public NativeArray<float2> points;
+            public float repelDistSq;
+            public float2 center;
+            public float radiusSq;
+            public float strength;
+
+            public void Execute(int index)
+            {
+                float2 p = points[index];
+                float2 force = float2.zero;
+
+                // 简化的暴力邻域查找 (对于笔刷内少量点，O(N^2) 优于构建网格的开销)
+                for (int i = 0; i < points.Length; i++)
+                {
+                    if (i == index) continue;
+                    float2 other = points[i];
+                    float2 dir = p - other;
+                    float distSq = math.lengthsq(dir);
+
+                    // 如果太近，产生排斥力
+                    if (distSq < repelDistSq && distSq > 0.0001f)
+                    {
+                        force += math.normalize(dir) * (repelDistSq - distSq) / repelDistSq;
+                    }
+                }
+
+                // 应用力
+                p += force * strength;
+
+                // 约束在笔刷范围内
+                if (math.lengthsq(p - center) > radiusSq)
+                {
+                    p = center + math.normalize(p - center) * math.sqrt(radiusSq);
+                }
+
+                points[index] = p;
+            }
         }
 
 #if UNITY_BURST
