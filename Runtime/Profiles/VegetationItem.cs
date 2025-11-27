@@ -28,6 +28,8 @@ namespace MrTerrainPainter.Runtime.Profiles
         [Range(0f, 10f)] public float baseDensity = 1f;
         [Tooltip("该预制体的最小间距约束（米），随机生成与绘制均生效。")]
         [Range(0f, 10f)] public float minSpacing = 1.5f;
+        [Tooltip("该预制体的最小半径（米），用于控制实例之间的最小中心距，减少重叠。")]
+        [Range(0f, 10f)] public float minRadius = 0f;
 
         [Header("对齐设置")]
         [HideInInspector] public bool alignToTerrainNormal = true;
@@ -147,11 +149,20 @@ namespace MrTerrainPainter.Runtime.Profiles
             }
         }
 
+        public float CoreMinRadius
+        {
+            get
+            {
+                return Mathf.Max(minRadius, 0f);
+            }
+        }
+
         public void ValidateCore()
         {
             uniformScaleRange.x = Mathf.Max(0.0001f, uniformScaleRange.x);
             uniformScaleRange.y = Mathf.Max(uniformScaleRange.x, uniformScaleRange.y);
             minSpacing = Mathf.Max(0.01f, minSpacing);
+            minRadius = Mathf.Max(0f, minRadius);
         }
 
         private void OnEnable()
@@ -221,4 +232,3 @@ namespace MrTerrainPainter.Runtime.Profiles
         }
     }
 }
-

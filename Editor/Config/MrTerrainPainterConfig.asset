@@ -17,7 +17,7 @@ MonoBehaviour:
   defaultBrushStrength: 1
   defaultBrushDensityScale: 1
   defaultBrushHardness: 1
-  showPoolInHierarchy: 1
+  showPoolInHierarchy: 0
   recipeGenerationPath: Assets/MrTerrPainterV1/Data
   defaultGenerationType: 0
   normalDirection: 1
@@ -45,11 +45,7 @@ MonoBehaviour:
   exampleScenePath: 
   mappingEntries:
   - node: {fileID: 0}
-    type: 2
-  - node: {fileID: 0}
     type: 0
-  - node: {fileID: 0}
-    type: 5
   missingMappingLogThrottleSeconds: 3
   autoOpenSettingsOnMissingMapping: 0
   missingMappingLogTemplate: "\u672A\u627E\u5230\u7236\u8282\u70B9\u6620\u5C04\u7684\u7C7B\u578B:

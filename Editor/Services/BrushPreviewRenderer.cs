@@ -25,12 +25,6 @@ namespace MrTerrainPainter.Editor.Services
             if (bs == null || !bs.preview) return;
 
             DrawWireframePreview(data, bs, isConfigComplete);
-
-            var profile = MrTerrainPainter.Editor.Tools.MTPBrushContext.CurrentProfile;
-            if (data.hasData && profile != null)
-            {
-                DrawGhostPreview(data.terrain, data.center, bs, profile);
-            }
         }
 
         /// <summary>
@@ -41,12 +35,6 @@ namespace MrTerrainPainter.Editor.Services
             if (bs == null || !bs.preview) return;
 
             DrawWireframePreview(center, normal, bs, isConfigComplete);
-
-            var profile = MrTerrainPainter.Editor.Tools.MTPBrushContext.CurrentProfile;
-            if (TryFindTerrainAt(center, out var t))
-            {
-                DrawGhostPreview(t, center, bs, profile);
-            }
         }
 
         /// <summary>
@@ -82,8 +70,9 @@ namespace MrTerrainPainter.Editor.Services
 
             if (bs.distribution != DistributionType.EdgeLine)
             {
-                float repelDist = Mathf.Max(item.CoreSpacing, 0.01f) * 0.8f;
-                BrushEngineExtensions.ApplyRelaxation(candidates, bs.size, repelDist, 2);
+                float repelDist = Mathf.Max(Mathf.Max(item.CoreSpacing, item.CoreMinRadius), 0.01f) * 0.8f;
+                var centerXZ1 = new Vector2(center.x, center.z);
+                BrushEngineExtensions.ApplyRelaxation(candidates, centerXZ1, bs.size, repelDist, 2);
             }
 
             List<Matrix4x4> matrices = new List<Matrix4x4>();
@@ -107,11 +96,22 @@ namespace MrTerrainPainter.Editor.Services
 
             if (matrices.Count > 0)
             {
-                for (int i = 0; i < matrices.Count; i += INSTANCE_BATCH_SIZE)
+                bool canInstance = SystemInfo.supportsInstancing && _ghostMaterial.enableInstancing;
+                if (canInstance)
                 {
-                    int count = Mathf.Min(INSTANCE_BATCH_SIZE, matrices.Count - i);
-                    var batch = matrices.GetRange(i, count);
-                    Graphics.DrawMeshInstanced(mesh, 0, _ghostMaterial, batch.ToArray(), count, null, ShadowCastingMode.Off, false, 0, null, LightProbeUsage.Off);
+                    for (int i = 0; i < matrices.Count; i += INSTANCE_BATCH_SIZE)
+                    {
+                        int count = Mathf.Min(INSTANCE_BATCH_SIZE, matrices.Count - i);
+                        var batch = matrices.GetRange(i, count);
+                        Graphics.DrawMeshInstanced(mesh, 0, _ghostMaterial, batch.ToArray(), count, null, ShadowCastingMode.Off, false, 0, null, LightProbeUsage.Off);
+                    }
+                }
+                else
+                {
+                    for (int i = 0; i < matrices.Count; i++)
+                    {
+                        Graphics.DrawMesh(mesh, matrices[i], _ghostMaterial, 0, null, 0, null, ShadowCastingMode.Off, false, null, LightProbeUsage.Off);
+                    }
                 }
             }
         }
@@ -161,6 +161,12 @@ namespace MrTerrainPainter.Editor.Services
 
             DrawShapeGizmo(center, planeN, bs, fill, ring, st);
 
+            if (useNormalDir && data.hasData)
+            {
+                Handles.color = new Color(1f, 1f, 1f, 0.9f);
+                Handles.DrawAAPolyLine(st.ringWidth, center, center + planeN * (bs.size * 0.6f));
+            }
+
             if (bs.distribution == DistributionType.EdgeLine && data.slices != null && data.slices.Count > 1)
             {
                 var profile = MrTerrainPainter.Editor.Tools.MTPBrushContext.CurrentProfile;
@@ -192,7 +198,7 @@ namespace MrTerrainPainter.Editor.Services
             if (useNormalDir)
             {
                 Handles.color = new Color(1f, 1f, 1f, 0.9f);
-                Handles.DrawAAPolyLine(6f, raisedCenter, raisedCenter + planeN * (bs.size * 0.6f));
+                Handles.DrawAAPolyLine(st.ringWidth, raisedCenter, raisedCenter + planeN * (bs.size * 0.6f));
             }
         }
 
@@ -203,13 +209,13 @@ namespace MrTerrainPainter.Editor.Services
                 Handles.color = fill;
                 Handles.DrawSolidDisc(center, normal, bs.size);
                 Handles.color = ring;
-                Handles.DrawWireDisc(center, normal, bs.size);
+                DrawCircleAA(center, normal, bs.size, st.ringWidth);
 
                 float innerR = Mathf.Clamp(bs.size * Mathf.Clamp01(1f - bs.hardness), 0f, bs.size);
                 if (innerR > 0f)
                 {
                     Handles.color = st.innerColor;
-                    Handles.DrawWireDisc(center, normal, innerR);
+                    DrawCircleAA(center, normal, innerR, st.innerWidth);
                 }
 
                 if (st.showLabel)
@@ -231,7 +237,33 @@ namespace MrTerrainPainter.Editor.Services
                     center + new Vector3(-half.x, 0, -half.z), center + new Vector3(-half.x, 0, half.z),
                     center + new Vector3(half.x, 0, half.z), center + new Vector3(half.x, 0, -half.z)
                 }, fill, ring);
+                Handles.color = ring;
+                DrawRectAA(center, half, st.ringWidth);
             }
+        }
+
+        private static void DrawCircleAA(Vector3 center, Vector3 normal, float radius, float width)
+        {
+            const int segments = 64;
+            var pts = new Vector3[segments + 1];
+            var n = normal.sqrMagnitude > 1e-6f ? normal.normalized : Vector3.up;
+            var rot = Quaternion.FromToRotation(Vector3.up, n);
+            for (int i = 0; i <= segments; i++)
+            {
+                float ang = (i / (float)segments) * Mathf.PI * 2f;
+                var dir = new Vector3(Mathf.Cos(ang), 0f, Mathf.Sin(ang));
+                pts[i] = center + rot * (dir * radius);
+            }
+            Handles.DrawAAPolyLine(width, pts);
+        }
+
+        private static void DrawRectAA(Vector3 center, Vector3 half, float width)
+        {
+            var a = center + new Vector3(-half.x, 0, -half.z);
+            var b = center + new Vector3(-half.x, 0, half.z);
+            var c = center + new Vector3(half.x, 0, half.z);
+            var d = center + new Vector3(half.x, 0, -half.z);
+            Handles.DrawAAPolyLine(width, a, b, c, d, a);
         }
 
         private static void EnsureGhostMaterial()

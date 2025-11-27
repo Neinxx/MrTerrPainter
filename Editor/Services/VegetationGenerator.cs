@@ -284,26 +284,34 @@ namespace MrTerrainPainter.Editor.Services
             public NativeArray<float> outSlope;
             public NativeArray<byte> outAccept;
 
+            private float GetHeightSafe(int lx, int lz)
+            {
+                if (lx < 0 || lx >= width || lz < 0 || lz >= height) return 0f;
+                if (!heightsPatch.IsCreated || heightsPatch.Length == 0) return 0f;
+                int idx = lz * width + lx;
+                if (idx < 0 || idx >= heightsPatch.Length) return 0f;
+                return heightsPatch[idx];
+            }
+
             private float SampleHeight01(float2 uv)
             {
+                if (width <= 0 || height <= 0) return 0f;
                 float u = math.clamp(uv.x, 0f, hmMax);
                 float v = math.clamp(uv.y, 0f, hmMax);
                 int xi = (int)math.floor(u);
                 int zi = (int)math.floor(v);
-                int xi1 = math.min(xi + 1, xBase + width - 1);
-                int zi1 = math.min(zi + 1, zBase + height - 1);
-                xi = math.max(xi, xBase);
-                zi = math.max(zi, zBase);
                 float fu = u - xi;
                 float fv = v - zi;
-                int lx = xi - xBase;
-                int lz = zi - zBase;
-                int lx1 = xi1 - xBase;
-                int lz1 = zi1 - zBase;
-                float h00 = heightsPatch[lz * width + lx];
-                float h10 = heightsPatch[lz * width + lx1];
-                float h01 = heightsPatch[lz1 * width + lx];
-                float h11 = heightsPatch[lz1 * width + lx1];
+                int maxX = math.max(0, width - 1);
+                int maxZ = math.max(0, height - 1);
+                int lx = math.clamp(xi - xBase, 0, maxX);
+                int lz = math.clamp(zi - zBase, 0, maxZ);
+                int lx1 = math.min(lx + 1, maxX);
+                int lz1 = math.min(lz + 1, maxZ);
+                float h00 = GetHeightSafe(lx, lz);
+                float h10 = GetHeightSafe(lx1, lz);
+                float h01 = GetHeightSafe(lx, lz1);
+                float h11 = GetHeightSafe(lx1, lz1);
                 float h0 = math.lerp(h00, h10, fu);
                 float h1 = math.lerp(h01, h11, fu);
                 return math.lerp(h0, h1, fv);
@@ -311,22 +319,27 @@ namespace MrTerrainPainter.Editor.Services
 
             private float3 ComputeNormal(float2 uv)
             {
+                if (width <= 0 || height <= 0) return new float3(0, 1, 0);
                 float u = math.clamp(uv.x, 1f, hmMax - 1f);
                 float v = math.clamp(uv.y, 1f, hmMax - 1f);
                 int xi = (int)math.floor(u);
                 int zi = (int)math.floor(v);
-                int lxC = math.clamp(xi - xBase, 0, width - 1);
-                int lzC = math.clamp(zi - zBase, 0, height - 1);
+                int maxX = math.max(0, width - 1);
+                int maxZ = math.max(0, height - 1);
+                int lxC = math.clamp(xi - xBase, 0, maxX);
+                int lzC = math.clamp(zi - zBase, 0, maxZ);
                 int lxL = math.max(lxC - 1, 0);
-                int lxR = math.min(lxC + 1, width - 1);
+                int lxR = math.min(lxC + 1, maxX);
                 int lzU = math.max(lzC - 1, 0);
-                int lzD = math.min(lzC + 1, height - 1);
-                float hL = heightsPatch[lzC * width + lxL];
-                float hR = heightsPatch[lzC * width + lxR];
-                float hU = heightsPatch[lzU * width + lxC];
-                float hD = heightsPatch[lzD * width + lxC];
-                float dhdx = ((hR - hL) * sizeY) / (2f * dxWorld);
-                float dhdz = ((hD - hU) * sizeY) / (2f * dzWorld);
+                int lzD = math.min(lzC + 1, maxZ);
+                float hL = GetHeightSafe(lxL, lzC);
+                float hR = GetHeightSafe(lxR, lzC);
+                float hU = GetHeightSafe(lxC, lzU);
+                float hD = GetHeightSafe(lxC, lzD);
+                float safeDx = math.max(dxWorld, 0.0001f);
+                float safeDz = math.max(dzWorld, 0.0001f);
+                float dhdx = ((hR - hL) * sizeY) / (2f * safeDx);
+                float dhdz = ((hD - hU) * sizeY) / (2f * safeDz);
                 float3 n = math.normalizesafe(new float3(-dhdx, 1f, -dhdz));
                 return n;
             }
@@ -362,9 +375,20 @@ namespace MrTerrainPainter.Editor.Services
 
             public void Execute(int index)
             {
+                if (index < 0 || index >= pointsWorld.Length) return;
+                int outLen = math.min(math.min(outHeightLocal.Length, outNormal.Length), outSlope.Length);
+                if (index >= outLen) return;
+                if (!heightsPatch.IsCreated || heightsPatch.Length == 0 || width <= 0 || height <= 0 || heightsPatch.Length < (width * height))
+                {
+                    outHeightLocal[index] = 0f;
+                    outNormal[index] = new float3(0, 1, 0);
+                    outSlope[index] = 0f;
+                    outAccept[index] = 0;
+                    return;
+                }
                 float2 pw = pointsWorld[index];
                 float2 pl = new float2(pw.x - terrainPos.x, pw.y - terrainPos.z);
-                float2 uv = new float2((pl.x / sizeX) * hmMax, (pl.y / sizeZ) * hmMax);
+                float2 uv = new float2((pl.x / math.max(sizeX, 0.001f)) * hmMax, (pl.y / math.max(sizeZ, 0.001f)) * hmMax);
                 float h01 = SampleHeight01(uv);
                 float hWorld = h01 * sizeY;
                 float3 n = ComputeNormal(uv);
@@ -582,7 +606,7 @@ namespace MrTerrainPainter.Editor.Services
                 count = Mathf.Clamp(count, 0, 50000);
                 if (count <= 0) continue;
 
-                float spacing = Mathf.Max(item.CoreSpacing, 0.01f);
+                float spacing = Mathf.Max(Mathf.Max(item.CoreSpacing, item.CoreMinRadius), 0.01f);
                 if (!grids.TryGetValue(it, out var gridForItem)) { gridForItem = new Grid(spacing); grids[it] = gridForItem; }
 
                 Vector2 centerLocal;

@@ -25,6 +25,7 @@ namespace MrTerrainPainter.Editor.Views
             public Action MarkCurrentProfileDirty;
             public Action ScanSelectedTerrainsForFacades;
             public Action BakeCachedFacades;
+            public Action<float> BatchSetMinRadius;
         }
         #endregion
 
@@ -70,6 +71,10 @@ namespace MrTerrainPainter.Editor.Views
             BindField<Slider, float>("BaseDensity",
                 i => i.baseDensity, (i, v) => i.baseDensity = Mathf.Clamp(v, 0f, 10f),
                 setup: s => { s.lowValue = 0f; s.highValue = 10f; });
+
+            BindField<FloatField, float>("MinRadius",
+                i => i.minRadius, (i, v) => i.minRadius = Mathf.Max(0f, v),
+                setup: f => f.tooltip = "最小半径（米），用于控制实例间最小中心距以减少重叠");
 
             // 范围滑条
             BindRangeSlider("SceleRange", i => i.uniformScaleRange, (i, v) => i.uniformScaleRange = SanitizeRange(v, 0f), ref uiSceleRange, 0f, 5f);
@@ -139,6 +144,21 @@ namespace MrTerrainPainter.Editor.Views
             {
                 btnBake.SetClickHandler(() => callbacks.BakeCachedFacades?.Invoke());
                 _landscapeGroup.Add(btnBake);
+            }
+
+            var btnBatchMinRadius = root.Q<Button>("BatchMinRadiusButton");
+            if (btnBatchMinRadius != null)
+            {
+                btnBatchMinRadius.tooltip = "将当前选中条目的最小半径批量应用到选中的条目";
+                btnBatchMinRadius.SetClickHandler(() =>
+                {
+                    var item = callbacks.GetSelectedItem?.Invoke();
+                    if (item == null) return;
+                    callbacks.BatchSetMinRadius?.Invoke(item.minRadius);
+                    callbacks.RefreshVegetationListUI?.Invoke();
+                    callbacks.RefreshPreviewListUI?.Invoke();
+                    callbacks.UpdatePropertyPanelFromSelectedItem?.Invoke();
+                });
             }
 
             uiUseContourDetection = root.Q<Toggle>("UseContourDetection");

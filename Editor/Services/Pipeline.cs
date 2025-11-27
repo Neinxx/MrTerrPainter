@@ -214,6 +214,21 @@ namespace MrTerrainPainter.Editor.Services
         }
     }
 
+    public class GlobalGridSpawner : IInstanceSpawner
+    {
+        private readonly BrushSpatialGrid _grid;
+        private readonly float _spacing;
+        private readonly IInstanceSpawner _inner;
+        public GlobalGridSpawner(BrushSpatialGrid grid, float spacing, IInstanceSpawner inner) { _grid = grid; _spacing = Mathf.Max(spacing, 0.01f); _inner = inner; }
+        public void Spawn(MrTerrainPainter.Runtime.Profiles.VegetationItem item, int itemIndex, Transform parent, Terrain terrain, Vector3 pos, Quaternion rot, Vector3 scale)
+        {
+            var p2 = new Vector2(pos.x - terrain.transform.position.x, pos.z - terrain.transform.position.z);
+            if (_grid != null && _grid.HasNearby(p2, _spacing)) return;
+            _inner?.Spawn(item, itemIndex, parent, terrain, pos, rot, scale);
+            _grid?.Add(p2);
+        }
+    }
+
     public class VegetationPipeline
     {
         private IPointSampler _sampler;
@@ -228,7 +243,7 @@ namespace MrTerrainPainter.Editor.Services
         /// </summary>
         public void Run(PipelineContext context, PipelineData data)
         {
-            var grid = new BrushSpatialGrid(Mathf.Max(context.Item.CoreSpacing, 0.01f));
+            var grid = new BrushSpatialGrid(Mathf.Max(Mathf.Max(context.Item.CoreSpacing, context.Item.CoreMinRadius), 0.01f));
             for (int ci = 0; ci < data.Candidates.Count; ci++)
             {
                 var pos = data.Candidates[ci];

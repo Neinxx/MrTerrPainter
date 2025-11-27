@@ -11,6 +11,7 @@
             <uie:ObjectField label="CurrentPrefab" name="SelectPrefab" />
             <ui:Slider label="权重" value="0.5" high-value="1" name="Weigth" show-input-field="true" />
             <ui:Slider label="基础密度" value="1" high-value="10" name="BaseDensity" show-input-field="true" />
+            <uie:FloatField label="最小半径 (m)" name="MinRadius" />
             <ui:MinMaxSlider label="缩放范围" min-value="0.5" max-value="5" low-limit="0" high-limit="2" name="SceleRange" />
             <ui:MinMaxSlider label="Y旋转范围" min-value="0" max-value="360" low-limit="0" high-limit="360" name="YrotationRange" />
             <ui:MinMaxSlider label="高度范围" min-value="1" max-value="12" low-limit="-10" high-limit="10" name="HeigthRange" />
@@ -37,6 +38,7 @@
                 <ui:Button text="Scan Selected Terrain" name="ScanFacadesButton" style="flex-grow: 1; margin-right: 4px;" />
                 <ui:Button text="Bake Facades" name="BakeFacadesButton" style="flex-grow: 1; margin-left: 4px;" />
             </ui:VisualElement>
+            <ui:Button text="Apply Min Radius to Selected" name="BatchMinRadiusButton" style="margin-top: 6px;" />
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

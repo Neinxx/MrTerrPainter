@@ -79,19 +79,44 @@ namespace MrTerrainPainter.Editor.Services
     {
         [ReadOnly] public NativeArray<float2> pointsWorld;
         [ReadOnly] public NativeArray<float> heightsPatch;
-        public int xBase, zBase, width, height, hmMax;
-        public float dxWorld, dzWorld;
+        public int xBase;
+        public int zBase;
+        public int width;
+        public int height;
+        public int hmMax;
+        public float dxWorld;
+        public float dzWorld;
         public float3 terrainPos;
-        public float sizeX, sizeZ, sizeY;
+        public float sizeX;
+        public float sizeZ;
+        public float sizeY;
 
-        [WriteOnly] public NativeArray<float> outHeightLocal;
-        [WriteOnly] public NativeArray<float3> outNormal;
-        [WriteOnly] public NativeArray<float> outSlope;
+        [WriteOnly] // 显式标记为只写，提高安全性
+        public NativeArray<float> outHeightLocal;
+        [WriteOnly]
+        public NativeArray<float3> outNormal;
+        [WriteOnly]
+        public NativeArray<float> outSlope;
+
+        // [修复] 更健壮的安全获取方法
+        private float GetHeightSafe(int lx, int lz)
+        {
+            // 这里的检查虽然是冗余的（因为调用处已经钳制），但为了防止任何计算漏网之鱼
+            if (lx < 0 || lx >= width || lz < 0 || lz >= height) return 0f;
+            if (!heightsPatch.IsCreated || heightsPatch.Length == 0) return 0f;
+
+            // 计算索引
+            int idx = lz * width + lx;
+
+            // 再次检查 NativeArray 边界
+            if (idx < 0 || idx >= heightsPatch.Length) return 0f;
+
+            return heightsPatch[idx];
+        }
 
         private float SampleHeight01(float2 uv)
         {
-            // 1. 基础保护：如果 Patch 数据无效，直接返回 0
-            if (heightsPatch.Length == 0 || width <= 0 || height <= 0) return 0f;
+            if (width <= 0 || height <= 0 || hmMax <= 0) return 0f;
 
             float u = math.clamp(uv.x, 0f, hmMax);
             float v = math.clamp(uv.y, 0f, hmMax);
@@ -100,86 +125,101 @@ namespace MrTerrainPainter.Editor.Services
             float fu = u - xi;
             float fv = v - zi;
 
-            // 2. 计算局部索引
             int lx = xi - xBase;
             int lz = zi - zBase;
 
-            // [重要修复] 强制钳制索引到 Patch 范围内
-            // 即使点位稍微偏出 Patch 区域，也强制采样边缘像素，防止崩溃
-            lx = math.clamp(lx, 0, width - 1);
-            lz = math.clamp(lz, 0, height - 1);
+            // [关键修复] 使用 math.max(0, width - 1) 确保 max >= min，防止 width=0 时 clamp 异常
+            int maxX = math.max(0, width - 1);
+            int maxZ = math.max(0, height - 1);
 
-            // 计算邻居索引（同样钳制）
-            int lx1 = math.min(lx + 1, width - 1);
-            int lz1 = math.min(lz + 1, height - 1);
+            lx = math.clamp(lx, 0, maxX);
+            lz = math.clamp(lz, 0, maxZ);
 
-            // 3. 线性索引计算与终极越界检查
-            int maxIdx = heightsPatch.Length - 1;
-            int idx00 = lz * width + lx;
-            int idx10 = lz * width + lx1;
-            int idx01 = lz1 * width + lx;
-            int idx11 = lz1 * width + lx1;
+            int lx1 = math.min(lx + 1, maxX);
+            int lz1 = math.min(lz + 1, maxZ);
 
-            // 如果计算出的索引依然越界（理论上被 clamp 保护，不应发生，但作为保险），返回默认值
-            if (idx00 > maxIdx || idx11 > maxIdx || idx00 < 0) return 0f;
-
-            float h00 = heightsPatch[idx00];
-            float h10 = heightsPatch[idx10];
-            float h01 = heightsPatch[idx01];
-            float h11 = heightsPatch[idx11];
+            float h00 = GetHeightSafe(lx, lz);
+            float h10 = GetHeightSafe(lx1, lz);
+            float h01 = GetHeightSafe(lx, lz1);
+            float h11 = GetHeightSafe(lx1, lz1);
 
             return math.lerp(math.lerp(h00, h10, fu), math.lerp(h01, h11, fu), fv);
         }
 
         private float3 ComputeNormal(float2 uv)
         {
-            if (heightsPatch.Length == 0 || width <= 0 || height <= 0) return new float3(0, 1, 0);
+            if (width <= 0 || height <= 0 || hmMax <= 1) return new float3(0, 1, 0);
 
             float u = math.clamp(uv.x, 1f, hmMax - 1f);
             float v = math.clamp(uv.y, 1f, hmMax - 1f);
             int xi = (int)math.floor(u);
             int zi = (int)math.floor(v);
 
-            int lx = xi - xBase;
-            int lz = zi - zBase;
+            int maxX = math.max(0, width - 1);
+            int maxZ = math.max(0, height - 1);
 
-            // [重要修复] 强制钳制中心点索引
-            lx = math.clamp(lx, 0, width - 1);
-            lz = math.clamp(lz, 0, height - 1);
+            int lxC = math.clamp(xi - xBase, 0, maxX);
+            int lzC = math.clamp(zi - zBase, 0, maxZ);
 
-            // 钳制邻居索引
-            int lxL = math.max(lx - 1, 0);
-            int lxR = math.min(lx + 1, width - 1);
-            int lzU = math.max(lz - 1, 0);
-            int lzD = math.min(lz + 1, height - 1);
+            int lxL = math.max(lxC - 1, 0);
+            int lxR = math.min(lxC + 1, maxX);
+            int lzU = math.max(lzC - 1, 0);
+            int lzD = math.min(lzC + 1, maxZ);
 
-            // 终极越界检查
-            int maxIdx = heightsPatch.Length - 1;
-            int idxD = lzD * width + lx; // 检查最大的那个索引即可
-            if (idxD > maxIdx) return new float3(0, 1, 0);
+            float hL = GetHeightSafe(lxL, lzC);
+            float hR = GetHeightSafe(lxR, lzC);
+            float hU = GetHeightSafe(lxC, lzU);
+            float hD = GetHeightSafe(lxC, lzD);
 
-            float hL = heightsPatch[lz * width + lxL];
-            float hR = heightsPatch[lz * width + lxR];
-            float hU = heightsPatch[lzU * width + lx];
-            float hD = heightsPatch[idxD]; // lzD * width + lx
+            float safeDx = math.max(dxWorld, 0.0001f);
+            float safeDz = math.max(dzWorld, 0.0001f);
 
-            float dhdx = ((hR - hL) * sizeY) / (2f * dxWorld);
-            float dhdz = ((hD - hU) * sizeY) / (2f * dzWorld);
+            float dhdx = ((hR - hL) * sizeY) / (2f * safeDx);
+            float dhdz = ((hD - hU) * sizeY) / (2f * safeDz);
             return math.normalizesafe(new float3(-dhdx, 1f, -dhdz));
         }
 
-        private float SampleSlope(float3 n) => math.acos(math.clamp(n.y, -1f, 1f)) * 57.2957795f;
-
         public void Execute(int index)
         {
-            float2 pw = pointsWorld[index];
-            float2 pl = pw - new float2(terrainPos.x, terrainPos.z);
-            float2 uv = new float2((pl.x / sizeX) * hmMax, (pl.y / sizeZ) * hmMax);
+            // 严格边界检查：保护所有 NativeArray 访问，避免越界
+            if (index < 0 || index >= pointsWorld.Length) return;
+            int outLen = math.min(math.min(outHeightLocal.Length, outNormal.Length), outSlope.Length);
+            if (index >= outLen) return;
 
-            outHeightLocal[index] = SampleHeight01(uv) * sizeY;
+            // [关键修复] 熔断机制：如果 heightPatch 未创建或为空，或者尺寸无效，直接填充默认值并返回
+            // 这避免了所有潜在的越界访问
+            if (!heightsPatch.IsCreated || heightsPatch.Length == 0 || width <= 0 || height <= 0 || heightsPatch.Length < (width * height))
+            {
+                outHeightLocal[index] = 0f;
+                outNormal[index] = new float3(0, 1, 0);
+                outSlope[index] = 0f;
+                return;
+            }
+
+            float2 pw = pointsWorld[index];
+            float2 pl = new float2(pw.x - terrainPos.x, pw.y - terrainPos.z);
+
+            float sx = math.max(sizeX, 0.001f);
+            float sz = math.max(sizeZ, 0.001f);
+
+            float2 uv = new float2((pl.x / sx) * hmMax, (pl.y / sz) * hmMax);
+
+            float h01 = SampleHeight01(uv);
+            float hLocal = h01 * sizeY;
+
             float3 n = ComputeNormal(uv);
+            float slope = SampleSlope(n);
+
+            outHeightLocal[index] = hLocal;
             outNormal[index] = n;
-            outSlope[index] = SampleSlope(n);
+            outSlope[index] = slope;
+        }
+
+        private float SampleSlope(float3 n)
+        {
+            float cosTheta = math.clamp(n.y, -1f, 1f);
+            float theta = math.acos(cosTheta);
+            return theta * 57.2957795f;
         }
     }
 
@@ -379,7 +419,7 @@ namespace MrTerrainPainter.Editor.Services
     #region Extensions (Physics & Jobs)
     public static class BrushEngineExtensions
     {
-        public static void ApplyRelaxation(List<Vector2> points, float radius, float repelDist, int iterations = 3)
+        public static void ApplyRelaxation(List<Vector2> points, Vector2 center, float radius, float repelDist, int iterations = 3)
         {
             if (points == null || points.Count < 2) return;
 
@@ -391,6 +431,7 @@ namespace MrTerrainPainter.Editor.Services
 
             float radiusSq = radius * radius;
             float repelDistSq = repelDist * repelDist;
+            var centerF2 = new float2(center.x, center.y);
 
             for (int i = 0; i < iterations; i++)
             {
@@ -403,7 +444,7 @@ namespace MrTerrainPainter.Editor.Services
                     inputPoints = input,
                     outputPoints = output,
                     repelDistSq = repelDistSq,
-                    center = float2.zero,
+                    center = centerF2,
                     radiusSq = radiusSq,
                     strength = 0.5f
                 };
@@ -502,7 +543,7 @@ namespace MrTerrainPainter.Editor.Services
                 for (int i = 0; i < allItems.Count; i++)
                 {
                     var it = allItems[i];
-                    int c = Mathf.Clamp(Mathf.RoundToInt(it.baseDensity * bs.densityScale * bs.strength * 10f), 0, 500);
+                    int c = Mathf.Clamp(Mathf.RoundToInt(it.baseDensity * bs.densityScale * bs.strength * it.weight * 10f), 0, 500);
                     perItemLimit[i] = c;
                     totalDesired += c;
                 }
@@ -513,7 +554,7 @@ namespace MrTerrainPainter.Editor.Services
                     float best = bs.size;
                     for (int i = 0; i < allItems.Count; i++)
                     {
-                        float s = Mathf.Max(allItems[i].CoreSpacing, 0.01f);
+                        float s = Mathf.Max(Mathf.Max(allItems[i].CoreSpacing, allItems[i].CoreMinRadius), 0.01f);
                         if (s < best) best = s;
                     }
                     minSpacingForAll = best;
@@ -564,7 +605,7 @@ namespace MrTerrainPainter.Editor.Services
                 if (candidates != null && candidates.Count > 0 && bs.distribution != DistributionType.EdgeLine)
                 {
                     float repelDist = Mathf.Max(minSpacingForAll, 0.01f) * 0.8f;
-                    BrushEngineExtensions.ApplyRelaxation(candidates, radius, repelDist, 3);
+                    BrushEngineExtensions.ApplyRelaxation(candidates, centerXZ, radius, repelDist, 3);
                 }
 
                 NativeArray<float> outH2 = default;
@@ -572,44 +613,121 @@ namespace MrTerrainPainter.Editor.Services
                 NativeArray<float> outS2 = default;
                 if (candidates.Count > 0)
                 {
-                    var pts2 = new NativeArray<float2>(candidates.Count, Allocator.TempJob);
-                    for (int iPt = 0; iPt < candidates.Count; iPt++) pts2[iPt] = new float2(candidates[iPt].x, candidates[iPt].y);
+                    //var pts2 = new NativeArray<float2>(candidates.Count, Allocator.TempJob);
+                    // for (int iPt = 0; iPt < candidates.Count; iPt++) pts2[iPt] = new float2(candidates[iPt].x, candidates[iPt].y);
 
                     outH2 = new NativeArray<float>(candidates.Count, Allocator.TempJob);
                     outN2 = new NativeArray<float3>(candidates.Count, Allocator.TempJob);
                     outS2 = new NativeArray<float>(candidates.Count, Allocator.TempJob);
 
-                    var job2 = new TerrainSampleJob
+                    bool patchValid2 = hbShared.heights.IsCreated && hbShared.heights.Length >= (hbShared.width * hbShared.height) && hbShared.width > 0 && hbShared.height > 0;
+                    if (patchValid2)
                     {
-                        pointsWorld = pts2,
-                        heightsPatch = hbShared.heights,
-                        xBase = hbShared.xBase,
-                        zBase = hbShared.zBase,
-                        width = hbShared.width,
-                        height = hbShared.height,
-                        hmMax = td.heightmapResolution - 1,
-                        dxWorld = hbShared.dxWorld,
-                        dzWorld = hbShared.dzWorld,
-                        terrainPos = new float3(terrain.transform.position.x, terrain.transform.position.y, terrain.transform.position.z),
-                        sizeX = td.size.x,
-                        sizeZ = td.size.z,
-                        sizeY = td.size.y,
-                        outHeightLocal = outH2,
-                        outNormal = outN2,
-                        outSlope = outS2
-                    };
-                    job2.Schedule(candidates.Count, 64).Complete();
-                    pts2.Dispose();
+                        var pts2 = new NativeArray<float2>(candidates.Count, Allocator.TempJob);
+                        for (int iPt = 0; iPt < candidates.Count; iPt++) pts2[iPt] = new float2(candidates[iPt].x, candidates[iPt].y);
+
+                        var job2 = new TerrainSampleJob
+                        {
+                            pointsWorld = pts2,
+                            heightsPatch = hbShared.heights,
+                            xBase = hbShared.xBase,
+                            zBase = hbShared.zBase,
+                            width = hbShared.width,
+                            height = hbShared.height,
+                            hmMax = td.heightmapResolution - 1,
+                            dxWorld = hbShared.dxWorld,
+                            dzWorld = hbShared.dzWorld,
+                            terrainPos = new float3(terrain.transform.position.x, terrain.transform.position.y, terrain.transform.position.z),
+                            sizeX = td.size.x,
+                            sizeZ = td.size.z,
+                            sizeY = td.size.y,
+                            outHeightLocal = outH2,
+                            outNormal = outN2,
+                            outSlope = outS2
+                        };
+                        job2.Schedule(candidates.Count, 64).Complete();
+                        pts2.Dispose();
+                    }
+                    else
+                    {
+                        for (int i = 0; i < candidates.Count; i++) { outH2[i] = 0f; outN2[i] = new float3(0f, 1f, 0f); outS2[i] = 0f; }
+                    }
                 }
 
-                var candidatesWorld = BrushEngine.AcquireList3(candidates.Count);
-                for (int i = 0; i < candidates.Count; i++) candidatesWorld.Add(new Vector3(candidates[i].x, center.y, candidates[i].y));
+                var indices = new List<int>(candidates.Count);
+                for (int i = 0; i < candidates.Count; i++) indices.Add(i);
+                for (int i = indices.Count - 1; i > 0; i--) { int j = rnd.Next(i + 1); var t = indices[i]; indices[i] = indices[j]; indices[j] = t; }
 
-                for (int iItem = 0; iItem < allItems.Count; iItem++)
+                var orderedItems = allItems.OrderByDescending(x => x.weight).ToList();
+                var remaining = new int[orderedItems.Count];
+                for (int i = 0; i < orderedItems.Count; i++) remaining[i] = perItemLimit[allItems.IndexOf(orderedItems[i])];
+                var assigned = new List<int>[orderedItems.Count];
+                for (int i = 0; i < orderedItems.Count; i++) assigned[i] = new List<int>();
+
+                for (int k = 0; k < indices.Count; k++)
                 {
-                    var item = allItems[iItem];
+                    int ci = indices[k];
+                    var wp = new Vector3(candidates[ci].x, terrain.transform.position.y + (outH2.IsCreated ? outH2[ci] : 0f), candidates[ci].y);
+                    float hLoc = outH2.IsCreated ? outH2[ci] : 0f;
+                    float slopeLoc = outS2.IsCreated ? outS2[ci] : 0f;
+                    var eligible = new List<int>();
+                    float wsum = 0f;
+                    for (int i = 0; i < orderedItems.Count; i++)
+                    {
+                        if (remaining[i] <= 0) continue;
+                        var itM = orderedItems[i];
+                        if (!(new HeightSlopeFilter(itM)).Pass(ci, wp, hLoc, slopeLoc)) continue;
+                        eligible.Add(i);
+                        wsum += Mathf.Max(0.0001f, itM.weight);
+                    }
+                    if (eligible.Count == 0) continue;
+                    double rPick = rnd.NextDouble() * wsum;
+                    float acc = 0f;
+                    int chosen = eligible[0];
+                    for (int e = 0; e < eligible.Count; e++)
+                    {
+                        var iw = Mathf.Max(0.0001f, orderedItems[eligible[e]].weight);
+                        acc += iw;
+                        if (rPick <= acc) { chosen = eligible[e]; break; }
+                    }
+                    assigned[chosen].Add(ci);
+                    remaining[chosen]--;
+                }
+
+                var globalGridMix = new BrushSpatialGrid(Mathf.Max(minSpacingForAll, 0.01f));
+
+                for (int iItem = 0; iItem < orderedItems.Count; iItem++)
+                {
+                    var item = orderedItems[iItem];
+                    if (assigned[iItem].Count == 0) continue;
                     var targetParent = typeToNode.TryGetValue(item.prefabType, out var tf) ? tf : null;
-                    if (targetParent == null) { VegetationGenerator.LogMissingMappingOnce(item.prefabType); continue; }
+                    if (targetParent == null)
+                    {
+                        VegetationGenerator.LogMissingMappingOnce(item.prefabType);
+                        var fallback = ResolveDefaultContainer(terrain);
+                        if (fallback == null) continue;
+                        targetParent = fallback;
+                    }
+
+                    var itemCandidates = new List<Vector2>(assigned[iItem].Count);
+                    var cWorld = new List<Vector3>(assigned[iItem].Count);
+                    for (int a = 0; a < assigned[iItem].Count; a++)
+                    {
+                        int ci = assigned[iItem][a];
+                        var v2 = candidates[ci];
+                        itemCandidates.Add(v2);
+                        cWorld.Add(new Vector3(v2.x, center.y, v2.y));
+                    }
+                    var hArr = new NativeArray<float>(assigned[iItem].Count, Allocator.TempJob);
+                    var nArr = new NativeArray<float3>(assigned[iItem].Count, Allocator.TempJob);
+                    var sArr = new NativeArray<float>(assigned[iItem].Count, Allocator.TempJob);
+                    for (int a = 0; a < assigned[iItem].Count; a++)
+                    {
+                        int ci = assigned[iItem][a];
+                        hArr[a] = outH2[ci];
+                        nArr[a] = outN2[ci];
+                        sArr[a] = outS2[ci];
+                    }
 
                     var pipelineContext = new PipelineContext
                     {
@@ -622,19 +740,22 @@ namespace MrTerrainPainter.Editor.Services
                     };
                     var pipelineData = new PipelineData
                     {
-                        Candidates = candidatesWorld,
-                        Heights = outH2,
-                        Slopes = outS2,
-                        Normals = outN2
+                        Candidates = cWorld,
+                        Heights = hArr,
+                        Slopes = sArr,
+                        Normals = nArr
                     };
 
                     VegetationPipeline.Shared
-                        .Setup(new CandidateSamplerFromList(candidates, center.y), new HeightSlopeFilter(item), new StandardMutator(item), new PooledSpawner())
+                        .Setup(new CandidateSamplerFromList(itemCandidates, center.y), new HeightSlopeFilter(item), new StandardMutator(item), new GlobalGridSpawner(globalGridMix, minSpacingForAll, new PooledSpawner()))
                         .Run(pipelineContext, pipelineData);
+
+                    hArr.Dispose();
+                    nArr.Dispose();
+                    sArr.Dispose();
                 }
 
                 BrushEngine.ReleaseList(candidates);
-                BrushEngine.ReleaseList3(candidatesWorld);
                 if (outH2.IsCreated) outH2.Dispose();
                 if (outN2.IsCreated) outN2.Dispose();
                 if (outS2.IsCreated) outS2.Dispose();
@@ -643,15 +764,120 @@ namespace MrTerrainPainter.Editor.Services
             }
 
             var items = profile.Items;
+            List<Vector2> globalCandidates = null;
+            BrushSpatialGrid globalGridAll = null;
+            float globalSpacingAll = 0.01f;
+            NativeArray<float> outHG = default;
+            NativeArray<float3> outNG = default;
+            NativeArray<float> outSG = default;
+            List<int>[] allocPerItem = null;
+            int[] quotaPerItem = null;
+            if (items != null && items.Count > 0 && bs.distribution != DistributionType.EdgeLine)
+            {
+                var validItems = items.Where(i => i != null && i.IsValid()).ToList();
+                if (validItems.Count > 0)
+                {
+                    float minSpacingForAll2 = bs.size;
+                    int totalDesired2 = 0;
+                    for (int i = 0; i < validItems.Count; i++)
+                    {
+                        var vi = validItems[i];
+                        float sAll = Mathf.Max(Mathf.Max(vi.CoreSpacing, vi.CoreMinRadius), 0.01f);
+                        if (sAll < minSpacingForAll2) minSpacingForAll2 = sAll;
+                        int cEst = Mathf.Clamp(Mathf.RoundToInt(vi.baseDensity * bs.densityScale * bs.strength * 10f), 0, 500);
+                        totalDesired2 += cEst;
+                    }
+                    var centerXZ2 = new Vector2(center.x, center.z);
+                    int desired2 = VegetationGenerator.ComputeDesiredCandidateCount(bs.shape, radius, minSpacingForAll2, Mathf.Max(1, totalDesired2), bs.maxPoints);
+                    globalCandidates = VegetationGenerator.BuildCandidates(centerXZ2, radius, bs.shape, desired2, minSpacingForAll2, bs.minSpacingJitter,
+                        bs.strokeSeed != 0 ? bs.strokeSeed : profile.randomSeed, bs.distribution, bs.useBurstPoisson, bs.cluster,
+                        bs.adaptiveMinFactor, bs.adaptiveMaxFactor, bs.adaptiveNoiseWeight, rnd);
+                    if (globalCandidates != null && globalCandidates.Count > 0)
+                    {
+                        float repelAll = Mathf.Max(minSpacingForAll2, 0.01f) * 0.8f;
+                        BrushEngineExtensions.ApplyRelaxation(globalCandidates, centerXZ2, radius, repelAll, 3);
+                        globalSpacingAll = Mathf.Max(minSpacingForAll2, 0.01f);
+                        globalGridAll = new BrushSpatialGrid(globalSpacingAll);
+
+                        var ptsG = new NativeArray<float2>(globalCandidates.Count, Allocator.TempJob);
+                        for (int gi = 0; gi < globalCandidates.Count; gi++) ptsG[gi] = new float2(globalCandidates[gi].x, globalCandidates[gi].y);
+                        outHG = new NativeArray<float>(globalCandidates.Count, Allocator.TempJob);
+                        outNG = new NativeArray<float3>(globalCandidates.Count, Allocator.TempJob);
+                        outSG = new NativeArray<float>(globalCandidates.Count, Allocator.TempJob);
+                        var jobG = new TerrainSampleJob
+                        {
+                            pointsWorld = ptsG,
+                            heightsPatch = hbShared.heights,
+                            xBase = hbShared.xBase,
+                            zBase = hbShared.zBase,
+                            width = hbShared.width,
+                            height = hbShared.height,
+                            hmMax = td.heightmapResolution - 1,
+                            dxWorld = hbShared.dxWorld,
+                            dzWorld = hbShared.dzWorld,
+                            terrainPos = new float3(terrain.transform.position.x, terrain.transform.position.y, terrain.transform.position.z),
+                            sizeX = td.size.x,
+                            sizeZ = td.size.z,
+                            sizeY = td.size.y,
+                            outHeightLocal = outHG,
+                            outNormal = outNG,
+                            outSlope = outSG
+                        };
+                        jobG.Schedule(globalCandidates.Count, 64).Complete();
+                        ptsG.Dispose();
+
+                        quotaPerItem = new int[items.Count];
+                        for (int i = 0; i < items.Count; i++)
+                        {
+                            var it = items[i];
+                            if (it == null || !it.IsValid()) { quotaPerItem[i] = 0; continue; }
+                            int cEst = Mathf.Clamp(Mathf.RoundToInt(it.baseDensity * bs.densityScale * bs.strength * it.weight * 10f), 0, 500);
+                            quotaPerItem[i] = cEst;
+                        }
+                        allocPerItem = new List<int>[items.Count];
+                        for (int i = 0; i < items.Count; i++) allocPerItem[i] = new List<int>();
+                        var orderG = new List<int>(globalCandidates.Count);
+                        for (int i = 0; i < globalCandidates.Count; i++) orderG.Add(i);
+                        for (int i = orderG.Count - 1; i > 0; i--) { int j = rnd.Next(i + 1); var t = orderG[i]; orderG[i] = orderG[j]; orderG[j] = t; }
+                        for (int k = 0; k < orderG.Count; k++)
+                        {
+                            int ci = orderG[k];
+                            var wp = new Vector3(globalCandidates[ci].x, terrain.transform.position.y + outHG[ci], globalCandidates[ci].y);
+                            var elig = new List<int>();
+                            float wsum = 0f;
+                            for (int i = 0; i < items.Count; i++)
+                            {
+                                var it = items[i];
+                                if (it == null || !it.IsValid()) continue;
+                                if (quotaPerItem[i] <= 0) continue;
+                                if (!(new HeightSlopeFilter(it)).Pass(ci, wp, outHG[ci], outSG[ci])) continue;
+                                elig.Add(i);
+                                wsum += Mathf.Max(0.0001f, it.weight);
+                            }
+                            if (elig.Count == 0) continue;
+                            double pick = rnd.NextDouble() * wsum;
+                            float acc = 0f; int chosen = elig[0];
+                            for (int e = 0; e < elig.Count; e++)
+                            {
+                                float iw = Mathf.Max(0.0001f, items[elig[e]].weight);
+                                acc += iw;
+                                if (pick <= acc) { chosen = elig[e]; break; }
+                            }
+                            allocPerItem[chosen].Add(ci);
+                            quotaPerItem[chosen]--;
+                        }
+                    }
+                }
+            }
             for (int it = 0; it < items.Count; it++)
             {
                 var item = items[it];
                 if (item == null || !item.IsValid()) continue;
-                int count = Mathf.RoundToInt(item.baseDensity * bs.densityScale * bs.strength * 10f);
+                int count = Mathf.RoundToInt(item.baseDensity * bs.densityScale * bs.strength * item.weight * 10f);
                 count = Mathf.Clamp(count, 0, 500);
                 if (count <= 0) continue;
 
-                float spacing = Mathf.Max(item.CoreSpacing, 0.01f);
+                float spacing = Mathf.Max(Mathf.Max(item.CoreSpacing, item.CoreMinRadius), 0.01f);
                 int seed = bs.strokeSeed != 0 ? bs.strokeSeed : profile.randomSeed;
                 var centerXZ = new Vector2(center.x, center.z);
                 int desired = VegetationGenerator.ComputeDesiredCandidateCount(bs.shape, radius, spacing, Mathf.Min(count, bs.maxPoints), bs.maxPoints);
@@ -663,7 +889,13 @@ namespace MrTerrainPainter.Editor.Services
                 {
                     var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
                     var targetParent = typeToNode.TryGetValue(item.prefabType, out var tf) ? tf : null;
-                    if (targetParent == null) { VegetationGenerator.LogMissingMappingOnce(item.prefabType); continue; }
+                    if (targetParent == null)
+                    {
+                        VegetationGenerator.LogMissingMappingOnce(item.prefabType);
+                        var fallback = ResolveDefaultContainer(terrain);
+                        if (fallback == null) continue;
+                        targetParent = fallback;
+                    }
 
                     FacadeDetectionService.ProcessFacadeAndPlace(terrain, center, radius, item, bs.shape, s =>
                     {
@@ -673,16 +905,29 @@ namespace MrTerrainPainter.Editor.Services
                 }
                 else
                 {
-                    candidates = (bs.distribution == DistributionType.EdgeLine && item.prefabType == PrefabType.Landscape)
-                        ? BuildFacadeStripCandidates(terrain, center, radius, bs, item)
-                        : VegetationGenerator.BuildCandidates(centerXZ, radius, bs.shape, desired, spacing, bs.minSpacingJitter, seed + it,
-                            bs.distribution, bs.useBurstPoisson, bs.cluster, bs.adaptiveMinFactor, bs.adaptiveMaxFactor, bs.adaptiveNoiseWeight, rnd);
+                    if (allocPerItem != null && allocPerItem[it] != null && allocPerItem[it].Count > 0)
+                    {
+                        candidates = new List<Vector2>(allocPerItem[it].Count);
+                        for (int a = 0; a < allocPerItem[it].Count; a++)
+                        {
+                            int ci = allocPerItem[it][a];
+                            var v2 = globalCandidates[ci];
+                            candidates.Add(v2);
+                        }
+                    }
+                    else
+                    {
+                        candidates = (bs.distribution == DistributionType.EdgeLine && item.prefabType == PrefabType.Landscape)
+                            ? BuildFacadeStripCandidates(terrain, center, radius, bs, item)
+                            : VegetationGenerator.BuildCandidates(centerXZ, radius, bs.shape, desired, spacing, bs.minSpacingJitter, seed + it,
+                                bs.distribution, bs.useBurstPoisson, bs.cluster, bs.adaptiveMinFactor, bs.adaptiveMaxFactor, bs.adaptiveNoiseWeight, rnd);
+                    }
                 }
 
-                if (candidates != null && candidates.Count > 0 && bs.distribution != DistributionType.EdgeLine)
+                if (globalCandidates == null && candidates != null && candidates.Count > 0 && bs.distribution != DistributionType.EdgeLine)
                 {
-                    float repelDist = Mathf.Max(item.CoreSpacing, 0.01f) * 0.8f;
-                    BrushEngineExtensions.ApplyRelaxation(candidates, radius, repelDist, 3);
+                    float repelDist = Mathf.Max(Mathf.Max(item.CoreSpacing, item.CoreMinRadius), 0.01f) * 0.8f;
+                    BrushEngineExtensions.ApplyRelaxation(candidates, centerXZ, radius, repelDist, 3);
                 }
 
                 var grid = GetSharedGrid(spacing);
@@ -693,34 +938,57 @@ namespace MrTerrainPainter.Editor.Services
 
                 if (!useFacade && candidates.Count > 0)
                 {
-                    var pts = new NativeArray<float2>(candidates.Count, Allocator.TempJob);
-                    for (int iPt = 0; iPt < candidates.Count; iPt++) pts[iPt] = new float2(candidates[iPt].x, candidates[iPt].y);
+                    // var pts = new NativeArray<float2>(candidates.Count, Allocator.TempJob);
+                    // for (int iPt = 0; iPt < candidates.Count; iPt++) pts[iPt] = new float2(candidates[iPt].x, candidates[iPt].y);
 
                     outH = new NativeArray<float>(candidates.Count, Allocator.TempJob);
                     outN = new NativeArray<float3>(candidates.Count, Allocator.TempJob);
                     outS = new NativeArray<float>(candidates.Count, Allocator.TempJob);
 
-                    var job = new TerrainSampleJob
+                    bool patchValid = hbShared.heights.IsCreated && hbShared.heights.Length >= (hbShared.width * hbShared.height) && hbShared.width > 0 && hbShared.height > 0;
+                    if (patchValid)
                     {
-                        pointsWorld = pts,
-                        heightsPatch = hbShared.heights,
-                        xBase = hbShared.xBase,
-                        zBase = hbShared.zBase,
-                        width = hbShared.width,
-                        height = hbShared.height,
-                        hmMax = td.heightmapResolution - 1,
-                        dxWorld = hbShared.dxWorld,
-                        dzWorld = hbShared.dzWorld,
-                        terrainPos = new float3(terrain.transform.position.x, terrain.transform.position.y, terrain.transform.position.z),
-                        sizeX = td.size.x,
-                        sizeZ = td.size.z,
-                        sizeY = td.size.y,
-                        outHeightLocal = outH,
-                        outNormal = outN,
-                        outSlope = outS,
-                    };
-                    job.Schedule(candidates.Count, 64).Complete();
-                    pts.Dispose();
+                        if (allocPerItem != null && allocPerItem[it] != null && allocPerItem[it].Count > 0 && outHG.IsCreated)
+                        {
+                            for (int iPt = 0; iPt < candidates.Count; iPt++)
+                            {
+                                int ci = allocPerItem[it][iPt];
+                                outH[iPt] = outHG[ci];
+                                outN[iPt] = outNG[ci];
+                                outS[iPt] = outSG[ci];
+                            }
+                        }
+                        else
+                        {
+                            var pts = new NativeArray<float2>(candidates.Count, Allocator.TempJob);
+                            for (int iPt = 0; iPt < candidates.Count; iPt++) pts[iPt] = new float2(candidates[iPt].x, candidates[iPt].y);
+                            var job = new TerrainSampleJob
+                            {
+                                pointsWorld = pts,
+                                heightsPatch = hbShared.heights,
+                                xBase = hbShared.xBase,
+                                zBase = hbShared.zBase,
+                                width = hbShared.width,
+                                height = hbShared.height,
+                                hmMax = td.heightmapResolution - 1,
+                                dxWorld = hbShared.dxWorld,
+                                dzWorld = hbShared.dzWorld,
+                                terrainPos = new float3(terrain.transform.position.x, terrain.transform.position.y, terrain.transform.position.z),
+                                sizeX = td.size.x,
+                                sizeZ = td.size.z,
+                                sizeY = td.size.y,
+                                outHeightLocal = outH,
+                                outNormal = outN,
+                                outSlope = outS,
+                            };
+                            job.Schedule(candidates.Count, 64).Complete();
+                            pts.Dispose();
+                        }
+                    }
+                    else
+                    {
+                        for (int i = 0; i < candidates.Count; i++) { outH[i] = 0f; outN[i] = new float3(0f, 1f, 0f); outS[i] = 0f; }
+                    }
                 }
 
                 for (int ci = 0; ci < candidates.Count && placed < count; ci++)
@@ -732,6 +1000,12 @@ namespace MrTerrainPainter.Editor.Services
                     float h, slope;
                     Vector3 n;
 
+                    // 安全读取，避免 NativeArray 越界
+                    if (ci >= outH.Length || ci >= outN.Length || ci >= outS.Length)
+                    {
+                        Debug.LogErrorFormat("BrushPainter.Paint: sample index {0} out of range (H:{1}, N:{2}, S:{3}) on terrain '{4}'", ci, outH.Length, outN.Length, outS.Length, terrain != null ? terrain.name : "<null>");
+                        continue;
+                    }
                     h = outH[ci] + terrain.transform.position.y;
                     n = outN[ci];
                     slope = outS[ci];
@@ -748,13 +1022,22 @@ namespace MrTerrainPainter.Editor.Services
                     if (item.prefabType == PrefabType.Landscape && slope < Mathf.Clamp(item.edgeSlopeThreshold, 0f, 90f)) continue;
 
                     var p2 = new Vector2(p.x - terrain.transform.position.x, p.z - terrain.transform.position.z);
+                    float minDist = spacing;
+                    if (globalGridAll != null && globalGridAll.HasNearby(p2, globalSpacingAll)) continue;
                     if (bs.globalSpacingFactor > 0f && GetSharedGrid(spacing * bs.globalSpacingFactor).HasNearby(p2, spacing * bs.globalSpacingFactor)) continue;
-                    if (grid.HasNearby(p2, spacing)) continue;
+                    if (grid.HasNearby(p2, minDist)) continue;
 
                     grid.Add(p2);
+                    globalGridAll?.Add(p2);
 
                     var targetParent = typeToNode.TryGetValue(item.prefabType, out var tf) ? tf : null;
-                    if (targetParent == null) { VegetationGenerator.LogMissingMappingOnce(item.prefabType); continue; }
+                    if (targetParent == null)
+                    {
+                        VegetationGenerator.LogMissingMappingOnce(item.prefabType);
+                        var fallback = ResolveDefaultContainer(terrain);
+                        if (fallback == null) continue;
+                        targetParent = fallback;
+                    }
 
                     var placementContext = new VegetationGenerator.PlacementContext
                     {
@@ -778,6 +1061,9 @@ namespace MrTerrainPainter.Editor.Services
             }
 
             if (hbShared.heights.IsCreated) hbShared.heights.Dispose();
+            if (outHG.IsCreated) outHG.Dispose();
+            if (outNG.IsCreated) outNG.Dispose();
+            if (outSG.IsCreated) outSG.Dispose();
         }
 
         /// <summary>
@@ -976,6 +1262,17 @@ namespace MrTerrainPainter.Editor.Services
 
         private static BrushSpatialGrid GetSharedGrid(float spacing) { if (s_sharedGrid == null) s_sharedGrid = new BrushSpatialGrid(spacing); else s_sharedGrid.Reset(spacing); return s_sharedGrid; }
         private static BrushSpatialGrid GetItemGrid(int idx, float spacing) { if (!s_itemGridCache.TryGetValue(idx, out var g)) { g = new BrushSpatialGrid(spacing); s_itemGridCache[idx] = g; } else g.Reset(spacing); return g; }
+
+        private static Transform ResolveDefaultContainer(Terrain terrain)
+        {
+            if (terrain == null) return null;
+            var name = $"Vegetation_{terrain.name}";
+            var existing = terrain.transform.Find(name);
+            if (existing != null) return existing;
+            var go = new GameObject(name);
+            go.transform.SetParent(terrain.transform, false);
+            return go.transform;
+        }
         #endregion
     }
     #endregion

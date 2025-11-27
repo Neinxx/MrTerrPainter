@@ -247,7 +247,7 @@ namespace MrTerrainPainter.Editor.Views
                 MrTerrainPainter.Editor.Utils.SubscriptionGuard.ResetToggle(selectToggle, newSelectCb);
             }
 
-            thumbs.pickingMode = PickingMode.Position;
+            thumbs.pickingMode = PickingMode.Ignore;
             thumbs.style.flexDirection = FlexDirection.Row;
             thumbs.style.flexWrap = Wrap.Wrap;
             thumbs.style.justifyContent = Justify.FlexStart;

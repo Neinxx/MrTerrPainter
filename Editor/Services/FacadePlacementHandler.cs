@@ -51,60 +51,93 @@ namespace MrTerrainPainter.Editor.Services
         /// <summary>
         /// 使用流水线在边缘线上放置物体
         /// </summary>
-        public static void PlaceEdgeLineWithPipeline(
-            Terrain terrain, Vector3 center, float radius, BrushSettings bs,
-            List<VegetationItem> landItems, Dictionary<PrefabType, Transform> typeToNode,
-            List<FacadeDetectionService.CliffSlice> slices, System.Random rnd)
+    public static void PlaceEdgeLineWithPipeline(
+        Terrain terrain, Vector3 center, float radius, BrushSettings bs,
+        List<VegetationItem> landItems, Dictionary<PrefabType, Transform> typeToNode,
+        List<FacadeDetectionService.CliffSlice> slices, System.Random rnd)
+    {
+        var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? ConfigTools.GetCachedConfig();
+        float mixMinSpacing = landItems.Count > 0 ? landItems.Min(li => Mathf.Max(Mathf.Max(li.CoreSpacing, li.CoreMinRadius), 0.01f)) : 0.01f;
+
+        var parent = typeToNode.TryGetValue(PrefabType.Landscape, out var tf) ? tf : null;
+        if (parent == null) return;
+
+        var sampler = new EdgeLineSampler(slices, mixMinSpacing, center, bs.shape);
+        var candidates = sampler.Sample(center, radius);
+        if (candidates == null || candidates.Count == 0) return;
+
+        var filter = new FacadeConstraintFilter(cfg != null ? cfg.minFacadeHeightMeters : 0.0001f);
+        var pooled = new PooledSpawner();
+        var globalGrid = new BrushSpatialGrid(mixMinSpacing);
+        var spawner = new GlobalGridSpawner(globalGrid, mixMinSpacing, pooled);
+
+        float sumW = Mathf.Max(0.0001f, landItems.Sum(i => Mathf.Max(0f, i.weight)));
+        int total = candidates.Count;
+        var quota = new int[landItems.Count];
+        int allocated = 0;
+        for (int i = 0; i < landItems.Count; i++)
         {
-            var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? ConfigTools.GetCachedConfig();
-            float mixMinSpacing = landItems.Count > 0 ? landItems.Min(li => Mathf.Max(li.CoreSpacing, 0.01f)) : 0.01f;
-
-            var parent = typeToNode.TryGetValue(PrefabType.Landscape, out var tf) ? tf : null;
-            if (parent == null) return;
-
-            var sampler = new EdgeLineSampler(slices, mixMinSpacing, center, bs.shape);
-            var candidates = sampler.Sample(center, radius);
-            if (candidates == null || candidates.Count == 0) return;
-
-            var filter = new FacadeConstraintFilter(cfg != null ? cfg.minFacadeHeightMeters : 0.0001f);
-            var spawner = new PooledSpawner();
-
-            float sumW = landItems.Sum(i => i.weight);
-
-            for (int i = 0; i < candidates.Count; i++)
-            {
-                float r = (float)rnd.NextDouble() * sumW;
-                float acc = 0;
-                int pick = 0;
-                for (int k = 0; k < landItems.Count; k++) { acc += landItems[k].weight; if (r <= acc) { pick = k; break; } }
-                var item = landItems[pick];
-
-                var singleList = BrushEngine.AcquireList3(1);
-                singleList.Add(candidates[i]);
-
-                var pipelineContext = new PipelineContext
-                {
-                    Terrain = terrain,
-                    Center = center,
-                    Radius = radius,
-                    Item = item,
-                    ItemIndex = pick,
-                    Parent = parent
-                };
-                var pipelineData = new PipelineData
-                {
-                    Candidates = singleList,
-                    Heights = default,
-                    Slopes = default,
-                    Normals = default
-                };
-
-                VegetationPipeline.Shared
-                    .Setup(new CandidateSamplerFromList(null, 0), filter, new EdgeLineMutator(), spawner)
-                    .Run(pipelineContext, pipelineData);
-
-                BrushEngine.ReleaseList3(singleList);
-            }
+            float w = Mathf.Max(0f, landItems[i].weight);
+            quota[i] = Mathf.FloorToInt((w / sumW) * total);
+            allocated += quota[i];
         }
+        for (int i = 0; i < total - allocated; i++) quota[i % landItems.Count]++; // 补齐到总数
+
+        var order = new List<int>(candidates.Count);
+        for (int i = 0; i < candidates.Count; i++) order.Add(i);
+        for (int i = order.Count - 1; i > 0; i--) { int j = rnd.Next(i + 1); var t = order[i]; order[i] = order[j]; order[j] = t; }
+
+        for (int oi = 0; oi < order.Count; oi++)
+        {
+            int ci = order[oi];
+            // 按剩余额度的权重随机选择
+            var elig = new List<int>();
+            float wsum = 0f;
+            for (int li = 0; li < landItems.Count; li++)
+            {
+                if (quota[li] <= 0) continue;
+                float w = Mathf.Max(0.0001f, landItems[li].weight);
+                elig.Add(li);
+                wsum += w;
+            }
+            if (elig.Count == 0) break;
+            double rPick = rnd.NextDouble() * wsum;
+            float acc = 0f; int chosen = elig[0];
+            for (int e = 0; e < elig.Count; e++)
+            {
+                float w = Mathf.Max(0.0001f, landItems[elig[e]].weight);
+                acc += w;
+                if (rPick <= acc) { chosen = elig[e]; break; }
+            }
+            quota[chosen]--;
+            var item = landItems[chosen];
+
+            var singleList = BrushEngine.AcquireList3(1);
+            singleList.Add(candidates[ci]);
+
+            var pipelineContext = new PipelineContext
+            {
+                Terrain = terrain,
+                Center = center,
+                Radius = radius,
+                Item = item,
+                ItemIndex = chosen,
+                Parent = parent
+            };
+            var pipelineData = new PipelineData
+            {
+                Candidates = singleList,
+                Heights = default,
+                Slopes = default,
+                Normals = default
+            };
+
+            VegetationPipeline.Shared
+                .Setup(new CandidateSamplerFromList(null, 0), filter, new EdgeLineMutator(), spawner)
+                .Run(pipelineContext, pipelineData);
+
+            BrushEngine.ReleaseList3(singleList);
+        }
+    }
     }
 }

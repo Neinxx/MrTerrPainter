@@ -390,7 +390,34 @@ namespace MrTerrainPainter.Editor
                 UpdatePropertyPanelFromSelectedItem = UpdatePropertyPanel,
                 MarkCurrentProfileDirty = () => { if (session.CurrentProfile) EditorUtility.SetDirty(session.CurrentProfile); },
                 ScanSelectedTerrainsForFacades = () => session.ScanSelectedTerrainsForFacades(),
-                BakeCachedFacades = () => session.BakeCachedFacades()
+                BakeCachedFacades = () => session.BakeCachedFacades(),
+                BatchSetMinRadius = (val) =>
+                {
+                    var profile = session.CurrentProfile;
+                    if (profile == null || profile.Items == null) return;
+                    var indices = session.UIState.GetSelectedThumbIndices()?.ToList();
+                    if (indices == null || indices.Count == 0)
+                    {
+                        for (int i = 0; i < profile.Items.Count; i++)
+                        {
+                            var it = profile.Items[i];
+                            if (it != null) it.minRadius = Mathf.Max(0f, val);
+                        }
+                    }
+                    else
+                    {
+                        for (int k = 0; k < indices.Count; k++)
+                        {
+                            int idx = indices[k];
+                            if (idx < 0 || idx >= profile.Items.Count) continue;
+                            var it = profile.Items[idx];
+                            if (it != null) it.minRadius = Mathf.Max(0f, val);
+                        }
+                    }
+                    if (profile != null) EditorUtility.SetDirty(profile);
+                    RefreshPreviewUI();
+                    UpdatePropertyPanel();
+                }
             });
         }
 
