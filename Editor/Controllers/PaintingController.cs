@@ -31,16 +31,46 @@ namespace MrTerrainPainter.Editor.Controllers
                 if (list.Count >= 2)
                 {
                     list.Insert(0, currentProfile);
-                    BrushPainter.PaintMixed(terrain, list, center, brush, rnd, ov);
+                    var paintContext = new PaintContext
+                    {
+                        Terrain = terrain,
+                        Profiles = list,
+                        Center = center,
+                        BrushSettings = brush,
+                        Random = rnd,
+                        Overrides = ov
+                    };
+                    BrushPainter.PaintMixed(paintContext);
                     return;
                 }
             }
-            BrushPainter.Paint(terrain, currentProfile, center, brush, rnd, ov);
+
+            var paintContext1 = new PaintContext
+            {
+                Terrain = terrain,
+                Profile = currentProfile,
+                Center = center,
+                BrushSettings = brush,
+                Random = rnd,
+                Overrides = ov
+            };
+            BrushPainter.Paint(paintContext1);
+
             for (int i = 0; i < extraProfiles.Count; i++)
             {
                 var p = extraProfiles[i];
                 if (p == null || p.IsEmpty()) continue;
-                BrushPainter.Paint(terrain, p, center, brush, rnd, ov);
+
+                var paintContext2 = new PaintContext
+                {
+                    Terrain = terrain,
+                    Profile = p,
+                    Center = center,
+                    BrushSettings = brush,
+                    Random = rnd,
+                    Overrides = ov
+                };
+                BrushPainter.Paint(paintContext2);
             }
         }
     }

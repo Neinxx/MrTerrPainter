@@ -277,7 +277,17 @@ namespace MrTerrainPainter.Editor.Services
                 if (terrain == null && s.terrainController != null) { if (s.terrainController.TryFindNearestTerrain(pos, out var nearest)) terrain = nearest; }
                 if (terrain == null) return;
                 if (e.shift || e.control || e.alt) return;
-                BrushPainter.Erase(terrain, pos, s.brush, true);
+
+                var eraseContext = new EraseContext
+                {
+                    Terrain = terrain,
+                    Center = pos,
+                    BrushSettings = s.brush,
+                    EraseAll = true,
+                    OnlyTypes = null
+                };
+                BrushPainter.Erase(eraseContext);
+
                 s.markSceneDirty?.Invoke();
                 e.Use();
             }
@@ -305,8 +315,8 @@ namespace MrTerrainPainter.Editor.Services
                         var tl = new System.Collections.Generic.List<Vector3>(slices.Count);
                         for (int i = 0; i < slices.Count; i++) { bl.Add(slices[i].BottomPosition); tl.Add(slices[i].TopPosition); }
                         _preview.bottomLine = bl; _preview.topLine = tl;
-                        _preview.prefabW = BrushPainter.GetPrefabHorizontalExtentMeters(itemRef.prefab);
-                        _preview.prefabH = BrushPainter.GetPrefabHeightMeters(itemRef.prefab);
+                        _preview.prefabW = PrefabMetricsCache.GetPrefabHorizontalExtentMeters(itemRef.prefab);
+                        _preview.prefabH = PrefabMetricsCache.GetPrefabHeightMeters(itemRef.prefab);
                     }
                 }
             }

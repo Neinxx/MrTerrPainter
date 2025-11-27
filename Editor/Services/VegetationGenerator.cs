@@ -17,6 +17,21 @@ namespace MrTerrainPainter.Editor.Services
 {
     public static class VegetationGenerator
     {
+        /// <summary>
+        /// 物品放置上下文 - 封装PlaceItem的所有参数
+        /// </summary>
+        public struct PlacementContext
+        {
+            public VegetationItem Item;
+            public Vector3 Position;
+            public Vector3 Normal;
+            public Terrain Terrain;
+            public int ItemIndex;
+            public Transform Parent;
+            public System.Random Random;
+            public PlacementOverrides? Overrides;
+        }
+
         public class CandidateRequest
         {
             public UnityEngine.Vector2 centerXZ;
@@ -675,7 +690,7 @@ namespace MrTerrainPainter.Editor.Services
                             if (go == null) return;
                             go.transform.position = s.BottomPosition;
                             go.transform.rotation = Quaternion.LookRotation(s.Normal, s.Direction);
-                            float rendererH = BrushPainter.GetPrefabHeightMeters(item.prefab);
+                            float rendererH = PrefabMetricsCache.GetPrefabHeightMeters(item.prefab);
                             var cfgLocal = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
                             float minH = cfgLocal != null ? Mathf.Max(0.0001f, cfgLocal.minFacadeHeightMeters) : 0.0001f;
                             float uni = Mathf.Max(minH / Mathf.Max(0.0001f, rendererH), h / Mathf.Max(0.0001f, rendererH));
@@ -708,7 +723,7 @@ namespace MrTerrainPainter.Editor.Services
                                 var basePos = s.BottomPosition + s.Direction * (per * L + Mathf.Max(0f, item.edgeStackingOffsetMeters));
                                 go.transform.position = basePos;
                                 go.transform.rotation = Quaternion.LookRotation(s.Normal, s.Direction);
-                                float rendererH2 = BrushPainter.GetPrefabHeightMeters(item.prefab);
+                                float rendererH2 = PrefabMetricsCache.GetPrefabHeightMeters(item.prefab);
                                 var cfgLocal2 = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
                                 float minH2 = cfgLocal2 != null ? Mathf.Max(0.0001f, cfgLocal2.minFacadeHeightMeters) : 0.0001f;
                                 float uni2 = Mathf.Max(minH2 / Mathf.Max(0.0001f, rendererH2), currH / Mathf.Max(0.0001f, rendererH2));
@@ -813,7 +828,19 @@ namespace MrTerrainPainter.Editor.Services
 
                         var targetParent = ResolveTargetParent(terrain, item);
                         if (targetParent == null) { LogMissingMappingOnce(item.prefabType); continue; }
-                        PlaceItem(item, sample, n, terrain, it, targetParent, rnd, ov);
+
+                        var placementContext = new PlacementContext
+                        {
+                            Item = item,
+                            Position = sample,
+                            Normal = n,
+                            Terrain = terrain,
+                            ItemIndex = it,
+                            Parent = targetParent,
+                            Random = rnd,
+                            Overrides = ov
+                        };
+                        PlaceItem(placementContext);
                     }
 
                     hb.heights.Dispose();
@@ -868,35 +895,38 @@ namespace MrTerrainPainter.Editor.Services
             return dict.TryGetValue(item.prefabType, out var tf) ? tf : null;
         }
 
-        public static void PlaceItem(VegetationItem item, Vector3 pos, Vector3 normal, Terrain terrain, int itemIndex, Transform parent, System.Random rnd, PlacementOverrides? ov)
+        /// <summary>
+        /// 放置单个植被实例（优化版：从8个参数简化为1个）
+        /// </summary>
+        public static void PlaceItem(PlacementContext context)
         {
-            if (item.prefab == null) return; // 提前返回
+            if (context.Item.prefab == null) return; // 提前返回
             // 优先复用对象池，避免大量实例化导致卡顿
-            var go = VegetationPool.Get(terrain, item, itemIndex, parent, "Create Vegetation Instance");
+            var go = VegetationPool.Get(context.Terrain, context.Item, context.ItemIndex, context.Parent, "Create Vegetation Instance");
             if (go == null) return; // 提前返回
-            go.transform.position = pos;
+            go.transform.position = context.Position;
 
             // 严格使用条目级范围，确保配置的缩放与旋转生效
             float scale;
-            if (ov.HasValue)
+            if (context.Overrides.HasValue)
             {
-                var r = ov.Value.scaleRange;
-                float t = (float)rnd.NextDouble();
+                var r = context.Overrides.Value.scaleRange;
+                float t = (float)context.Random.NextDouble();
                 scale = Mathf.Lerp(r.x, r.y, t);
             }
             else
             {
-                scale = item.CoreScale;
+                scale = context.Item.CoreScale;
             }
             go.transform.localScale = Vector3.one * scale;
 
-            float yRot = item.prefabType == Runtime.Profiles.PrefabType.Landscape ? 0f : item.SampleYRotation(rnd);
+            float yRot = context.Item.prefabType == Runtime.Profiles.PrefabType.Landscape ? 0f : context.Item.SampleYRotation(context.Random);
             var rot = Quaternion.Euler(0f, yRot, 0f);
             var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
-            bool useNormal = cfg != null ? (cfg.normalDirection || item.alignToTerrainNormal || item.prefabType == Runtime.Profiles.PrefabType.Landscape) : (item.alignToTerrainNormal || item.prefabType == Runtime.Profiles.PrefabType.Landscape);
-            if (item.prefabType == Runtime.Profiles.PrefabType.Landscape)
+            bool useNormal = cfg != null ? (cfg.normalDirection || context.Item.alignToTerrainNormal || context.Item.prefabType == Runtime.Profiles.PrefabType.Landscape) : (context.Item.alignToTerrainNormal || context.Item.prefabType == Runtime.Profiles.PrefabType.Landscape);
+            if (context.Item.prefabType == Runtime.Profiles.PrefabType.Landscape)
             {
-                var forward = normal.normalized;
+                var forward = context.Normal.normalized;
                 var upOnPlane = Vector3.ProjectOnPlane(Vector3.up, forward);
                 if (upOnPlane.sqrMagnitude < 1e-6f) upOnPlane = Vector3.Cross(forward, Vector3.right).normalized;
                 var baseRot = Quaternion.LookRotation(forward, upOnPlane);
@@ -904,39 +934,39 @@ namespace MrTerrainPainter.Editor.Services
             }
             else if (useNormal)
             {
-                rot = Quaternion.LookRotation(Vector3.Cross(Vector3.right, normal), normal) * Quaternion.Euler(0f, yRot, 0f);
+                rot = Quaternion.LookRotation(Vector3.Cross(Vector3.right, context.Normal), context.Normal) * Quaternion.Euler(0f, yRot, 0f);
             }
             go.transform.rotation = rot;
-            if (item.prefabType == Runtime.Profiles.PrefabType.Landscape && item.edgeAutoHeight)
+            if (context.Item.prefabType == Runtime.Profiles.PrefabType.Landscape && context.Item.edgeAutoHeight)
             {
                 var up = Vector3.up;
-                var forward = Vector3.ProjectOnPlane(normal, up);
+                var forward = Vector3.ProjectOnPlane(context.Normal, up);
                 if (forward.sqrMagnitude > 1e-6f)
                 {
                     forward.Normalize();
                     float hFoot = go.transform.position.y;
                     float heightMeters = 0f;
-                    float step = Mathf.Max(item.edgeLookAheadStep, 0.05f);
-                    float maxD = Mathf.Max(item.edgeMaxLookAhead, step);
+                    float step = Mathf.Max(context.Item.edgeLookAheadStep, 0.05f);
+                    float maxD = Mathf.Max(context.Item.edgeMaxLookAhead, step);
                     for (float d = step; d <= maxD + 0.0001f; d += step)
                     {
                         var test = go.transform.position + (-forward) * d;
-                        if (TerrainUtils.TryGetHeightAndNormal(terrain, test, out float hTop, out Vector3 nTop))
+                        if (TerrainUtils.TryGetHeightAndNormal(context.Terrain, test, out float hTop, out Vector3 nTop))
                         {
                             float sTop = TerrainUtils.ComputeSlope(nTop);
-                            if (sTop < Mathf.Clamp(item.edgeSlopeThreshold, 0f, 90f)) { heightMeters = Mathf.Max(0f, hTop - hFoot); break; }
+                            if (sTop < Mathf.Clamp(context.Item.edgeSlopeThreshold, 0f, 90f)) { heightMeters = Mathf.Max(0f, hTop - hFoot); break; }
                         }
                     }
                     float baseScale = go.transform.localScale.x;
                     float yScale = baseScale;
                     if (heightMeters > 0f)
                     {
-                        yScale = heightMeters / Mathf.Max(item.edgeReferenceHeightMeters, 0.0001f);
+                        yScale = heightMeters / Mathf.Max(context.Item.edgeReferenceHeightMeters, 0.0001f);
                     }
                     go.transform.localScale = new Vector3(baseScale, yScale, baseScale);
                     var right = Vector3.Cross(up, forward).normalized;
                     var horizFwd = forward;
-                    var offsConf = item.CoreOffset;
+                    var offsConf = context.Item.CoreOffset;
                     var off = right * offsConf.x + up * offsConf.y + (-horizFwd) * offsConf.z;
                     go.transform.position += off;
                 }
@@ -944,11 +974,11 @@ namespace MrTerrainPainter.Editor.Services
 
             var vi = go.GetComponent<VegetationInstance>();
             if (vi == null) vi = go.AddComponent<VegetationInstance>();
-            vi.sourceTerrain = terrain;
-            vi.profileItemIndex = itemIndex;
+            vi.sourceTerrain = context.Terrain;
+            vi.profileItemIndex = context.ItemIndex;
             vi.instanceId = Guid.NewGuid().ToString();
-            vi.sourcePrefabName = item.prefab.name;
-            VegetationPool.IndexRegister(terrain, go);
+            vi.sourcePrefabName = context.Item.prefab.name;
+            VegetationPool.IndexRegister(context.Terrain, go);
         }
     }
 }

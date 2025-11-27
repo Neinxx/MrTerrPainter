@@ -8,6 +8,30 @@ using Unity.Mathematics;
 
 namespace MrTerrainPainter.Editor.Services
 {
+    /// <summary>
+    /// Pipeline执行上下文 - 封装地形和物品相关参数
+    /// </summary>
+    public struct PipelineContext
+    {
+        public Terrain Terrain;
+        public Vector3 Center;
+        public float Radius;
+        public MrTerrainPainter.Runtime.Profiles.VegetationItem Item;
+        public int ItemIndex;
+        public Transform Parent;
+    }
+
+    /// <summary>
+    /// Pipeline数据 - 封装候选点和采样结果
+    /// </summary>
+    public struct PipelineData
+    {
+        public List<Vector3> Candidates;
+        public NativeArray<float> Heights;
+        public NativeArray<float> Slopes;
+        public NativeArray<float3> Normals;
+    }
+
     public interface IPointSampler
     {
         List<Vector3> Sample(Vector3 center, float radius);
@@ -114,7 +138,7 @@ namespace MrTerrainPainter.Editor.Services
         public List<Vector3> Sample(Vector3 center, float radius)
         {
             var res = new List<Vector3>();
-            var grid = new BrushPainter.Grid(_spacing);
+            var grid = new BrushSpatialGrid(_spacing);
             for (int i = 0; i < _slices.Count; i++)
             {
                 var s = _slices[i];
@@ -148,7 +172,7 @@ namespace MrTerrainPainter.Editor.Services
     {
         public void Mutate(MrTerrainPainter.Runtime.Profiles.VegetationItem item, System.Random rnd, ref Vector3 pos, ref Quaternion rot, ref Vector3 scale, Vector3 normal)
         {
-            float rendererH = BrushPainter.GetPrefabHeightMeters(item.prefab);
+            float rendererH = PrefabMetricsCache.GetPrefabHeightMeters(item.prefab);
             float minH = 0.0001f;
             var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
             if (cfg != null) minH = Mathf.Max(0.0001f, cfg.minFacadeHeightMeters);
@@ -198,25 +222,29 @@ namespace MrTerrainPainter.Editor.Services
         private IInstanceSpawner _spawner;
         public static readonly VegetationPipeline Shared = new VegetationPipeline();
         public VegetationPipeline Setup(IPointSampler s, ICandidateFilter f, IInstanceMutator m, IInstanceSpawner p) { _sampler = s; _filter = f; _mutator = m; _spawner = p; return this; }
-        public void Run(Terrain terrain, Vector3 center, float radius, MrTerrainPainter.Runtime.Profiles.VegetationItem item, int itemIndex, Transform parent, List<Vector3> candidates, NativeArray<float> heights, NativeArray<float> slopes, NativeArray<float3> normals)
+
+        /// <summary>
+        /// 执行植被生成管线（优化版：从10个参数简化为2个）
+        /// </summary>
+        public void Run(PipelineContext context, PipelineData data)
         {
-            var grid = new BrushPainter.Grid(Mathf.Max(item.CoreSpacing, 0.01f));
-            for (int ci = 0; ci < candidates.Count; ci++)
+            var grid = new BrushSpatialGrid(Mathf.Max(context.Item.CoreSpacing, 0.01f));
+            for (int ci = 0; ci < data.Candidates.Count; ci++)
             {
-                var pos = candidates[ci];
-                if (!TerrainUtils.IsWithinTerrainBounds(terrain, pos)) continue;
-                float h = heights.IsCreated && ci < heights.Length ? heights[ci] + terrain.transform.position.y : pos.y;
-                float slope = slopes.IsCreated && ci < slopes.Length ? slopes[ci] : 0f;
-                var normal = normals.IsCreated && ci < normals.Length ? (Vector3)normals[ci] : Vector3.up;
-                if (!_filter.Pass(ci, pos, h - terrain.transform.position.y, slope)) continue;
-                var p2 = new Vector2(pos.x - terrain.transform.position.x, pos.z - terrain.transform.position.z);
-                if (grid.HasNearby(p2, Mathf.Max(item.CoreSpacing, 0.01f))) continue;
+                var pos = data.Candidates[ci];
+                if (!TerrainUtils.IsWithinTerrainBounds(context.Terrain, pos)) continue;
+                float h = data.Heights.IsCreated && ci < data.Heights.Length ? data.Heights[ci] + context.Terrain.transform.position.y : pos.y;
+                float slope = data.Slopes.IsCreated && ci < data.Slopes.Length ? data.Slopes[ci] : 0f;
+                var normal = data.Normals.IsCreated && ci < data.Normals.Length ? (Vector3)data.Normals[ci] : Vector3.up;
+                if (!_filter.Pass(ci, pos, h - context.Terrain.transform.position.y, slope)) continue;
+                var p2 = new Vector2(pos.x - context.Terrain.transform.position.x, pos.z - context.Terrain.transform.position.z);
+                if (grid.HasNearby(p2, Mathf.Max(context.Item.CoreSpacing, 0.01f))) continue;
                 pos.y = h;
                 var rot = Quaternion.identity;
                 var scale = Vector3.one;
                 var rnd = new System.Random((int)(pos.x * 13 + pos.z * 7));
-                _mutator.Mutate(item, rnd, ref pos, ref rot, ref scale, normal);
-                _spawner.Spawn(item, itemIndex, parent, terrain, pos, rot, scale);
+                _mutator.Mutate(context.Item, rnd, ref pos, ref rot, ref scale, normal);
+                _spawner.Spawn(context.Item, context.ItemIndex, context.Parent, context.Terrain, pos, rot, scale);
                 grid.Add(p2);
             }
         }

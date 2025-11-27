@@ -404,8 +404,8 @@ namespace MrTerrainPainter.Editor.State
                 foreach (var s in path.SmoothSlices)
                 {
                     var p2 = new Vector2(s.BottomPosition.x - t.transform.position.x, s.BottomPosition.z - t.transform.position.z);
-                    float rendererW = Services.BrushPainter.GetPrefabHorizontalExtentMeters(item.prefab);
-                    float rendererH = Services.BrushPainter.GetPrefabHeightMeters(item.prefab);
+                    float rendererW = Services.PrefabMetricsCache.GetPrefabHorizontalExtentMeters(item.prefab);
+                    float rendererH = Services.PrefabMetricsCache.GetPrefabHeightMeters(item.prefab);
                     float minH = Config != null ? Mathf.Max(0.0001f, Config.minFacadeHeightMeters) : 0.0001f;
                     float uni = Mathf.Max(minH / Mathf.Max(0.0001f, rendererH), s.Height / Mathf.Max(0.0001f, rendererH));
                     float spacingThresh = Mathf.Max(item.CoreSpacing, rendererW * uni);

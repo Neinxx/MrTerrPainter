@@ -583,7 +583,7 @@ namespace MrTerrainPainter.Editor.Services
                 .FromConfig(cfg)
                 .Build();
             var slices = TraceVirtualFacade(req);
-            float rendererWMinLen = MrTerrainPainter.Editor.Services.BrushPainter.GetPrefabHorizontalExtentMeters(item.prefab);
+            float rendererWMinLen = MrTerrainPainter.Editor.Services.PrefabMetricsCache.GetPrefabHorizontalExtentMeters(item.prefab);
             float minLenSeg = Mathf.Max(rendererWMinLen, item.edgeReferenceWidthMeters);
             slices = FilterByMinimumWidth(slices, minLenSeg, Mathf.Max(item.CoreSpacing, 0.01f), 30f);
             if (slices != null && slices.Count > 3)
@@ -632,8 +632,8 @@ namespace MrTerrainPainter.Editor.Services
                 var s = slices[i];
                 if (!InsideBrush(s.BottomPosition, center, radius, shape)) continue;
                 var p2 = new Vector2(s.BottomPosition.x - terrain.transform.position.x, s.BottomPosition.z - terrain.transform.position.z);
-                float rendererW = MrTerrainPainter.Editor.Services.BrushPainter.GetPrefabHorizontalExtentMeters(item.prefab);
-                float rendererH = MrTerrainPainter.Editor.Services.BrushPainter.GetPrefabHeightMeters(item.prefab);
+                float rendererW = MrTerrainPainter.Editor.Services.PrefabMetricsCache.GetPrefabHorizontalExtentMeters(item.prefab);
+                float rendererH = MrTerrainPainter.Editor.Services.PrefabMetricsCache.GetPrefabHeightMeters(item.prefab);
                 float minH = cfg != null ? Mathf.Max(0.0001f, cfg.minFacadeHeightMeters) : 0.0001f;
                 float uni = Mathf.Max(minH / Mathf.Max(0.0001f, rendererH), s.Height / Mathf.Max(0.0001f, rendererH));
                 float spacingThresh = Mathf.Max(item.CoreSpacing, rendererW * uni);
