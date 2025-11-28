@@ -119,7 +119,7 @@ namespace MrTerrainPainter.Editor.Services
         /// <summary>
         /// 绘制立面切片预览
         /// </summary>
-        public static void DrawFacadeSlicesPreview(List<FacadeDetectionService.CliffSlice> slices, BrushSettings bs)
+        public static void DrawFacadeSlicesPreview(List<FacadeDetectionService.CliffSlice> slices, BrushSettings bs, MrTerrainPainter.Runtime.Profiles.VegetationItem item)
         {
             if (bs == null || !bs.preview || slices == null || slices.Count == 0) return;
             var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? Config.ConfigTools.GetCachedConfig();
@@ -127,10 +127,22 @@ namespace MrTerrainPainter.Editor.Services
 
             var bottoms = new Vector3[slices.Count];
             var tops = new Vector3[slices.Count];
+            float depthPreview = 0f;
+            if (item != null)
+            {
+                depthPreview = Mathf.Clamp01((item.embedDepthRange.x + item.embedDepthRange.y) * 0.5f);
+            }
             for (int i = 0; i < slices.Count; i++)
             {
-                bottoms[i] = slices[i].BottomPosition;
-                tops[i] = slices[i].TopPosition;
+                var s = slices[i];
+                var rightAxis = Vector3.Normalize(Vector3.Cross(s.Direction, s.Normal));
+                var offset = Vector3.zero;
+                if (item != null)
+                {
+                    offset = rightAxis * item.offsets.x + s.Direction * item.offsets.y + (-s.Normal.normalized) * (depthPreview + Mathf.Max(0f, item.offsets.z));
+                }
+                bottoms[i] = s.BottomPosition + offset;
+                tops[i] = s.TopPosition + offset;
             }
 
             if (cfg != null)
@@ -148,12 +160,11 @@ namespace MrTerrainPainter.Editor.Services
                 Handles.DrawAAPolyLine(st.ringWidth, tops);
             }
 
-            // 立面法向箭头
             Handles.color = new Color(1f, 1f, 0.2f, 0.9f);
             float len = Mathf.Max(0.5f, bs.size * 0.25f);
             for (int i = 0; i < slices.Count; i++)
             {
-                var o = slices[i].BottomPosition;
+                var o = bottoms[i];
                 var n = slices[i].Normal;
                 var tip = o + n.normalized * len;
                 Handles.DrawAAPolyLine(st.ringWidth, o, tip);
@@ -169,10 +180,20 @@ namespace MrTerrainPainter.Editor.Services
             var left = new Vector3[slices.Count];
             var right = new Vector3[slices.Count];
             float w = item.edgeReferenceWidthMeters * 0.5f;
+            float rendererH = PrefabMetricsCache.GetPrefabHeightMeters(item.prefab);
+            float minH = (MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? Config.ConfigTools.GetCachedConfig())?.minFacadeHeightMeters ?? 0.0001f;
+            float uni = Mathf.Max(minH / Mathf.Max(0.0001f, rendererH), 1f);
+            float scaleX = Mathf.Max(0.0001f, uni + item.facadeScaleOffset.x);
+            float wEff = Mathf.Max(0.0001f, item.edgeReferenceWidthMeters * scaleX) * 0.5f;
+            w = wEff;
+            float depthPreview = Mathf.Clamp01((item.embedDepthRange.x + item.embedDepthRange.y) * 0.5f);
             for (int i = 0; i < slices.Count; i++)
             {
-                left[i] = slices[i].BottomPosition - slices[i].Normal * w;
-                right[i] = slices[i].BottomPosition + slices[i].Normal * w;
+                var s = slices[i];
+                var rightAxis = Vector3.Normalize(Vector3.Cross(s.Direction, s.Normal));
+                var basePos = s.BottomPosition + rightAxis * item.offsets.x + s.Direction * item.offsets.y + (-s.Normal.normalized) * (depthPreview + Mathf.Max(0f, item.offsets.z));
+                left[i] = basePos - s.Normal * w;
+                right[i] = basePos + s.Normal * w;
             }
             Handles.color = ring;
             Handles.DrawAAPolyLine(st.ringWidth, left);
@@ -206,7 +227,11 @@ namespace MrTerrainPainter.Editor.Services
                 var profile = MrTerrainPainter.Editor.Tools.MTPBrushContext.CurrentProfile;
                 var itemRef = profile != null ? profile.Items.FirstOrDefault(it => it != null && it.prefabType == PrefabType.Landscape) : null;
 
-                DrawFacadeSlicesPreview(data.slices, bs);
+                DrawFacadeSlicesPreview(data.slices, bs, itemRef);
+                if (itemRef != null)
+                {
+                    DrawFacadeRailsAndTicks(data.slices, st, ring, itemRef);
+                }
                 Handles.Label(center + Vector3.up * 0.25f, $"Render {data.prefabW:F2}m x {data.prefabH:F2}m");
             }
         }

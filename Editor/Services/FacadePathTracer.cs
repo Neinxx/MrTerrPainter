@@ -14,6 +14,9 @@ namespace MrTerrainPainter.Editor.Services
                 .Start(req.Start)
                 .Length(req.Length)
                 .FromItem(req.ItemRef)
+                .Smoothing(cfg != null ? cfg.facadeSmoothMode : MrTerrainPainter.Runtime.Profiles.FacadeSmoothingMode.Gaussian,
+                           cfg != null ? Mathf.Max(3, cfg.facadeSmoothWindow) : 5,
+                           cfg != null ? Mathf.Max(0.1f, cfg.facadeSmoothSigma) : 1f)
                 .FromConfig(cfg);
             return FacadeDetectionService.TraceVirtualFacade(builder.Build());
         }

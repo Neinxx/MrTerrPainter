@@ -920,26 +920,14 @@ namespace MrTerrainPainter.Editor.Services
 
                 if (useFacade)
                 {
-                    var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
-                    var targetParent = typeToNode.TryGetValue(item.prefabType, out var tf) ? tf : null;
-                    if (targetParent == null)
-                    {
-                        VegetationGenerator.LogMissingMappingOnce(item.prefabType);
-                        var fallback = ResolveDefaultContainer(terrain);
-                        if (fallback == null) continue;
-                        targetParent = fallback;
-                    }
-
                     var cfgLocal = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
                     var reqL = new FacadeTraceRequest { Terrain = terrain, Start = center, Length = radius * 2f, ItemRef = item, Config = cfgLocal, Brush = bs };
                     var slicesL = FacadePathTracer.Trace(reqL);
-                    if (slicesL != null)
-                    {
-                        for (int si = 0; si < slicesL.Count; si++)
-                        {
-                            FacadePlacementHandler.SpawnFacadeInstance(terrain, item, it, targetParent, slicesL[si], rnd);
-                        }
-                    }
+                    if (slicesL == null || slicesL.Count == 0) { continue; }
+
+                    var landItems = new List<VegetationItem> { item };
+                    var typeToNode1 = VegetationGenerator.BuildTypeToNodeMapping();
+                    FacadePlacementHandler.PlaceEdgeLineWithPipeline(terrain, center, radius, bs, landItems, typeToNode1, slicesL, rnd);
                     continue;
                 }
                 else

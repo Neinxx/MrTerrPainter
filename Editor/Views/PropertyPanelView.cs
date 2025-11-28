@@ -296,8 +296,16 @@ namespace MrTerrainPainter.Editor.Views
 
             _configUpdaters.Add(cfg =>
             {
-                if (field is EnumField ef && typeof(TValue).IsEnum) ef.Init((Enum)(object)getter(cfg));
-                field.SetValueWithoutNotify(getter(cfg));
+                if (field is EnumField ef)
+                {
+                    var val = (Enum)(object)getter(cfg);
+                    ef.Init(val);
+                    ef.SetValueWithoutNotify(val);
+                }
+                else
+                {
+                    field.SetValueWithoutNotify(getter(cfg));
+                }
             });
 
             if (isLandscapeOnly) _landscapeGroup.Add(field);

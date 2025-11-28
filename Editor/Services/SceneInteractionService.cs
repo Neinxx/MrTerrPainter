@@ -255,15 +255,6 @@ namespace MrTerrainPainter.Editor.Services
                 {
                     var profile = s.getCurrentProfile?.Invoke();
                     bool isFacadeEdgeMode = s.brush != null && s.brush.distribution == DistributionType.EdgeLine && profile != null && profile.Items.Any(it => it != null && it.prefabType == PrefabType.Landscape);
-                    if (isFacadeEdgeMode)
-                    {
-                        VegetationItem item = null;
-                        for (int i = 0; i < profile.Items.Count; i++) { var it = profile.Items[i]; if (it != null && it.prefabType == PrefabType.Landscape) { item = it; break; } }
-                        if (item != null)
-                        {
-                            if (!FacadeDetector.TryDetect(terrain, pos, item.edgeSlopeEnter, item.edgeSlopeExit, item.probeStep, item.probeMaxDist, out var _)) { Handles.Label(pos + Vector3.up * 0.2f, "未检测到立面（坡度不足或探测范围不足）"); return; }
-                        }
-                    }
                     s.VegetationPainterOnTerrain(terrain, pos);
                     s._lastPaintPos = pos; e.Use();
                 }

@@ -467,6 +467,11 @@ namespace MrTerrainPainter.Editor.Services
                     tangent.Normalize();
                     var faceN = Vector3.Normalize(Vector3.Cross(tangent, up));
                     if (Vector3.Dot(faceN, forward) < 0f) faceN = -faceN;
+                    if (i > 0)
+                    {
+                        var prevN = slices[i - 1].Normal;
+                        if (prevN.sqrMagnitude > 1e-6f && Vector3.Dot(faceN, prevN) < 0f) faceN = -faceN;
+                    }
                     var s = slices[i];
                     s.Normal = faceN;
                     s.Direction = up;
