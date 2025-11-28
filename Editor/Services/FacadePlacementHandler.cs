@@ -4,6 +4,7 @@ using UnityEngine;
 using MrTerrainPainter.Runtime.Profiles;
 using MrTerrainPainter.Editor.Config;
 using MrTerrainPainter.Runtime.Core;
+using MrTerrainPainter.Editor.Utils;
 
 namespace MrTerrainPainter.Editor.Services
 {

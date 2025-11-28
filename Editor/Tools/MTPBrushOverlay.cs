@@ -72,8 +72,6 @@ namespace MrTerrainPainter.Editor.Tools
             SetupNormalToggle(cfg);
             SetupSimplifiedFacadeToggle(cfg);
 
-
-
             // 5. 事件订阅
             SubscribeEvents();
 
@@ -335,12 +333,7 @@ namespace MrTerrainPainter.Editor.Tools
 
             // Overlay 自身显示逻辑
             UpdateOverlayDisplayState();
-
-            var gen = _root?.Q<VisualElement>("OverlayGenerateParams");
-            if (gen != null) gen.style.display = DisplayStyle.None;
         }
-
-
 
         private void UpdateOverlayDisplayState()
         {

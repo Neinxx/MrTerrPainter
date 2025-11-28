@@ -58,8 +58,6 @@ namespace MrTerrainPainter.Editor.Views
             _valueUpdaters.Clear();
             _landscapeGroup.Clear();
 
-            EnsureBasicRangeFields();
-
             // =========================================================
             // 1. 绑定通用字段 (Always Visible)
             // =========================================================
@@ -388,8 +386,6 @@ namespace MrTerrainPainter.Editor.Views
             SetLabelAndTooltip("FacadeScaleOffset", "缩放偏移(XYZ)", "在自适应缩放基础上的XYZ加法偏置，用于微调大小。");
             SetLabelAndTooltip("FacadeOffsets", "位置偏移(XYZ)", "立面坐标系：X右、Y上、Z朝墙；负Z为外推。");
             SetLabelAndTooltip("YrotationRange", "旋转范围(度)", "绕立面法线的扭转角范围，用于造型差异(0-360)。");
-            SetLabelAndTooltip("HeigthRange", "高度范围", "实例允许的地形高度范围(米)。");
-            SetLabelAndTooltip("SlopeRange", "坡度范围(度)", "实例允许的地形坡度范围(度)。");
             SetLabelAndTooltip("UseContourDetection", "使用等值线检测", "用高度图等值线替代射线检测，可获得更连续的边线。");
             SetLabelAndTooltip("ContourSlopeDeg", "等值线坡度(度)", "提取坡度≥阈值的连通线，增大值可缩小检测范围。");
 
@@ -411,26 +407,6 @@ namespace MrTerrainPainter.Editor.Views
             var el5 = root.Q<Toggle>(name); if (el5 != null) { el5.label = label; el5.tooltip = tip; return; }
             var el6 = root.Q<Vector3Field>(name); if (el6 != null) { el6.label = label; el6.tooltip = tip; return; }
             var el7 = root.Q<ColorField>(name); if (el7 != null) { el7.label = label; el7.tooltip = tip; return; }
-        }
-
-        private void EnsureBasicRangeFields()
-        {
-            var container = root.Q<VisualElement>("PrefabRange") ?? root;
-            if (root.Q<MinMaxSlider>("YrotationRange") == null && root.Q<MinMaxSlider>("YRotationRange") == null)
-            {
-                var s = new MinMaxSlider { name = "YrotationRange", lowLimit = 0f, highLimit = 360f };
-                container.Add(s);
-            }
-            if (root.Q<MinMaxSlider>("HeigthRange") == null)
-            {
-                var s = new MinMaxSlider { name = "HeigthRange", lowLimit = 0f, highLimit = 1000f };
-                container.Add(s);
-            }
-            if (root.Q<MinMaxSlider>("SlopeRange") == null)
-            {
-                var s = new MinMaxSlider { name = "SlopeRange", lowLimit = 0f, highLimit = 90f };
-                container.Add(s);
-            }
         }
 
         private Vector2 SanitizeRange(Vector2 v, float min, float max = float.MaxValue)

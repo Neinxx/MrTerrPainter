@@ -13,6 +13,7 @@ using Unity.Burst;
 using Unity.Mathematics;
 using UnityEngine.Rendering;
 using PrefabType = MrTerrainPainter.Runtime.Profiles.PrefabType;
+using Random = UnityEngine.Random;
 
 namespace MrTerrainPainter.Editor.Services
 {
@@ -1191,6 +1192,8 @@ namespace MrTerrainPainter.Editor.Services
                         if (!match) continue;
                     }
 
+                    float prob = ComputeEraseAcceptance(go, center, radius, bs) * Mathf.Clamp01(bs.strength);
+                    if (UnityEngine.Random.value > prob) continue;
                     VegetationPool.Recycle(vi.sourceTerrain, go, "Erase Vegetation Instance");
                 }
                 return;
@@ -1231,8 +1234,11 @@ namespace MrTerrainPainter.Editor.Services
                 CollectInBrush(root, center, radius, bs.shape, eraseAll, onlyTypes, toRecycle);
             }
 
-            foreach (var go in toRecycle)
+            for (int i = 0; i < toRecycle.Count; i++)
             {
+                var go = toRecycle[i];
+                float prob = ComputeEraseAcceptance(go, center, radius, bs) * Mathf.Clamp01(bs.strength);
+                if (Random.value > prob) continue;
                 var vi = go.GetComponent<VegetationInstance>();
                 var src = vi != null ? vi.sourceTerrain : terrain;
                 VegetationPool.Recycle(src, go, "Erase Vegetation Instance");
@@ -1289,13 +1295,13 @@ namespace MrTerrainPainter.Editor.Services
                     {
                         // 最近点到圆心的距离
                         float cx = Mathf.Clamp(center.x, bbCenter.x - bbHalf.x, bbCenter.x + bbHalf.x);
-                        float cz = Mathf.Clamp(center.z, bbCenter.z - bbHalf.y, bbCenter.z + bbHalf.y);
+                        float cz = Mathf.Clamp(center.z, bbCenter.y - bbHalf.y, bbCenter.y + bbHalf.y);
                         float dx = cx - center.x; float dz = cz - center.z;
                         within = (dx * dx + dz * dz) <= r2;
                     }
                     else
                     {
-                        within = (Mathf.Abs(bbCenter.x - center.x) - bbHalf.x <= radius) && (Mathf.Abs(bbCenter.z - center.z) - bbHalf.y <= radius);
+                        within = (Mathf.Abs(bbCenter.x - center.x) - bbHalf.x <= radius) && (Mathf.Abs(bbCenter.y - center.z) - bbHalf.y <= radius);
                     }
                     if (within)
                     {
@@ -1311,6 +1317,30 @@ namespace MrTerrainPainter.Editor.Services
                     }
                 }
             }
+        }
+
+        private static float ComputeEraseAcceptance(GameObject go, Vector3 center, float radius, BrushSettings bs)
+        {
+            var renderers = go.GetComponentsInChildren<Renderer>(true);
+            Bounds b = default; bool has = false;
+            for (int i = 0; i < renderers.Length; i++) { if (!has) { b = renderers[i].bounds; has = true; } else b.Encapsulate(renderers[i].bounds); }
+            float t;
+            if (has)
+            {
+                float cx = Mathf.Clamp(center.x, b.center.x - b.extents.x, b.center.x + b.extents.x);
+                float cz = Mathf.Clamp(center.z, b.center.z - b.extents.z, b.center.z + b.extents.z);
+                float dx = cx - center.x;
+                float dz = cz - center.z;
+                t = Mathf.Clamp01(Mathf.Sqrt(dx * dx + dz * dz) / Mathf.Max(radius, 0.0001f));
+            }
+            else
+            {
+                float dx = go.transform.position.x - center.x;
+                float dz = go.transform.position.z - center.z;
+                t = Mathf.Clamp01(Mathf.Sqrt(dx * dx + dz * dz) / Mathf.Max(radius, 0.0001f));
+            }
+            float baseAcc = bs.falloffCurve != null ? bs.falloffCurve.Evaluate(1f - t) : Mathf.Lerp(1f, (1f - t), Mathf.Clamp01(bs.hardness));
+            return Mathf.Clamp01(baseAcc);
         }
 
         private static bool IsWithinBrush(Vector3 pos, Vector3 center, float radius, BrushShape shape)

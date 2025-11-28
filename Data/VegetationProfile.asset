@@ -13,32 +13,32 @@ MonoBehaviour:
   m_Name: VegetationProfile
   m_EditorClassIdentifier: 
   items:
-  - prefab: {fileID: 3495824702832379068, guid: 6152f236d8735424a95cabd73e05857b,
+  - prefab: {fileID: 4045576418715700172, guid: f646ff9232634c140ad5b4db9d236853,
       type: 3}
     weight: 1
     prefabType: 5
-    uniformScaleRange: {x: 1.1610429, y: 1.3911043}
+    uniformScaleRange: {x: 1, y: 1}
     yRotationRange: {x: 0, y: 0}
     heightRange: {x: 0, y: 1000}
     slopeRange: {x: 0, y: 90}
     baseDensity: 1
-    minSpacing: 4.16
-    minRadius: 1
+    minSpacing: 2.73
+    minRadius: 0.78
     alignToTerrainNormal: 1
-    edgeSlopeThreshold: 65.2
-    embedDepthRange: {x: 1, y: 1}
+    edgeSlopeThreshold: 75
+    embedDepthRange: {x: 0.1, y: 0.3}
     edgeReferenceWidthMeters: 1
     edgeAutoHeight: 1
     edgeReferenceHeightMeters: 1
     edgeOffsets: {x: 0, y: 0, z: 0}
     edgeLookAheadStep: 0.5
     edgeMaxLookAhead: 5
-    edgeSlopeEnter: 19.5
-    edgeSlopeExit: 20.3
-    probeStep: 1
-    probeMaxDist: 4.44
-    referenceHeightMeters: 0.97
-    offsets: {x: 2.38, y: 0, z: 0}
+    edgeSlopeEnter: 30
+    edgeSlopeExit: 25
+    probeStep: 0.61
+    probeMaxDist: 9.93
+    referenceHeightMeters: 1.49
+    offsets: {x: 0, y: 0, z: 0}
     edgeStacking: 0
     edgeStackingOffsetMeters: 0
     edgeTopScaleBias: 1

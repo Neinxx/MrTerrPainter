@@ -84,20 +84,10 @@ namespace MrTerrainPainter.Editor.Services
                 if (TerrainUtils.TryGetHeightAndNormal(terrain, pos, out float h, out Vector3 n))
                 {
                     pos.y = h;
-                    Quaternion rot;
-                    if (bs.distribution == DistributionType.EdgeLine && item.prefabType == PrefabType.Landscape)
-                    {
-                        rot = Quaternion.LookRotation(n.normalized, Vector3.up);
-                        float twist = item.SampleYRotation(rnd);
-                        rot = Quaternion.AngleAxis(twist, n.normalized) * rot;
-                    }
-                    else
-                    {
-                        rot = Quaternion.Euler(0, item.SampleYRotation(rnd), 0);
-                        var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
-                        if (cfg != null && cfg.normalDirection)
-                            rot = Quaternion.FromToRotation(Vector3.up, n) * rot;
-                    }
+                    Quaternion rot = Quaternion.Euler(0, item.SampleYRotation(rnd), 0);
+                    var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
+                    if (cfg != null && cfg.normalDirection)
+                        rot = Quaternion.FromToRotation(Vector3.up, n) * rot;
 
                     Vector3 scale = Vector3.one * item.SampleScale(rnd);
                     matrices.Add(Matrix4x4.TRS(pos, rot, scale));
@@ -205,14 +195,6 @@ namespace MrTerrainPainter.Editor.Services
 
             DrawShapeGizmo(center, planeN, bs, fill, ring, st);
 
-            // 旋转范围扇形可视化（基于当前Profile的首个条目）
-            var profileForRot = MrTerrainPainter.Editor.Tools.MTPBrushContext.CurrentProfile;
-            var itemForRot = profileForRot != null && profileForRot.Items != null && profileForRot.Items.Count > 0 ? profileForRot.Items[0] : null;
-            if (itemForRot != null)
-            {
-                DrawRotationRangeArc(center, planeN, bs, itemForRot, st);
-            }
-
             if (useNormalDir && data.hasData)
             {
                 Handles.color = new Color(1f, 1f, 1f, 0.9f);
@@ -225,14 +207,6 @@ namespace MrTerrainPainter.Editor.Services
                 var itemRef = profile != null ? profile.Items.FirstOrDefault(it => it != null && it.prefabType == PrefabType.Landscape) : null;
 
                 DrawFacadeSlicesPreview(data.slices, bs);
-                // 在中心位置绘制虚拟立面法向箭头
-                var nearest = FindNearestSlice(data.slices, center);
-                if (nearest != null)
-                {
-                    Handles.color = new Color(1f, 0.95f, 0.3f, 0.95f);
-                    float lenN = Mathf.Max(0.5f, bs.size * 0.5f);
-                    Handles.DrawAAPolyLine(st.ringWidth, center, center + nearest.Normal.normalized * lenN);
-                }
                 Handles.Label(center + Vector3.up * 0.25f, $"Render {data.prefabW:F2}m x {data.prefabH:F2}m");
             }
         }
@@ -250,14 +224,6 @@ namespace MrTerrainPainter.Editor.Services
             var raisedCenter = center + planeN * 0.02f;
 
             DrawShapeGizmo(raisedCenter, planeN, bs, fill, ring, st);
-
-            // 旋转范围扇形可视化（简化版本）
-            var profileForRot = MrTerrainPainter.Editor.Tools.MTPBrushContext.CurrentProfile;
-            var itemForRot = profileForRot != null && profileForRot.Items != null && profileForRot.Items.Count > 0 ? profileForRot.Items[0] : null;
-            if (itemForRot != null)
-            {
-                DrawRotationRangeArc(raisedCenter, planeN, bs, itemForRot, st);
-            }
 
             if (useNormalDir)
             {
@@ -328,43 +294,6 @@ namespace MrTerrainPainter.Editor.Services
             var c = center + new Vector3(half.x, 0, half.z);
             var d = center + new Vector3(half.x, 0, -half.z);
             Handles.DrawAAPolyLine(width, a, b, c, d, a);
-        }
-
-        private static void DrawRotationRangeArc(Vector3 center, Vector3 normal, BrushSettings bs, VegetationItem item, BrushPreviewStyle st)
-        {
-            var n = normal.sqrMagnitude > 1e-6f ? normal.normalized : Vector3.up;
-            var basis = Quaternion.FromToRotation(Vector3.up, n);
-            float r = Mathf.Max(0.5f, bs.size * 0.6f);
-            float a0 = item.yRotationRange.x;
-            float a1 = item.yRotationRange.y;
-            int seg = 32;
-            var pts = new Vector3[seg + 1];
-            Handles.color = new Color(0.3f, 0.8f, 1f, 0.9f);
-            for (int i = 0; i <= seg; i++)
-            {
-                float t = i / (float)seg;
-                float ang = Mathf.Lerp(a0, a1, t) * Mathf.Deg2Rad;
-                var dir = new Vector3(Mathf.Cos(ang), 0f, Mathf.Sin(ang));
-                pts[i] = center + basis * (dir * r);
-            }
-            Handles.DrawAAPolyLine(st.ringWidth, pts);
-            // 边界射线
-            var dir0 = new Vector3(Mathf.Cos(a0 * Mathf.Deg2Rad), 0f, Mathf.Sin(a0 * Mathf.Deg2Rad));
-            var dir1 = new Vector3(Mathf.Cos(a1 * Mathf.Deg2Rad), 0f, Mathf.Sin(a1 * Mathf.Deg2Rad));
-            Handles.DrawAAPolyLine(st.ringWidth, center, center + basis * (dir0 * r));
-            Handles.DrawAAPolyLine(st.ringWidth, center, center + basis * (dir1 * r));
-        }
-
-        private static FacadeDetectionService.CliffSlice FindNearestSlice(List<FacadeDetectionService.CliffSlice> slices, Vector3 center)
-        {
-            if (slices == null || slices.Count == 0) return null;
-            int idx = 0; float best = float.MaxValue;
-            for (int i = 0; i < slices.Count; i++)
-            {
-                float d = Vector3.SqrMagnitude(slices[i].BottomPosition - center);
-                if (d < best) { best = d; idx = i; }
-            }
-            return slices[idx];
         }
 
         private static void EnsureGhostMaterial()

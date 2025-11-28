@@ -29,16 +29,6 @@
             <ui:VisualElement class="mtp-row">
                 <ui:Toggle name="NormalDirection" text="NormalDirection" class="mtp-toggle-label" style="min-height: 20px; max-height: 20px; height: 20px;" />
             </ui:VisualElement>
-            <ui:Label text="GENERATE" class="mtp-section-label" style="margin-top: 8px; height: 20px; max-height: 20px; min-height: 20px;" />
-            <ui:VisualElement name="OverlayGenerateParams">
-                <ui:VisualElement class="mtp-row">
-                    <ui:Toggle name="UseBurstPoissonGen" text="Burst Poisson" class="mtp-toggle-label" style="min-height: 20px; max-height: 20px; height: 20px;" />
-                </ui:VisualElement>
-                <uie:EnumField name="GenDistribution" label="Distribution" style="height: 20px; max-height: 20px; min-height: 20px;" />
-                <uie:EnumField name="GenShape" label="Shape" style="height: 20px; max-height: 20px; min-height: 20px;" />
-                <uie:SliderInt name="Threshold" label="Noise Threshold" low-value="0" high-value="100" style="height: 20px; max-height: 20px; min-height: 20px;" />
-                <uie:IntegerField name="GenMaxPoints" label="Max Points" style="height: 20px; max-height: 20px; min-height: 20px;" />
-            </ui:VisualElement>
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>
