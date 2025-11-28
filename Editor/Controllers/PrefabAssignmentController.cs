@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using prefabType = MrTerrainPainter.Runtime.Profiles;
 using MrTerrainPainter.Runtime.Profiles;
+using MrTerrainPainter.Editor.Services;
 using UnityEditor;
 using UnityEngine;
 
@@ -17,19 +18,25 @@ namespace MrTerrainPainter.Editor.Controllers
         private readonly Func<int> getSelectedItemIndex;
         private readonly Action<int> setSelectedItemIndex;
         private readonly HashSet<int> selectedThumbIndices;
+        private readonly Func<BrushSettings> getBrushSettings;
+
+        // 记忆上次使用的非 EdgeLine 分布模式（默认为 Uniform）
+        private DistributionType lastNonEdgeLineDistribution = DistributionType.Uniform;
 
         public PrefabAssignmentController(
             IRefreshController refreshController,
             Func<VegetationProfile> getCurrentProfile,
             Func<int> getSelectedItemIndex,
             Action<int> setSelectedItemIndex,
-            HashSet<int> selectedThumbIndices)
+            HashSet<int> selectedThumbIndices,
+            Func<BrushSettings> getBrushSettings = null)
         {
             this.refreshController = refreshController ?? throw new ArgumentNullException(nameof(refreshController));
             this.getCurrentProfile = getCurrentProfile ?? throw new ArgumentNullException(nameof(getCurrentProfile));
             this.getSelectedItemIndex = getSelectedItemIndex ?? (() => -1);
             this.setSelectedItemIndex = setSelectedItemIndex ?? (_ => { });
             this.selectedThumbIndices = selectedThumbIndices ?? new HashSet<int>();
+            this.getBrushSettings = getBrushSettings;
         }
 
         public void AddPrefabAsNewItem(VegetationProfile profile, GameObject prefab)
@@ -220,15 +227,65 @@ namespace MrTerrainPainter.Editor.Controllers
             if (index < 0 || index >= profile.Items.Count) return;
             var item = profile.Items[index];
             if (item == null) return;
+
             if (item.prefabType == type)
             {
                 EditorUtility.SetDirty(profile);
                 refreshController.RefreshAllUI();
                 return;
             }
+
             item.prefabType = type;
             EditorUtility.SetDirty(profile);
             refreshController.RefreshAllUI();
+        }
+
+        /// <summary>
+        /// [新功能] 当选中预制体项时，根据该项的类型自动切换分布模式
+        /// - Landscape/FacadeStone → EdgeLine
+        /// - 其他类型 → 恢复上次使用的非 EdgeLine 模式（默认 Uniform）
+        /// </summary>
+        public void OnItemSelected(VegetationProfile profile, int index)
+        {
+            if (profile == null) return;
+            if (index < 0 || index >= profile.Items.Count) return;
+
+            var item = profile.Items[index];
+            if (item == null) return;
+
+            var brush = getBrushSettings?.Invoke();
+            if (brush == null) return;
+
+            // 记录当前的分布模式（如果不是 EdgeLine，则保存为"上次的非 EdgeLine 模式"）
+            if (brush.distribution != DistributionType.EdgeLine)
+            {
+                lastNonEdgeLineDistribution = brush.distribution;
+            }
+
+            // 判断当前选中项是否为立面类型
+            bool isLandscapeType = IsLandscapeType(item.prefabType);
+            bool currentIsEdgeLine = brush.distribution == DistributionType.EdgeLine;
+
+            if (isLandscapeType && !currentIsEdgeLine)
+            {
+                // 选中 Landscape 类型 → 自动设置为 EdgeLine
+                brush.distribution = DistributionType.EdgeLine;
+                Debug.Log($"[自动切换] 选中 {item.prefabType} 类型预制体，分布模式自动设置为 EdgeLine");
+            }
+            else if (!isLandscapeType && currentIsEdgeLine)
+            {
+                // 选中基本类型 → 恢复上次的非 EdgeLine 模式
+                brush.distribution = lastNonEdgeLineDistribution;
+                Debug.Log($"[自动切换] 选中 {item.prefabType} 类型预制体，分布模式恢复为 {lastNonEdgeLineDistribution}");
+            }
+        }
+
+        /// <summary>
+        /// 判断是否为需要立面分布的类型
+        /// </summary>
+        private bool IsLandscapeType(prefabType.PrefabType type)
+        {
+            return type == prefabType.PrefabType.Landscape || type == prefabType.PrefabType.FacadeStone;
         }
     }
 }

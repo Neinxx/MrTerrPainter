@@ -321,7 +321,8 @@ namespace MrTerrainPainter.Editor
                 RemoveItemsAtFromProfile = session.PrefabAssignment.RemoveItemsAtFromProfile,
                 SetItemType = session.PrefabAssignment.SetItemType,
                 OpenPrefabPickerForItem = (p, i) => session.PrefabPicker.OpenForItem(p, i),
-                GetAvailableTypes = () => config.mappingEntries.Select(e => e.type).Distinct().ToList()
+                GetAvailableTypes = () => config.mappingEntries.Select(e => e.type).Distinct().ToList(),
+                OnItemSelected = session.PrefabAssignment.OnItemSelected  // [新增] 选中项时自动切换分布模式
             };
         }
 

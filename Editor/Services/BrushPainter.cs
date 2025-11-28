@@ -117,18 +117,24 @@ namespace MrTerrainPainter.Editor.Services
         private float SampleHeight01(float2 uv)
         {
             if (width <= 0 || height <= 0 || hmMax <= 0) return 0f;
+            if (!heightsPatch.IsCreated || heightsPatch.Length == 0) return 0f;
 
             float u = math.clamp(uv.x, 0f, hmMax);
             float v = math.clamp(uv.y, 0f, hmMax);
             int xi = (int)math.floor(u);
             int zi = (int)math.floor(v);
+
+            // [关键修复] 在减去 xBase 之前，确保 xi/zi 在有效范围内
+            xi = math.clamp(xi, xBase, xBase + width - 1);
+            zi = math.clamp(zi, zBase, zBase + height - 1);
+
             float fu = u - xi;
             float fv = v - zi;
 
             int lx = xi - xBase;
             int lz = zi - zBase;
 
-            // [关键修复] 使用 math.max(0, width - 1) 确保 max >= min，防止 width=0 时 clamp 异常
+            // 此时 lx/lz 应该已经在范围内，但为了绝对安全，再次钳制
             int maxX = math.max(0, width - 1);
             int maxZ = math.max(0, height - 1);
 
@@ -149,11 +155,16 @@ namespace MrTerrainPainter.Editor.Services
         private float3 ComputeNormal(float2 uv)
         {
             if (width <= 0 || height <= 0 || hmMax <= 1) return new float3(0, 1, 0);
+            if (!heightsPatch.IsCreated || heightsPatch.Length == 0) return new float3(0, 1, 0);
 
             float u = math.clamp(uv.x, 1f, hmMax - 1f);
             float v = math.clamp(uv.y, 1f, hmMax - 1f);
             int xi = (int)math.floor(u);
             int zi = (int)math.floor(v);
+
+            // [关键修复] 确保 xi/zi 在预取块的范围内
+            xi = math.clamp(xi, xBase + 1, xBase + width - 2);
+            zi = math.clamp(zi, zBase + 1, zBase + height - 2);
 
             int maxX = math.max(0, width - 1);
             int maxZ = math.max(0, height - 1);
@@ -467,18 +478,44 @@ namespace MrTerrainPainter.Editor.Services
         private static readonly Dictionary<int, BrushSpatialGrid> s_itemGridCache = new Dictionary<int, BrushSpatialGrid>();
         private static BrushSpatialGrid s_sharedGrid;
         private static bool s_configCompleteCached;
+        private static bool s_initialized;
 
-        static BrushPainter()
+        // [修复] 移除静态构造函数中的事件订阅，改为延迟初始化
+        // 避免在编辑器域重载时产生内存泄漏
+        private static void EnsureInitialized()
         {
+            if (s_initialized) return;
+            s_initialized = true;
+
             RefreshConfigCache();
-            ConfigTools.CompletenessChanged += v => s_configCompleteCached = v;
-            ConfigTools.ConfigUpdated += RefreshConfigCache;
+
+            // 使用 Unity 的 AssemblyReloadEvents 来管理生命周期
+            UnityEditor.AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
+        }
+
+        private static void OnBeforeAssemblyReload()
+        {
+            // 在程序集重载前清理资源
+            ClearCache();
+            s_initialized = false;
+
+            // 取消订阅以防止泄漏
+            UnityEditor.AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeAssemblyReload;
         }
 
         private static void RefreshConfigCache()
         {
             var c = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? ConfigTools.GetCachedConfig();
             s_configCompleteCached = c != null && ConfigTools.IsComplete(c, out _);
+        }
+
+        // [新增] 获取配置完整性状态（带延迟初始化）
+        private static bool IsConfigComplete()
+        {
+            EnsureInitialized();
+            // 实时检查而不是依赖缓存，避免事件订阅
+            RefreshConfigCache();
+            return s_configCompleteCached;
         }
 
         public static void ClearCache()
@@ -495,12 +532,12 @@ namespace MrTerrainPainter.Editor.Services
         #region Preview System
         public static void DrawPreview(SceneInteractionService.PreviewData data, BrushSettings bs)
         {
-            BrushPreviewRenderer.DrawPreview(data, bs, s_configCompleteCached);
+            BrushPreviewRenderer.DrawPreview(data, bs, IsConfigComplete());
         }
 
         public static void DrawPreview(Vector3 center, Vector3 normal, BrushSettings bs)
         {
-            BrushPreviewRenderer.DrawPreview(center, normal, bs, s_configCompleteCached);
+            BrushPreviewRenderer.DrawPreview(center, normal, bs, IsConfigComplete());
         }
         #endregion
 
@@ -513,6 +550,8 @@ namespace MrTerrainPainter.Editor.Services
         /// </summary>
         public static void Paint(PaintContext context)
         {
+            EnsureInitialized(); // 确保初始化
+
             if (context.Terrain == null || context.Profile == null || context.Profile.IsEmpty()) return;
             var td = context.Terrain.terrainData;
             if (td == null) return;
@@ -1070,6 +1109,8 @@ namespace MrTerrainPainter.Editor.Services
         /// </summary>
         public static void PaintMixed(PaintContext context)
         {
+            EnsureInitialized(); // 确保初始化
+
             if (context.Terrain == null || context.Profiles == null || context.Profiles.Count == 0) return;
 
             var allItems = new List<VegetationItem>();
@@ -1107,6 +1148,8 @@ namespace MrTerrainPainter.Editor.Services
         /// </summary>
         public static void Erase(EraseContext context)
         {
+            EnsureInitialized(); // 确保初始化
+
             // 提取局部变量
             var terrain = context.Terrain;
             var center = context.Center;
@@ -1185,7 +1228,7 @@ namespace MrTerrainPainter.Editor.Services
             var toRecycle = new List<GameObject>();
             foreach (var root in roots)
             {
-                CollectInRadius(root, center, radius, eraseAll, onlyTypes, toRecycle);
+                CollectInBrush(root, center, radius, bs.shape, eraseAll, onlyTypes, toRecycle);
             }
 
             foreach (var go in toRecycle)
@@ -1219,7 +1262,7 @@ namespace MrTerrainPainter.Editor.Services
             return list;
         }
 
-        private static void CollectInRadius(Transform root, Vector3 center, float radius, bool eraseAll, IReadOnlyList<GameObject> onlyTypes, List<GameObject> outList)
+        private static void CollectInBrush(Transform root, Vector3 center, float radius, BrushShape shape, bool eraseAll, IReadOnlyList<GameObject> onlyTypes, List<GameObject> outList)
         {
             if (root == null) return;
             var stack = new Stack<Transform>();
@@ -1235,7 +1278,26 @@ namespace MrTerrainPainter.Editor.Services
                 var vi = go.GetComponent<VegetationInstance>();
                 if (vi != null)
                 {
-                    if (Vector3.SqrMagnitude(t.position - center) <= r2)
+                    // 更精确：使用渲染器包围盒在XZ平面与笔刷的交叠测试
+                    var renderers = go.GetComponentsInChildren<Renderer>(true);
+                    Bounds b = default; bool has = false;
+                    for (int i = 0; i < renderers.Length; i++) { if (!has) { b = renderers[i].bounds; has = true; } else b.Encapsulate(renderers[i].bounds); }
+                    Vector2 bbCenter = new Vector2(b.center.x, b.center.z);
+                    Vector2 bbHalf = new Vector2(b.extents.x, b.extents.z);
+                    bool within = false;
+                    if (shape == BrushShape.Circle)
+                    {
+                        // 最近点到圆心的距离
+                        float cx = Mathf.Clamp(center.x, bbCenter.x - bbHalf.x, bbCenter.x + bbHalf.x);
+                        float cz = Mathf.Clamp(center.z, bbCenter.z - bbHalf.y, bbCenter.z + bbHalf.y);
+                        float dx = cx - center.x; float dz = cz - center.z;
+                        within = (dx * dx + dz * dz) <= r2;
+                    }
+                    else
+                    {
+                        within = (Mathf.Abs(bbCenter.x - center.x) - bbHalf.x <= radius) && (Mathf.Abs(bbCenter.z - center.z) - bbHalf.y <= radius);
+                    }
+                    if (within)
                     {
                         if (eraseAll) outList.Add(go);
                         else if (onlyTypes != null)

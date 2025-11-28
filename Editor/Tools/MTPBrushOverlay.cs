@@ -35,6 +35,7 @@ namespace MrTerrainPainter.Editor.Tools
         private Slider _spacingAbsSlider;
         private Toggle _useAbsSpacingToggle;
         private Toggle _normalDirToggle;
+        private Toggle _simplifiedFacadeToggle;
 
         // --- 状态与数据 ---
         private bool _subscribed;
@@ -69,6 +70,9 @@ namespace MrTerrainPainter.Editor.Tools
             SetupStaticEvents();
             SetupProfileDropdown();
             SetupNormalToggle(cfg);
+            SetupSimplifiedFacadeToggle(cfg);
+
+
 
             // 5. 事件订阅
             SubscribeEvents();
@@ -189,6 +193,28 @@ namespace MrTerrainPainter.Editor.Tools
             _normalDirToggle.RegisterValueChangedCallback(e => ConfigTools.SetNormalDirection(cfg, e.newValue));
         }
 
+        private void SetupSimplifiedFacadeToggle(MrTerrainPainterConfig cfg)
+        {
+            if (_brushContent == null) return;
+            if (_simplifiedFacadeToggle == null)
+            {
+                _simplifiedFacadeToggle = new Toggle("简化封边石参数(Overlay)")
+                {
+                    name = "SimplifiedFacadeUI",
+                    tooltip = "仅在 Overlay 面板以简化方式显示封边石相关参数；主面板始终显示全部参数。"
+                };
+                _brushContent.Add(_simplifiedFacadeToggle);
+            }
+            _simplifiedFacadeToggle.SetValueWithoutNotify(cfg.useSimplifiedFacadeUI);
+            _simplifiedFacadeToggle.RegisterValueChangedCallback(e =>
+            {
+                cfg.useSimplifiedFacadeUI = e.newValue;
+                ConfigTools.Save(cfg);
+                ConfigTools.NotifyConfigUpdated();
+                RefreshVisibility(cfg);
+            });
+        }
+
         private void OnNormalDirectionExternalChanged(bool v)
         {
             _normalDirToggle?.SetValueWithoutNotify(v);
@@ -304,14 +330,17 @@ namespace MrTerrainPainter.Editor.Tools
             bool isPainting = windowOpen && win.IsPaintingModePublic();
             bool isSettings = windowOpen && win.IsSettingsOpenPublic();
 
-            // 笔刷参数: 非绘画模式显示
-            // 辅助功能: 非设置模式显示
-            SetElementGroupVisibility(isPainting == false, _sizeSlider, _strengthSlider, _densitySlider, _hardnessSlider, _distributionField, _mixExtraToggle);
-            SetElementGroupVisibility(isSettings == false, _normalDirToggle);
+            // Overlay 不随窗口Tab切换，始终显示核心参数
+            SetElementGroupVisibility(true, _sizeSlider, _strengthSlider, _densitySlider, _hardnessSlider, _distributionField, _mixExtraToggle, _normalDirToggle, _simplifiedFacadeToggle);
 
             // Overlay 自身显示逻辑
             UpdateOverlayDisplayState();
+
+            var gen = _root?.Q<VisualElement>("OverlayGenerateParams");
+            if (gen != null) gen.style.display = DisplayStyle.None;
         }
+
+
 
         private void UpdateOverlayDisplayState()
         {
@@ -322,13 +351,7 @@ namespace MrTerrainPainter.Editor.Tools
             _root?.schedule.Execute(() =>
             {
                 _updateQueued = false;
-                bool isToolActive = ToolManager.activeToolType == typeof(MTPBrushTool);
-
-                // 只有选中物体且带有 Terrain 组件时才显示
-                bool hasTerrain = Selection.activeGameObject != null &&
-                                  Selection.activeGameObject.GetComponent<Terrain>() != null;
-
-                displayed = isToolActive && hasTerrain;
+                displayed = true;
             });
         }
 

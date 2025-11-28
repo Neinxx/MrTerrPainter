@@ -52,6 +52,10 @@ namespace MrTerrainPainter.Editor.Config
         public VisualTreeAsset brushOverlayUxml;
         public StyleSheet stylesUss;
 
+        [Header("UI 模式 (UI Mode)")]
+        [Tooltip("启用简化的封边石参数界面，仅保留核心参数，其他高级参数折叠隐藏")]
+        public bool useSimplifiedFacadeUI = true;
+
         [Header("帮助 (Help)")]
         public string docsUrl;
         public string exampleScenePath;

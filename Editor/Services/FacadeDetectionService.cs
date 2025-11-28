@@ -586,44 +586,13 @@ namespace MrTerrainPainter.Editor.Services
             float rendererWMinLen = MrTerrainPainter.Editor.Services.PrefabMetricsCache.GetPrefabHorizontalExtentMeters(item.prefab);
             float minLenSeg = Mathf.Max(rendererWMinLen, item.edgeReferenceWidthMeters);
             slices = FilterByMinimumWidth(slices, minLenSeg, Mathf.Max(item.CoreSpacing, 0.01f), 30f);
-            if (slices != null && slices.Count > 3)
+
+            // [改进方案] 使用弧长自适应采样替代RDP+样条插值
+            // 优点: 1) 消除RDP棱角伪影  2) 曲线间距均匀  3) 保留原始地形细节  4) 性能更优(O(n))
+            if (slices != null && slices.Count > 2)
             {
-                float eps = cfg != null ? Mathf.Max(0.01f, cfg.facadeRdpEpsilon) : 0.5f;
-                var pts = new System.Collections.Generic.List<Vector3>(slices.Count);
-                for (int i = 0; i < slices.Count; i++) pts.Add(slices[i].BottomPosition);
-                var simple = MrTerrainPainter.Editor.Utils.GeometryUtils.SimplifyPathRDP(pts, eps);
-                if (simple != null && simple.Count >= 2)
-                {
-                    var rebuilt = new System.Collections.Generic.List<CliffSlice>();
-                    for (int i = 0; i < simple.Count - 1; i++)
-                    {
-                        Vector3 p0 = i > 0 ? simple[i - 1] : simple[i];
-                        Vector3 p1 = simple[i];
-                        Vector3 p2 = simple[i + 1];
-                        Vector3 p3 = i < simple.Count - 2 ? simple[i + 2] : p2;
-                        float seg = Vector3.Distance(p1, p2);
-                        int steps = Mathf.Max(1, Mathf.CeilToInt(seg / Mathf.Max(item.CoreSpacing, 0.01f)));
-                        for (int k = 0; k <= steps; k++)
-                        {
-                            float t = steps == 0 ? 0f : (k / (float)steps);
-                            var pos = MrTerrainPainter.Editor.Utils.SplineUtils.GetPoint(p0, p1, p2, p3, t);
-                            float lag = Mathf.Max(0.01f, item.CoreSpacing * 0.05f);
-                            var ahead = MrTerrainPainter.Editor.Utils.SplineUtils.GetPoint(p0, p1, p2, p3, Mathf.Clamp01(t + lag));
-                            var tan = ahead - pos; tan.y = 0f; if (tan.sqrMagnitude < 1e-6f) tan = p2 - p1; tan = tan.sqrMagnitude > 1e-6f ? tan.normalized : Vector3.right;
-                            var up = Vector3.up;
-                            var n = Vector3.Cross(tan, up).normalized;
-                            float height = ApproximateHeight(slices, pos);
-                            rebuilt.Add(new CliffSlice
-                            {
-                                BottomPosition = pos,
-                                TopPosition = new Vector3(pos.x, pos.y + height, pos.z),
-                                Normal = n,
-                                Direction = up
-                            });
-                        }
-                    }
-                    slices = rebuilt;
-                }
+                float targetSpacing = Mathf.Max(item.CoreSpacing, 0.01f);
+                slices = ArcLengthResample(slices, targetSpacing);
             }
             if (slices == null || slices.Count == 0) return;
             var grid = new FacadeGrid(Mathf.Max(item.CoreSpacing, 0.01f));
@@ -641,6 +610,99 @@ namespace MrTerrainPainter.Editor.Services
                 grid.Add(p2);
                 onPlace(s);
             }
+        }
+
+        /// <summary>
+        /// 弧长参数化均匀重采样 - 解决曲线不平滑和间距不均问题
+        /// </summary>
+        static System.Collections.Generic.List<CliffSlice> ArcLengthResample(System.Collections.Generic.List<CliffSlice> raw, float targetSpacing)
+        {
+            if (raw == null || raw.Count < 2) return raw;
+
+            // 1. 计算累积弧长
+            float[] arcLengths = new float[raw.Count];
+            arcLengths[0] = 0f;
+            for (int i = 1; i < raw.Count; i++)
+            {
+                float segLen = Vector3.Distance(raw[i].BottomPosition, raw[i - 1].BottomPosition);
+                arcLengths[i] = arcLengths[i - 1] + segLen;
+            }
+            float totalLength = arcLengths[arcLengths.Length - 1];
+            if (totalLength < 0.01f) return raw;
+
+            // 2. 基于目标间距计算采样点数
+            int numSamples = Mathf.Max(2, Mathf.CeilToInt(totalLength / Mathf.Max(targetSpacing, 0.01f)));
+            var result = new System.Collections.Generic.List<CliffSlice>(numSamples);
+
+            // 3. 沿弧长均匀采样并插值
+            for (int i = 0; i < numSamples; i++)
+            {
+                float t = i / (float)(numSamples - 1); // [0,1]
+                float targetArc = t * totalLength;
+
+                // 二分查找对应的原始切片区间
+                int idx = System.Array.BinarySearch(arcLengths, targetArc);
+                if (idx < 0) idx = ~idx - 1; // 未精确命中，取左侧区间
+                idx = Mathf.Clamp(idx, 0, raw.Count - 2);
+
+                // 计算区间内的局部参数
+                float arcStart = arcLengths[idx];
+                float arcEnd = arcLengths[idx + 1];
+                float arcRange = arcEnd - arcStart;
+                float localT = arcRange > 0.0001f ? (targetArc - arcStart) / arcRange : 0f;
+                localT = Mathf.Clamp01(localT);
+
+                // 线性插值切片属性
+                var s0 = raw[idx];
+                var s1 = raw[idx + 1];
+                var interpolated = new CliffSlice
+                {
+                    BottomPosition = Vector3.Lerp(s0.BottomPosition, s1.BottomPosition, localT),
+                    TopPosition = Vector3.Lerp(s0.TopPosition, s1.TopPosition, localT),
+                    Normal = Vector3.Slerp(s0.Normal, s1.Normal, localT).normalized,
+                    Direction = Vector3.up
+                };
+
+                result.Add(interpolated);
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// 平滑高度插值 - 使用距离加权(IDW)替代最近邻，消除高度突变
+        /// </summary>
+        static float ApproximateHeightSmooth(System.Collections.Generic.List<CliffSlice> raw, Vector3 pos, int kNearest = 3)
+        {
+            if (raw == null || raw.Count == 0) return 1f;
+            if (raw.Count == 1) return raw[0].Height;
+
+            // 找到最近的k个切片
+            var distances = new System.Collections.Generic.List<(int index, float distSq)>(raw.Count);
+            for (int i = 0; i < raw.Count; i++)
+            {
+                float distSq = Vector3.SqrMagnitude(raw[i].BottomPosition - pos);
+                distances.Add((i, distSq));
+            }
+            distances.Sort((a, b) => a.distSq.CompareTo(b.distSq));
+
+            int k = Mathf.Min(kNearest, distances.Count);
+
+            // IDW插值 (Inverse Distance Weighting - 距离平方反比)
+            float sumWeight = 0f;
+            float sumHeight = 0f;
+            for (int i = 0; i < k; i++)
+            {
+                float distSq = distances[i].distSq;
+                // 特殊处理：如果距离极近(<1cm)，直接返回该高度
+                if (distSq < 0.0001f) return raw[distances[i].index].Height;
+
+                float weight = 1f / Mathf.Max(distSq, 0.0001f);
+                sumWeight += weight;
+                sumHeight += raw[distances[i].index].Height * weight;
+            }
+
+            return sumWeight > 0f ? sumHeight / sumWeight : raw[0].Height;
         }
 
         static float ApproximateHeight(System.Collections.Generic.List<CliffSlice> raw, Vector3 pos)
@@ -680,38 +742,11 @@ namespace MrTerrainPainter.Editor.Services
                 if (contour.Points == null || contour.Points.Count < 5) continue;
                 var rawSlices = ContourDetectionService.ConvertToSlices(contour, terrain);
                 if (rawSlices == null || rawSlices.Count < 2) continue;
-                var pts = new System.Collections.Generic.List<Vector3>(rawSlices.Count);
-                for (int i = 0; i < rawSlices.Count; i++) pts.Add(rawSlices[i].BottomPosition);
-                var simple = MrTerrainPainter.Editor.Utils.GeometryUtils.SimplifyPathRDP(pts, Mathf.Max(0.01f, rdpEpsilon));
-                if (simple == null || simple.Count < 2) continue;
-                var rebuilt = new System.Collections.Generic.List<CliffSlice>();
-                for (int i = 0; i < simple.Count - 1; i++)
-                {
-                    Vector3 p0 = i > 0 ? simple[i - 1] : simple[i];
-                    Vector3 p1 = simple[i];
-                    Vector3 p2 = simple[i + 1];
-                    Vector3 p3 = i < simple.Count - 2 ? simple[i + 2] : p2;
-                    float segLen = Vector3.Distance(p1, p2);
-                    int steps = Mathf.Max(1, Mathf.CeilToInt(segLen / Mathf.Max(0.01f, smoothSpacing)));
-                    for (int k = 0; k <= steps; k++)
-                    {
-                        float tt = steps == 0 ? 0f : (k / (float)steps);
-                        var pos = MrTerrainPainter.Editor.Utils.SplineUtils.GetPoint(p0, p1, p2, p3, tt);
-                        float lag = Mathf.Max(0.01f, smoothSpacing * 0.05f);
-                        var ahead = MrTerrainPainter.Editor.Utils.SplineUtils.GetPoint(p0, p1, p2, p3, Mathf.Clamp01(tt + lag));
-                        var tan = ahead - pos; tan.y = 0f; if (tan.sqrMagnitude < 1e-6f) tan = p2 - p1; tan = tan.sqrMagnitude > 1e-6f ? tan.normalized : Vector3.right;
-                        var up = Vector3.up;
-                        var n = Vector3.Cross(tan, up).normalized;
-                        float height = ApproximateHeight(rawSlices, pos);
-                        rebuilt.Add(new CliffSlice
-                        {
-                            BottomPosition = pos,
-                            TopPosition = new Vector3(pos.x, pos.y + height, pos.z),
-                            Normal = n,
-                            Direction = up
-                        });
-                    }
-                }
+
+                // [改进方案] 使用弧长自适应采样替代RDP+样条插值
+                var rebuilt = ArcLengthResample(rawSlices, Mathf.Max(0.01f, smoothSpacing));
+                if (rebuilt == null || rebuilt.Count < 2) continue;
+
                 if (rebuilt.Count > 1)
                 {
                     float total = 0f;

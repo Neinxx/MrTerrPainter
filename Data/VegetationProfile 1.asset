@@ -22,7 +22,7 @@ MonoBehaviour:
     slopeRange: {x: 0, y: 90}
     baseDensity: 1.83
     minSpacing: 1.5
-    minRadius: 1.15
+    minRadius: 0.07
     alignToTerrainNormal: 1
     edgeSlopeThreshold: 75
     embedDepthRange: {x: 0.1, y: 0.3}
@@ -57,7 +57,42 @@ MonoBehaviour:
     slopeRange: {x: 0, y: 90}
     baseDensity: 1.41
     minSpacing: 1.5
-    minRadius: 2.32
+    minRadius: 0.05
+    alignToTerrainNormal: 1
+    edgeSlopeThreshold: 75
+    embedDepthRange: {x: 0.1, y: 0.3}
+    edgeReferenceWidthMeters: 1
+    edgeAutoHeight: 1
+    edgeReferenceHeightMeters: 1
+    edgeOffsets: {x: 0, y: 0, z: 0}
+    edgeLookAheadStep: 0.5
+    edgeMaxLookAhead: 5
+    edgeSlopeEnter: 30
+    edgeSlopeExit: 25
+    probeStep: 0.5
+    probeMaxDist: 6
+    referenceHeightMeters: 1
+    offsets: {x: 0, y: 0, z: 0}
+    edgeStacking: 0
+    edgeStackingOffsetMeters: 0
+    edgeTopScaleBias: 1
+    facadeScaleOffset: {x: 0, y: 0, z: 0}
+    facadeSmoothingMode: 0
+    facadeSmoothingWindow: 3
+    facadeSmoothingSigma: 1
+    placementSettings:
+      rid: -2
+  - prefab: {fileID: 7783866548369372103, guid: 0b25db458768d2d45bae2ce97d96e27f,
+      type: 3}
+    weight: 1
+    prefabType: 2
+    uniformScaleRange: {x: 1, y: 3.4846628}
+    yRotationRange: {x: 0, y: 30}
+    heightRange: {x: 0, y: 1000}
+    slopeRange: {x: 0, y: 90}
+    baseDensity: 1
+    minSpacing: 1.5
+    minRadius: 0
     alignToTerrainNormal: 1
     edgeSlopeThreshold: 75
     embedDepthRange: {x: 0.1, y: 0.3}

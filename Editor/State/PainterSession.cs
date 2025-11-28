@@ -151,7 +151,8 @@ namespace MrTerrainPainter.Editor.State
                 () => CurrentProfile,
                 () => UIState.SelectedItemIndex,
                 i => UIState.SelectedItemIndex = i,
-                UIState.SelectedThumbIndices
+                UIState.SelectedThumbIndices,
+                () => Brush  // [新增] 传入 BrushSettings 引用，用于自动切换分布模式
             );
 
             PrefabPicker = new PrefabPickerController(

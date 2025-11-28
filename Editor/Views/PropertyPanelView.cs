@@ -58,6 +58,8 @@ namespace MrTerrainPainter.Editor.Views
             _valueUpdaters.Clear();
             _landscapeGroup.Clear();
 
+            EnsureBasicRangeFields();
+
             // =========================================================
             // 1. 绑定通用字段 (Always Visible)
             // =========================================================
@@ -176,6 +178,8 @@ namespace MrTerrainPainter.Editor.Views
                 BindConfigField<FloatField, float>("ContourSlopeDeg",
                     c => c.contourSlopeDeg, (c, v) => c.contourSlopeDeg = Mathf.Clamp(v, 0f, 90f), isLandscapeOnly: true);
             }
+
+            ApplyFacadeLocalization();
         }
 
         // 刷新面板数据 (从 Item -> UI)
@@ -250,6 +254,7 @@ namespace MrTerrainPainter.Editor.Views
             float absMin, float absMax)
         {
             var field = root.Q<MinMaxSlider>(name);
+            if (field == null && name == "YrotationRange") field = root.Q<MinMaxSlider>("YRotationRange");
             fieldRef = field;
             if (field == null) return;
 
@@ -336,6 +341,96 @@ namespace MrTerrainPainter.Editor.Views
                     callbacks.AssignPrefabToItem?.Invoke(profile, index, newGo);
                 }
             });
+        }
+
+        private void ApplyFacadeUISimplificationIfEnabled()
+        {
+            var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config;
+            if (cfg == null || !cfg.useSimplifiedFacadeUI) return;
+
+            string[] advancedNames =
+            {
+                // 检测/平滑/预览高级参数
+                "EdgeSlopeThreshold",
+                "FacadeEnterSlope",
+                "FacadeExitSlope",
+                "ProbeStep",
+                "ProbeMaxDist",
+                "FacadeRefHeight", // 由简化模式改用统一 ReferenceHeight 字段
+                "PreviewBottomColor",
+                "PreviewTopColor",
+                "FacadeSmoothMode",
+                "FacadeSmoothWindow",
+                "FacadeSmoothSigma",
+                "RdpEpsilon",
+                // 通用高阶条件
+                "HeigthRange",
+                "SlopeRange"
+            };
+
+            for (int i = 0; i < advancedNames.Length; i++)
+            {
+                var el = root.Q<VisualElement>(advancedNames[i]);
+                if (el != null) el.style.display = DisplayStyle.None;
+            }
+        }
+
+        private void ApplyFacadeLocalization()
+        {
+            SetLabelAndTooltip("FacadeMinSpacing", "最小间距(米)", "封边石的最小中心距，过小会重叠。");
+            SetLabelAndTooltip("EdgeSlopeThreshold", "最小坡度(度)", "仅当坡度大于该值时判定为立面区域。");
+            SetLabelAndTooltip("EmbedDepthRange", "嵌入深度(米)", "沿法线向内嵌入的范围，数值越大越深入墙体。");
+            SetLabelAndTooltip("FacadeEnterSlope", "进入陡坡阈值(度)", "开始检测立面的坡度门槛，值越大越严格。");
+            SetLabelAndTooltip("FacadeExitSlope", "退出平缓阈值(度)", "结束立面检测的坡度门槛，值越小越容易结束。");
+            SetLabelAndTooltip("ProbeStep", "探测步长(米)", "沿前进方向的采样步长，增大更平滑，减小更贴细节。");
+            SetLabelAndTooltip("ProbeMaxDist", "最大探测距离(米)", "单次扫描的最大范围，过小可能无法覆盖完整立面。");
+            SetLabelAndTooltip("FacadeRefHeight", "参考高度(米)", "将立面高度换算为本地Y缩放的参照值。");
+            SetLabelAndTooltip("FacadeScaleOffset", "缩放偏移(XYZ)", "在自适应缩放基础上的XYZ加法偏置，用于微调大小。");
+            SetLabelAndTooltip("FacadeOffsets", "位置偏移(XYZ)", "立面坐标系：X右、Y上、Z朝墙；负Z为外推。");
+            SetLabelAndTooltip("YrotationRange", "旋转范围(度)", "绕立面法线的扭转角范围，用于造型差异(0-360)。");
+            SetLabelAndTooltip("HeigthRange", "高度范围", "实例允许的地形高度范围(米)。");
+            SetLabelAndTooltip("SlopeRange", "坡度范围(度)", "实例允许的地形坡度范围(度)。");
+            SetLabelAndTooltip("UseContourDetection", "使用等值线检测", "用高度图等值线替代射线检测，可获得更连续的边线。");
+            SetLabelAndTooltip("ContourSlopeDeg", "等值线坡度(度)", "提取坡度≥阈值的连通线，增大值可缩小检测范围。");
+
+            SetLabelAndTooltip("FacadeSmoothMode", "平滑模式", "均值/高斯/中位数，用于消除锯齿与噪声。");
+            SetLabelAndTooltip("FacadeSmoothWindow", "平滑窗口(奇数)", "窗口越大越平滑，但可能损失细节，建议7-11。");
+            SetLabelAndTooltip("FacadeSmoothSigma", "高斯Sigma", "仅高斯模式有效，控制权重分布宽度。");
+            SetLabelAndTooltip("RdpEpsilon", "简化容差(米)", "RDP折线简化容差，增大将减少节点数量。");
+            SetLabelAndTooltip("PreviewBottomColor", "底边颜色", "立面底边的预览颜色。");
+            SetLabelAndTooltip("PreviewTopColor", "顶边颜色", "立面顶边的预览颜色。");
+        }
+
+        private void SetLabelAndTooltip(string name, string label, string tip)
+        {
+            var el0 = root.Q<FloatField>(name); if (el0 != null) { el0.label = label; el0.tooltip = tip; return; }
+            var el1 = root.Q<Slider>(name); if (el1 != null) { el1.label = label; el1.tooltip = tip; return; }
+            var el2 = root.Q<MinMaxSlider>(name); if (el2 != null) { el2.label = label; el2.tooltip = tip; return; }
+            var el3 = root.Q<IntegerField>(name); if (el3 != null) { el3.label = label; el3.tooltip = tip; return; }
+            var el4 = root.Q<EnumField>(name); if (el4 != null) { el4.label = label; el4.tooltip = tip; return; }
+            var el5 = root.Q<Toggle>(name); if (el5 != null) { el5.label = label; el5.tooltip = tip; return; }
+            var el6 = root.Q<Vector3Field>(name); if (el6 != null) { el6.label = label; el6.tooltip = tip; return; }
+            var el7 = root.Q<ColorField>(name); if (el7 != null) { el7.label = label; el7.tooltip = tip; return; }
+        }
+
+        private void EnsureBasicRangeFields()
+        {
+            var container = root.Q<VisualElement>("PrefabRange") ?? root;
+            if (root.Q<MinMaxSlider>("YrotationRange") == null && root.Q<MinMaxSlider>("YRotationRange") == null)
+            {
+                var s = new MinMaxSlider { name = "YrotationRange", lowLimit = 0f, highLimit = 360f };
+                container.Add(s);
+            }
+            if (root.Q<MinMaxSlider>("HeigthRange") == null)
+            {
+                var s = new MinMaxSlider { name = "HeigthRange", lowLimit = 0f, highLimit = 1000f };
+                container.Add(s);
+            }
+            if (root.Q<MinMaxSlider>("SlopeRange") == null)
+            {
+                var s = new MinMaxSlider { name = "SlopeRange", lowLimit = 0f, highLimit = 90f };
+                container.Add(s);
+            }
         }
 
         private Vector2 SanitizeRange(Vector2 v, float min, float max = float.MaxValue)

@@ -153,6 +153,65 @@ namespace MrTerrainPainter.Editor.Services
         }
     }
 
+    /// <summary>
+    /// 基于弧长的边线采样器：沿切片构成的折线按指定间距重采样，获得更均匀的候选点
+    /// </summary>
+    public class ArcLengthEdgeSampler : IPointSampler
+    {
+        private readonly List<FacadeDetectionService.CliffSlice> _slices;
+        private readonly float _spacing;
+        private readonly Vector3 _center;
+        private readonly BrushShape _shape;
+        public ArcLengthEdgeSampler(List<FacadeDetectionService.CliffSlice> slices, float spacing, Vector3 center, BrushShape shape)
+        {
+            _slices = slices; _spacing = Mathf.Max(spacing, 0.01f); _center = center; _shape = shape;
+        }
+        private static bool IsWithinBrush(Vector3 p, Vector3 c, float r, BrushShape s)
+        {
+            float dx = p.x - c.x; float dz = p.z - c.z;
+            if (s == BrushShape.Circle) return (dx * dx + dz * dz) <= r * r;
+            return Mathf.Abs(dx) <= r && Mathf.Abs(dz) <= r;
+        }
+        public List<Vector3> Sample(Vector3 center, float radius)
+        {
+            var res = new List<Vector3>();
+            if (_slices == null || _slices.Count == 0) return res;
+
+            // 构造折线序列（假设 slices 已按路径顺序）
+            var path = new List<Vector3>(_slices.Count);
+            for (int i = 0; i < _slices.Count; i++)
+            {
+                var p = _slices[i].BottomPosition;
+                if (IsWithinBrush(p, _center, radius, _shape)) path.Add(p);
+            }
+            if (path.Count == 0) return res;
+
+            // 按弧长逐步采样
+            float accum = 0f;
+            Vector3 last = path[0];
+            res.Add(last);
+            for (int i = 1; i < path.Count; i++)
+            {
+                var cur = path[i];
+                float seg = Vector3.Distance(last, cur);
+                if (seg <= 1e-5f) continue;
+                accum += seg;
+                while (accum >= _spacing)
+                {
+                    float t = (seg <= 0f) ? 0f : Mathf.Clamp01((_spacing - (accum - seg)) / seg);
+                    var p = Vector3.Lerp(last, cur, t);
+                    res.Add(p);
+                    accum -= _spacing;
+                    last = p;
+                    seg = Vector3.Distance(last, cur);
+                    if (seg <= 1e-5f) break;
+                }
+                if (seg > 1e-5f) last = cur;
+            }
+            return res;
+        }
+    }
+
     public class StandardMutator : IInstanceMutator
     {
         private readonly MrTerrainPainter.Runtime.Profiles.VegetationItem _item;
@@ -168,10 +227,15 @@ namespace MrTerrainPainter.Editor.Services
         }
     }
 
+    /// <summary>
+    /// 封边石/立面实例变换器 - 处理EdgeLine分布模式的旋转和缩放
+    /// [旧版本] 使用最小高度，不使用实际立面高度（已废弃，保留用于兼容）
+    /// </summary>
     public class EdgeLineMutator : IInstanceMutator
     {
         public void Mutate(MrTerrainPainter.Runtime.Profiles.VegetationItem item, System.Random rnd, ref Vector3 pos, ref Quaternion rot, ref Vector3 scale, Vector3 normal)
         {
+            // 1. 缩放计算 - 基于立面高度
             float rendererH = PrefabMetricsCache.GetPrefabHeightMeters(item.prefab);
             float minH = 0.0001f;
             var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
@@ -183,9 +247,17 @@ namespace MrTerrainPainter.Editor.Services
                 Mathf.Max(0.0001f, baseScale.y + item.facadeScaleOffset.y),
                 Mathf.Max(0.0001f, baseScale.z + item.facadeScaleOffset.z));
             scale = finalScale;
-            bool alignNormal = cfg != null && cfg.normalDirection;
+
+            // 2. 旋转计算 - 封边石始终朝向立面法线方向（朝外）
+            // 不受 normalDirection 配置影响，因为封边石必须垂直于墙面
             var up = Vector3.up;
-            rot = alignNormal ? Quaternion.LookRotation(normal, up) : Quaternion.LookRotation(Vector3.forward, up);
+            rot = Quaternion.LookRotation(normal, up);
+            // 旋转含义：
+            //   - Forward (+Z轴) → 立面法线方向（朝外）
+            //   - Up (+Y轴) → 垂直向上
+            //   - Right (+X轴) → 沿墙面切线方向（自动计算）
+
+            // 3. 嵌入深度偏移 - 让封边石嵌入墙面
             float depth = Mathf.Clamp(item.SampleEmbedDepth(rnd), 0f, 1f);
             var horiz = Vector3.ProjectOnPlane(-normal.normalized, Vector3.up);
             if (horiz.sqrMagnitude > 1e-6f)
@@ -194,6 +266,77 @@ namespace MrTerrainPainter.Editor.Services
                 var off = horiz * depth;
                 pos = new Vector3(pos.x + off.x, pos.y, pos.z + off.z);
             }
+        }
+    }
+
+    /// <summary>
+    /// 立面封边石变换器 - 使用实际立面高度完美适配
+    /// </summary>
+    public class FacadeLineMutator : IInstanceMutator
+    {
+        private readonly System.Collections.Generic.List<FacadeDetectionService.CliffSlice> slices;
+        private readonly System.Collections.Generic.List<Vector3> candidates;
+
+        public FacadeLineMutator(System.Collections.Generic.List<FacadeDetectionService.CliffSlice> slices, System.Collections.Generic.List<Vector3> candidates)
+        {
+            this.slices = slices;
+            this.candidates = candidates;
+        }
+
+        public void Mutate(MrTerrainPainter.Runtime.Profiles.VegetationItem item, System.Random rnd, ref Vector3 pos, ref Quaternion rot, ref Vector3 scale, Vector3 normal)
+        {
+            // 1. 查找当前候选点对应的CliffSlice
+            FacadeDetectionService.CliffSlice slice = default;
+            float minDistSq = float.MaxValue;
+            for (int i = 0; i < slices.Count; i++)
+            {
+                float distSq = Vector3.SqrMagnitude(slices[i].BottomPosition - pos);
+                if (distSq < minDistSq)
+                {
+                    minDistSq = distSq;
+                    slice = slices[i];
+                }
+            }
+
+            // 2. 缩放计算 - 基于实际立面高度（slice.Height）
+            float rendererH = PrefabMetricsCache.GetPrefabHeightMeters(item.prefab);
+            var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
+            float minH = cfg != null ? Mathf.Max(0.0001f, cfg.minFacadeHeightMeters) : 0.0001f;
+
+            // [关键] 使用 slice.Height（实际立面高度）计算缩放
+            // uni = max(minH/rendererH, sliceHeight/rendererH)
+            // 这确保封边石至少达到最小高度，但优先使用实际立面高度
+            float sliceHeight = slice.Height;
+            float uni = Mathf.Max(minH / Mathf.Max(0.0001f, rendererH), sliceHeight / Mathf.Max(0.0001f, rendererH));
+
+            var baseScale = new Vector3(uni, uni, uni);
+            var finalScale = new Vector3(
+                Mathf.Max(0.0001f, baseScale.x + item.facadeScaleOffset.x),
+                Mathf.Max(0.0001f, baseScale.y + item.facadeScaleOffset.y),
+                Mathf.Max(0.0001f, baseScale.z + item.facadeScaleOffset.z));
+            scale = finalScale;
+
+            // 3. 旋转计算 - 封边石的 +Z 方向朝向立面法线
+            var up = Vector3.up;
+            rot = Quaternion.LookRotation(slice.Normal, up);
+            // 额外绕法线的扭转角，来源于 yRotationRange，用于造型差异
+            float twistDeg = item.SampleYRotation(rnd);
+            rot = Quaternion.AngleAxis(twistDeg, slice.Normal) * rot;
+            // 旋转轴向：
+            //   - Forward (+Z) → slice.Normal（立面法线，朝外）
+            //   - Up (+Y) → Vector3.up（垂直向上）
+            //   - Right (+X) → 沿墙面切线方向
+
+            // 4. 位置偏移 - 应用 offsets 和嵌入深度
+            float depth = Mathf.Clamp(item.SampleEmbedDepth(rnd), 0f, 1f);
+            var rightAxis = Vector3.Normalize(Vector3.Cross(slice.Direction, slice.Normal));
+
+            // offsets: (x=右, y=上, z=前)，相对于立面坐标系
+            var off = rightAxis * item.offsets.x
+                    + slice.Direction * item.offsets.y
+                    + (-slice.Normal.normalized) * (depth + Mathf.Max(0f, item.offsets.z));
+
+            pos += off;
         }
     }
 
@@ -206,6 +349,64 @@ namespace MrTerrainPainter.Editor.Services
             go.transform.position = pos;
             go.transform.rotation = rot;
             go.transform.localScale = scale;
+            var vi = go.GetComponent<Runtime.Core.VegetationInstance>() ?? go.AddComponent<Runtime.Core.VegetationInstance>();
+            vi.sourceTerrain = terrain;
+            vi.profileItemIndex = itemIndex;
+            vi.sourcePrefabName = item.prefab != null ? item.prefab.name : "";
+            VegetationPool.IndexRegister(terrain, go);
+        }
+    }
+
+    /// <summary>
+    /// 立面对齐实例化器：确保底部对齐切片底部、顶部对齐切片顶部，并保持Z轴对齐立面法线
+    /// </summary>
+    public class FacadeAligningSpawner : IInstanceSpawner
+    {
+        private readonly System.Collections.Generic.List<FacadeDetectionService.CliffSlice> _slices;
+        public FacadeAligningSpawner(System.Collections.Generic.List<FacadeDetectionService.CliffSlice> slices) { _slices = slices; }
+        public void Spawn(MrTerrainPainter.Runtime.Profiles.VegetationItem item, int itemIndex, Transform parent, Terrain terrain, Vector3 pos, Quaternion rot, Vector3 scale)
+        {
+            var go = VegetationPool.Get(terrain, item, itemIndex, parent, "Create Vegetation Instance");
+            if (go == null) return;
+            go.transform.position = pos;
+            go.transform.rotation = rot;
+            go.transform.localScale = scale;
+
+            // 查找最近的切片（按底部位置），以获取目标高度与法线
+            FacadeDetectionService.CliffSlice slice = default;
+            float best = float.MaxValue;
+            if (_slices != null && _slices.Count > 0)
+            {
+                for (int i = 0; i < _slices.Count; i++)
+                {
+                    float d = Vector3.SqrMagnitude(_slices[i].BottomPosition - pos);
+                    if (d < best) { best = d; slice = _slices[i]; }
+                }
+            }
+
+            // 实测当前高度并统一缩放到目标高度
+            var renderers = go.GetComponentsInChildren<Renderer>(true);
+            if (renderers != null && renderers.Length > 0)
+            {
+                var b = renderers[0].bounds;
+                for (int i = 1; i < renderers.Length; i++) b.Encapsulate(renderers[i].bounds);
+                float curH = Mathf.Max(0.0001f, b.size.y);
+                float targetH = Mathf.Max(0.0001f, slice.TopPosition.y - slice.BottomPosition.y);
+                float factor = targetH / curH;
+                var s = go.transform.localScale;
+                go.transform.localScale = new Vector3(s.x * factor, s.y * factor, s.z * factor);
+
+                // 重新测量并将底部对齐到切片底部高度
+                var b2 = renderers[0].bounds;
+                for (int i = 1; i < renderers.Length; i++) b2.Encapsulate(renderers[i].bounds);
+                float deltaBottom = slice.BottomPosition.y - b2.min.y;
+                if (Mathf.Abs(deltaBottom) > 1e-5f)
+                {
+                    var p = go.transform.position;
+                    go.transform.position = new Vector3(p.x, p.y + deltaBottom, p.z);
+                }
+            }
+
             var vi = go.GetComponent<Runtime.Core.VegetationInstance>() ?? go.AddComponent<Runtime.Core.VegetationInstance>();
             vi.sourceTerrain = terrain;
             vi.profileItemIndex = itemIndex;

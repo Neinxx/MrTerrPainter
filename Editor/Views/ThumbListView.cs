@@ -33,6 +33,7 @@ namespace MrTerrainPainter.Editor.Views
             public Action<VegetationProfile, int, Runtime.Profiles.PrefabType> SetItemType;
             public Action<VegetationProfile, int> OpenPrefabPickerForItem;
             public Func<IEnumerable<Runtime.Profiles.PrefabType>> GetAvailableTypes;
+            public Action<VegetationProfile, int> OnItemSelected; // [新增] 选中项变化时的回调
         }
         #endregion
 
@@ -224,6 +225,9 @@ namespace MrTerrainPainter.Editor.Views
         {
             cb.SetCurrentProfile?.Invoke(profile);
             HandleSelection(index, ctrl, shift);
+
+            // [新增] 通知选中项变化，触发分布模式自动切换
+            cb.OnItemSelected?.Invoke(profile, index);
 
             cb.UpdatePropertyPanelFromSelectedItem?.Invoke();
             cb.RefreshVegetationListUI?.Invoke();
