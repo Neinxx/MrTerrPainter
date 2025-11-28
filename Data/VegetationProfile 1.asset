@@ -14,15 +14,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   items:
   - prefab: {fileID: 694839608334575462, guid: bf1345ef55612f049be1c93be5a9faba, type: 3}
-    weight: 0.691
+    weight: 0.446
     prefabType: 0
     uniformScaleRange: {x: 1, y: 2.7024543}
     yRotationRange: {x: 0, y: 360}
     heightRange: {x: 0, y: 1000}
     slopeRange: {x: 0, y: 90}
-    baseDensity: 0.52
+    baseDensity: 1.83
     minSpacing: 1.5
-    minRadius: 2.73
+    minRadius: 1.15
     alignToTerrainNormal: 1
     edgeSlopeThreshold: 75
     embedDepthRange: {x: 0.1, y: 0.3}
@@ -49,7 +49,7 @@ MonoBehaviour:
       rid: -2
   - prefab: {fileID: 8751776247453558961, guid: d73b90597bd05bf47b97182e11bd87bb,
       type: 3}
-    weight: 0.733
+    weight: 0.584
     prefabType: 0
     uniformScaleRange: {x: 1, y: 2.150307}
     yRotationRange: {x: 0, y: 343.0675}
@@ -57,7 +57,7 @@ MonoBehaviour:
     slopeRange: {x: 0, y: 90}
     baseDensity: 1.41
     minSpacing: 1.5
-    minRadius: 2.94
+    minRadius: 2.32
     alignToTerrainNormal: 1
     edgeSlopeThreshold: 75
     embedDepthRange: {x: 0.1, y: 0.3}

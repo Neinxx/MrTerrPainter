@@ -12,6 +12,36 @@ namespace MrTerrainPainter.Editor.Services
     /// </summary>
     public static class FacadePlacementHandler
     {
+        public class Handler : IPlacementHandler
+        {
+            public bool CanHandle(VegetationItem item, BrushSettings bs)
+            {
+                return item != null && item.prefabType == PrefabType.Landscape && bs != null && bs.distribution == DistributionType.EdgeLine;
+            }
+            public void Paint(PaintContext context)
+            {
+                var profile = context.Profile;
+                if (profile == null || profile.IsEmpty()) return;
+                var items = profile.Items;
+                var landItems = new System.Collections.Generic.List<VegetationItem>();
+                for (int i = 0; i < items.Count; i++) { var it = items[i]; if (it != null && it.IsValid() && it.prefabType == PrefabType.Landscape) landItems.Add(it); }
+                if (landItems.Count == 0) return;
+                var typeToNode = VegetationGenerator.BuildTypeToNodeMapping();
+                var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? Config.ConfigTools.GetCachedConfig();
+                var req = new FacadeTraceRequest
+                {
+                    Terrain = context.Terrain,
+                    Start = context.Center,
+                    Length = context.BrushSettings.size * 2f,
+                    ItemRef = landItems[0],
+                    Config = cfg,
+                    Brush = context.BrushSettings
+                };
+                var slices = FacadePathTracer.Trace(req);
+                if (slices == null || slices.Count == 0) return;
+                PlaceEdgeLineWithPipeline(context.Terrain, context.Center, context.BrushSettings.size, context.BrushSettings, landItems, typeToNode, slices, context.Random);
+            }
+        }
         /// <summary>
         /// 在立面切片上生成单个实例
         /// </summary>
@@ -57,7 +87,18 @@ namespace MrTerrainPainter.Editor.Services
         List<FacadeDetectionService.CliffSlice> slices, System.Random rnd)
     {
         var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? ConfigTools.GetCachedConfig();
-        float mixMinSpacing = landItems.Count > 0 ? landItems.Min(li => Mathf.Max(Mathf.Max(li.CoreSpacing, li.CoreMinRadius), 0.01f)) : 0.01f;
+        float mixMinSpacing = 0.01f;
+        if (landItems != null && landItems.Count > 0)
+        {
+            float best = float.MaxValue;
+            for (int i = 0; i < landItems.Count; i++)
+            {
+                var li = landItems[i];
+                float s = Mathf.Max(Mathf.Max(li.CoreSpacing, li.CoreMinRadius), 0.01f);
+                if (s < best) best = s;
+            }
+            mixMinSpacing = best == float.MaxValue ? 0.01f : best;
+        }
 
         var parent = typeToNode.TryGetValue(PrefabType.Landscape, out var tf) ? tf : null;
         if (parent == null) return;
@@ -71,7 +112,9 @@ namespace MrTerrainPainter.Editor.Services
         var globalGrid = new BrushSpatialGrid(mixMinSpacing);
         var spawner = new GlobalGridSpawner(globalGrid, mixMinSpacing, pooled);
 
-        float sumW = Mathf.Max(0.0001f, landItems.Sum(i => Mathf.Max(0f, i.weight)));
+        float sumW = 0f;
+        for (int i = 0; i < landItems.Count; i++) sumW += Mathf.Max(0f, landItems[i].weight);
+        sumW = Mathf.Max(0.0001f, sumW);
         int total = candidates.Count;
         var quota = new int[landItems.Count];
         int allocated = 0;

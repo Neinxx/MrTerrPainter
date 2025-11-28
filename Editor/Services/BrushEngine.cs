@@ -5,6 +5,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
+using MrTerrainPainter.Runtime.Profiles;
 
 namespace MrTerrainPainter.Editor.Services
 {
@@ -56,6 +57,25 @@ namespace MrTerrainPainter.Editor.Services
             if (list == null) return;
             list.Clear();
             s_listPool3.Push(list);
+        }
+
+        private static readonly Stack<System.Collections.Generic.List<VegetationItem>> s_itemListPool = new();
+        public static System.Collections.Generic.List<VegetationItem> AcquireItemList(int capacity)
+        {
+            if (s_itemListPool.Count > 0)
+            {
+                var l = s_itemListPool.Pop();
+                l.Clear();
+                if (l.Capacity < capacity) l.Capacity = capacity;
+                return l;
+            }
+            return new System.Collections.Generic.List<VegetationItem>(capacity);
+        }
+        public static void ReleaseItemList(System.Collections.Generic.List<VegetationItem> list)
+        {
+            if (list == null) return;
+            list.Clear();
+            s_itemListPool.Push(list);
         }
 
 

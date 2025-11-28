@@ -257,10 +257,11 @@ namespace MrTerrainPainter.Editor.Services
                     bool isFacadeEdgeMode = s.brush != null && s.brush.distribution == DistributionType.EdgeLine && profile != null && profile.Items.Any(it => it != null && it.prefabType == PrefabType.Landscape);
                     if (isFacadeEdgeMode)
                     {
-                        var item = profile.Items.FirstOrDefault(it => it != null && it.prefabType == PrefabType.Landscape);
+                        VegetationItem item = null;
+                        for (int i = 0; i < profile.Items.Count; i++) { var it = profile.Items[i]; if (it != null && it.prefabType == PrefabType.Landscape) { item = it; break; } }
                         if (item != null)
                         {
-                            if (!FacadeDetectionService.TryDetectFacade(terrain, pos, item.edgeSlopeEnter, item.edgeSlopeExit, item.probeStep, item.probeMaxDist, out var _)) { Handles.Label(pos + Vector3.up * 0.2f, "未检测到立面（坡度不足或探测范围不足）"); return; }
+                            if (!FacadeDetector.TryDetect(terrain, pos, item.edgeSlopeEnter, item.edgeSlopeExit, item.probeStep, item.probeMaxDist, out var _)) { Handles.Label(pos + Vector3.up * 0.2f, "未检测到立面（坡度不足或探测范围不足）"); return; }
                         }
                     }
                     s.VegetationPainterOnTerrain(terrain, pos);
@@ -301,13 +302,16 @@ namespace MrTerrainPainter.Editor.Services
             if (brush.distribution == DistributionType.EdgeLine)
             {
                 var profile = getCurrentProfile?.Invoke();
-                var itemRef = profile != null ? profile.Items.FirstOrDefault(it => it != null && it.prefabType == PrefabType.Landscape) : null;
+                VegetationItem itemRef = null;
+                if (profile != null)
+                {
+                    for (int i = 0; i < profile.Items.Count; i++) { var it = profile.Items[i]; if (it != null && it.prefabType == PrefabType.Landscape) { itemRef = it; break; } }
+                }
                 if (itemRef != null)
                 {
                     var cfg = MrTerrainPainter.Editor.Tools.MTPBrushContext.Config ?? MrTerrainPainter.Editor.Config.ConfigTools.GetCachedConfig();
-                    var req = new FacadeDetectionService.FacadeTraceBuilder()
-                        .Terrain(terrain).Start(center).Length(brush.size * 2f).FromItem(itemRef).FromConfig(cfg).Build();
-                    var slices = FacadeDetectionService.TraceVirtualFacade(req);
+                    var req = new FacadeTraceRequest { Terrain = terrain, Start = center, Length = brush.size * 2f, ItemRef = itemRef, Config = cfg, Brush = brush };
+                    var slices = FacadePathTracer.Trace(req);
                     if (slices != null && slices.Count > 0)
                     {
                         _preview.slices = slices;
